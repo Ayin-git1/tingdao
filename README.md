@@ -1,10 +1,22 @@
 # 听道 · 本地实时转写
 
+[![License: PolyForm Noncommercial](https://img.shields.io/badge/license-PolyForm%20Noncommercial-4b5563)](./LICENSE)
+![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-34C759)
+![Release](https://img.shields.io/github/v/release/Ayin-git1/tingdao?label=%E4%B8%8B%E8%BD%BD)
+
 macOS 转写工具。录系统声音、麦克风或两者同时，说话即出字，逐句带时间戳；停录后按你选的模式重听一遍出正式稿。
 
 默认全程离线：不联网、不注册、不上传。只有你主动选「云端」模式并确认上传时，音频才会离开本机。
 
 存在的理由：把「语音转文字」这件事放回自己机器上——不用订阅、不用注册、不默认上传；需要更高精度或说话人分离时，再由你主动把音频交给外部服务。
+
+---
+
+## 获取
+
+- **macOS（Apple Silicon）**：到 [Releases](https://github.com/Ayin-git1/tingdao/releases) 下载最新的 `听道_<版本>_aarch64.dmg`，打开后把「听道.app」拖进「应用程序」即可。因未经 Apple 开发者签名，首次打开若被 Gatekeeper 拦下，右键点 app → 「打开」→ 再确认一次就好（只需一次）。
+- **Windows / Intel Mac**：下载源码 zip，解压后按下方「依赖」装好 Python 虚拟环境，用 `TINGDAO_HOME` 指向程序目录运行；本地精修改走云端模式或自行接 faster-whisper。
+- 无论哪种形态，安装包都**只含程序本体**——Python 环境、模型、ffmpeg / BlackHole 均需自备，详见下方「依赖」与「首次配置」。
 
 ---
 
