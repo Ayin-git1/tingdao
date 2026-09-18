@@ -1,0 +1,9 @@
+# 默认使用官方 crates.io 源。如需加速，请自行在本地 cargo 配置里替换 source.crates-io。
+
+[net]
+git-fetch-with-cli = true
+retry = 5
+
+[http]
+timeout = 60
+low-speed-limit = 5

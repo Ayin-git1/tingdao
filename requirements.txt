@@ -1,0 +1,24 @@
+# 听道 — 后端 Python 运行依赖（仅库；不含模型、不含 ffmpeg/BlackHole 等系统工具）
+#
+# 本仓库只发「程序本体」。运行环境请自行建一个独立虚拟环境（建议 Python 3.10）：
+#   python3.10 -m venv ~/tingdao-venv
+#   source ~/tingdao-venv/bin/activate        # Windows: %USERPROFILE%\tingdao-venv\Scripts\activate
+#   pip install -r requirements.txt
+#
+# 另需（用户自行安装，见 README「首次配置」，不在本文件内）：
+#   系统工具：ffmpeg（全平台）、switchaudio-osx（mac）、BlackHole 2ch（mac，系统声音内录）
+#   模型：SenseVoice / Silero VAD / whisper-large-v3-turbo —— 自行下载后在「设置 → 本地模型」里填路径
+#
+# 提示：以下未钉死版本，首次在你机器上跑通后，建议用 `pip freeze` 固化成可复现版本再发布。
+
+numpy
+requests
+sherpa-onnx
+pywebview
+
+# 本地精修/导入转写引擎：仅 Apple Silicon + macOS 可用。
+# Intel Mac / Windows 请改走云端模式，或另接 faster-whisper 等实现。
+mlx-whisper ; sys_platform == "darwin" and platform_machine == "arm64"
+
+# macOS 原生窗口与权限所需（pywebview 在 mac 上依赖 pyobjc 的 Cocoa 绑定）
+pyobjc-framework-Cocoa ; sys_platform == "darwin"

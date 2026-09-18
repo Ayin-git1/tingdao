@@ -1,0 +1,21 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "听道",
+  "version": "1.0.0",
+  "identifier": "local.tingdao.app",
+  "build": {
+    "frontendDist": "./dist"
+  },
+  "app": {
+    "windows": [],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app", "dmg"],
+    "resources": ["program/*"],
+    "icon": ["icons/icon.png", "icons/icon.icns"]
+  }
+}

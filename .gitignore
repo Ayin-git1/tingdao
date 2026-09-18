@@ -1,0 +1,44 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# --- Tauri / Rust 构建产物（可重新生成，不入库）---
+tauri-shell/target/
+tauri-shell/dist/
+tauri-shell/gen/
+
+# --- Node 依赖（可由 package.json + package-lock.json 重新安装，不入库）---
+node_modules/
+
+# --- 运行时生成：配置 / 用户数据 / 日志（都属个人隐私，绝不入库）---
+config.json
+.settings.json
+.hotwords.txt
+.hotword-templates.json
+.groups.json
+*.log
+*.pid
+# 单个转写项目的产物目录：sessions / transcript / 音频 / 笔记
+transcripts/
+session.json
+transcript.md
+note.md
+audio.m4a
+audio_listen.m4a
+.pref.json
+
+# --- macOS / 编辑器 ---
+.DS_Store
+._*
+.AppleDouble
+.LSOverride
+*.swp
+.idea/
+.vscode/
+
+# 构建前从根目录 stage 的程序本体副本（勿入库，由打包脚本生成）
+tauri-shell/program/
