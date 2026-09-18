@@ -14,7 +14,7 @@ macOS 转写工具。录系统声音、麦克风或两者同时，说话即出�
 
 ## 获取
 
-- **macOS（Apple Silicon）**：到 [Releases](https://github.com/Ayin-git1/tingdao/releases) 下载最新的 `听道_<版本>_aarch64.dmg`，打开后把「听道.app」拖进「应用程序」即可。因未经 Apple 开发者签名，首次打开若被 Gatekeeper 拦下，右键点 app → 「打开」→ 再确认一次就好（只需一次）。
+- **macOS（Apple Silicon）**：到 [Releases](https://github.com/Ayin-git1/tingdao/releases) 下载最新的 `tingdao_<版本>_aarch64.dmg`（发布资源用 ASCII 文件名，挂载后里面的程序仍是「听道.app」），打开后把「听道.app」拖进「应用程序」即可。因未经 Apple 开发者签名，首次打开若被 Gatekeeper 拦下，右键点 app → 「打开」→ 再确认一次就好（只需一次）。
 - **Windows / Intel Mac**：下载源码 zip，解压后按下方「依赖」装好 Python 虚拟环境，用 `TINGDAO_HOME` 指向程序目录运行；本地精修改走云端模式或自行接 faster-whisper。
 - 无论哪种形态，安装包都**只含程序本体**——Python 环境、模型、ffmpeg / BlackHole 均需自备，详见下方「依赖」与「首次配置」。
 
