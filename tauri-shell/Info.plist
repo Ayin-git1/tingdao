@@ -4,5 +4,7 @@
 <dict>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>听道需要访问麦克风以录制和转写语音。</string>
+	<key>NSScreenCaptureUsageDescription</key>
+	<string>听道需要屏幕录制权限以采集系统播放的声音（仅取音频，不录画面）。</string>
 </dict>
 </plist>

@@ -3,11 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>听道</title>
+<title>听道 · 外观设计测试</title>
 <script>
-  /* 在页面绘制前应用外观，避免切换时闪烁。 */
+  /* 设计稿的外观偏好只属于 index-test，不写入正式应用设置。 */
   (() => {
-    const key = 'tingdao-appearance';
+    const key = 'tingdao-index-test-appearance';
     const media = window.matchMedia('(prefers-color-scheme: dark)');
     let mode = 'system';
     try {
@@ -21,7 +21,7 @@
     };
     apply();
     media.addEventListener('change', () => { if (mode === 'system') apply(); });
-    window.tingdaoAppearance = {
+    window.tingdaoTestAppearance = {
       get: () => mode,
       set: value => {
         if (!['light', 'dark', 'system'].includes(value)) return;
@@ -1454,7 +1454,7 @@
   .tagpal .sw.on::after{content:"\2713";opacity:1;}
   .tagpal .sw.on:hover::after{content:"\2713";}
 
-  /* 浅色沿用原界面，仅覆盖深色下的颜色与材质。 */
+  /* index-test 外观预览：浅色沿用正式界面，只覆盖深色下的颜色与材质。 */
   html[data-appearance="dark"] {
     --bg:#191a1c; --side:#222326; --card:#292a2d; --line:#45464b;
     --txt:#f1f1f3; --sub:#b5b7bd; --acc:#f1f1f3;
@@ -1523,7 +1523,7 @@
   html[data-appearance="dark"] #sbGhost .gcard { background:var(--card); border-color:var(--line); }
   html[data-appearance="dark"] #sbGhost .gback { background:var(--soft); border-color:var(--line); }
   html[data-appearance="dark"] .hchk { background:var(--card); box-shadow:0 0 0 1.5px var(--card), inset 0 0 0 1px var(--line); }
-  html[data-appearance="dark"] .hchk:checked { background:var(--g); box-shadow:0 0 0 1.5px var(--card); }
+  html[data-appearance="dark"] .hchk:checked { box-shadow:0 0 0 1.5px var(--card); }
   html[data-appearance="dark"] .sk-home .c,
   html[data-appearance="dark"] .sk-body .blk,
   html[data-appearance="dark"] .sk-body .tsb { background:var(--soft); }
@@ -3675,10 +3675,10 @@ document.querySelectorAll('.setpop .seg, .cloudpop .seg').forEach(seg=>{
   });
   seg.addEventListener('mouseleave', ()=> segInd(seg, segSel(seg), false));
 });
-/* 个性化外观：偏好仅保存在本机前端。 */
+/* 个性化外观：只保存到 index-test 自己的本地预览偏好。 */
 function syncAppearanceUI(){
   const seg = $('setAppearance');
-  const mode = window.tingdaoAppearance.get();
+  const mode = window.tingdaoTestAppearance.get();
   seg.querySelectorAll('button').forEach(b=>{
     const selected = b.dataset.v === mode;
     b.classList.toggle('on', selected);
@@ -3690,7 +3690,7 @@ syncAppearanceUI();
 $('setAppearance').addEventListener('click', e=>{
   const b = e.target.closest('button[data-v]');
   if(!b) return;
-  window.tingdaoAppearance.set(b.dataset.v);
+  window.tingdaoTestAppearance.set(b.dataset.v);
   syncAppearanceUI();
 });
 $('setMode').addEventListener('click', e=>{
