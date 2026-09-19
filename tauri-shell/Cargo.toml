@@ -1,6 +1,6 @@
 [package]
 name = "tingdao-shell"
-version = "1.0.0"
+version = "1.0.1"
 description = "听道原生窗口壳 (Tauri v2)"
 edition = "2021"
 

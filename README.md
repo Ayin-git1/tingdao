@@ -1,5 +1,7 @@
 # 听道 · 本地实时转写
 
+当前版本：**v1.0.1**
+
 [![License: PolyForm Noncommercial](https://img.shields.io/badge/license-PolyForm%20Noncommercial-4b5563)](./LICENSE)
 ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-34C759)
 ![Release](https://img.shields.io/github/v/release/Ayin-git1/tingdao?label=%E4%B8%8B%E8%BD%BD)
@@ -12,18 +14,27 @@ macOS 转写工具。录系统声音、麦克风或两者同时，说话即出�
 
 ---
 
+## v1.0.1 更新
+
+- 设置新增「个性化 → 外观」：浅色、深色、跟随系统三档；跟随系统时随 macOS 外观变化自动切换，选择保存在本机前端。
+- 深色界面覆盖主要页面、设置和弹窗；调整录音胶囊悬浮态的文字对比度，并降低绿色描边与光晕亮度。
+- 修正深色模式下历史记录多选复选框的选中颜色，选中后显示绿色。
+- 保留独立的 `index-test.html` 外观预览副本，不影响正式页面的外观偏好。
+
+---
+
 ## 获取
 
 - **macOS（Apple Silicon）**：到 [Releases](https://github.com/Ayin-git1/tingdao/releases) 下载最新的 `tingdao_<版本>_aarch64.dmg`（发布资源用 ASCII 文件名，挂载后里面的程序仍是「听道.app」），打开后把「听道.app」拖进「应用程序」即可。因未经 Apple 开发者签名，首次打开若被 Gatekeeper 拦下，右键点 app → 「打开」→ 再确认一次就好（只需一次）。
 - **Windows / Intel Mac**：下载源码 zip，解压后按下方「依赖」装好 Python 虚拟环境，用 `TINGDAO_HOME` 指向程序目录运行；本地精修改走云端模式或自行接 faster-whisper。
-- 无论哪种形态，安装包都**只含程序本体**——Python 环境、模型、ffmpeg / BlackHole 均需自备，详见下方「依赖」与「首次配置」。
+- 无论哪种形态，安装包都**只含程序本体**——Python 环境、模型、ffmpeg 均需自备，详见下方「依赖」与「首次配置」。系统声音内录走系统自带能力（mac ScreenCaptureKit / Windows WASAPI loopback），**不再需要 BlackHole 等虚拟声卡**。
 
 ---
 
 ## 许可与发布形态
 
 - **许可**：源码公开，但**仅供个人非商业使用**，采用 [PolyForm Noncommercial License 1.0.0](./LICENSE)。因此本项目严格意义上不是 OSI 定义的「开源」（开源必须允许商用）——措辞请用「源码公开 / source-available」。第三方库、命令行工具、驱动与模型各自遵循其上游许可，详见 [`THIRD-PARTY-NOTICES.md`](./THIRD-PARTY-NOTICES.md)。
-- **只发程序本体**：本仓库**不打包 Python 环境、不打包模型、不打包 ffmpeg/BlackHole 等**。这些由你自行安装/下载，见下方「依赖」与「首次配置」。本地精修依赖 MLX，仅 Apple Silicon 可用；Intel Mac / Windows 走云端模式。
+- **只发程序本体**：本仓库**不打包 Python 环境、不打包模型、不打包 ffmpeg 等**。这些由你自行安装/下载，见下方「依赖」与「首次配置」。本地精修依赖 MLX，仅 Apple Silicon 可用；Intel Mac / Windows 走云端模式。
 - **交付形态**：Windows 提供 **zip 源码包**，解压后按引导装环境即可运行；macOS 提供可安装进 `/Applications` 的 **DMG 镜像**。
 - **路径不写死**：模型、数据等路径一律在应用内「设置 → 本地模型」里填，由程序存进配置，用户无需、也不该去改源码里的路径。
 
@@ -36,7 +47,7 @@ macOS 转写工具。录系统声音、麦克风或两者同时，说话即出�
 - 三种音源：仅系统声音 / 系统 + 麦克风 / 仅麦克风
 - 实时字幕：1.5 秒小块即时上屏，按说话停顿自动断句，逐词匀速吐出
 - 暂停 / 继续，时间轴对齐不漂移
-- 录制中可调输出音量（绕过 macOS 多输出设备没有音量属性的限制）
+- 录制中可调输出音量（macOS 直读扬声器那台硬件设备的音量；仅 macOS）
 
 **结束录音后怎么处理**（设置 → 对话模式）
 
@@ -91,12 +102,16 @@ macOS 转写工具。录系统声音、麦克风或两者同时，说话即出�
 ## 架构
 
 ```
-ffmpeg avfoundation ──PCM 16kHz mono──┬─ Silero VAD 断句 ─┬─ 实时字幕(前端模型)
-BlackHole 2ch / 聚合设备（系统声内录）─┘                   │
-                                                          ├─ session.json
-  停录后按“对话模式”三选一：                                │  transcript.md
-   · 本地 Whisper（MLX large-v3-turbo + 热词）─────────────┤  audio.m4a
-   · 云端 ASR（同步 multipart 上传 / 异步文件转写任务）    ┘  audio_listen.m4a
+录音源（系统声 + 麦克风混成一条 16kHz mono 轨，免虚拟声卡）：
+  macOS    ScreenCaptureKit 采系统声 + AVAudioEngine 采麦 → tingdao-mix(Swift 助手)
+  Windows  WASAPI loopback 采系统声 + WASAPI 采麦 → WinRec(pyaudiowpatch, 内联)
+  仅麦克风  ffmpeg avfoundation(mac) / WASAPI(win)
+        │
+        └──PCM 16kHz mono──┬─ Silero VAD 断句 ─┬─ 实时字幕(前端模型)
+                             │                   ├─ session.json
+  停录后按“对话模式”三选一：  │                   │  transcript.md
+   · 本地 Whisper（MLX large-v3-turbo + 热词）───┤  audio.m4a
+   · 云端 ASR（同步 multipart 上传 / 异步文件转写任务）┘  audio_listen.m4a
      + 云端大模型后制作
 ```
 
@@ -147,9 +162,11 @@ BlackHole 2ch / 聚合设备（系统声内录）─┘                   │
 
 **硬件与系统**：本地精修依赖 MLX，仅 **Apple Silicon Mac** 可用；Intel Mac / Windows 请走云端模式（或在代码里改接 faster-whisper 等其它本地引擎）。
 
-**命令行工具**（Homebrew）：`ffmpeg`（采集/解码/抽轨/预处理）、`switchaudio-osx`（录制前后自动切换输出设备）
+**命令行工具**（macOS Homebrew）：`ffmpeg`（解码/抽轨/预处理/仅麦克风采集）、`switchaudio-osx`（可选，仅用于录制中调输出音量）
 
-**虚拟声卡**：`BlackHole 2ch` —— 系统声音内录的前提
+**系统声音内录**（免虚拟声卡，全系统自带能力）：
+- macOS：ScreenCaptureKit —— 需在「系统设置 → 隐私与安全性 → 屏幕录制」里允许「听道」一次（它只取音频，不录画面）
+- Windows：WASAPI loopback —— 装 `pyaudiowpatch` 即可（已进 `requirements.txt`），无需任何驱动或声卡软件
 
 **Python 环境**（自行安装，仓库不含）：建一个独立虚拟环境（建议 Python 3.10，例如 `~/tingdao-venv`），再 `pip install -r requirements.txt`（`sherpa-onnx`、`mlx-whisper`、`pywebview`、`numpy`、`requests`）。启动壳默认在 `~/tingdao-venv`，可用环境变量 `TINGDAO_PY` 指向你自己的解释器。
 
@@ -171,13 +188,12 @@ BlackHole 2ch / 聚合设备（系统声内录）─┘                   │
 
 ## 首次配置
 
-1. 安装 BlackHole 2ch（需要管理员密码，官方 pkg）
-2. 打开「音频 MIDI 设置」，新建**多输出设备**，勾选「你的扬声器 + BlackHole 2ch」—— 录系统声音的同时你自己还能听见
-3. 若要「系统 + 麦克风」同时录，再新建**聚合设备**，包含 BlackHole 2ch + 内置麦克风
-4. 首次点录音时允许麦克风权限
-5. 用云端的话：设置 → 对话模式 → 云端 → 填接口 → 测试连接
+1. macOS：首次点录音会自动弹出「屏幕录制」授权，允许「听道」一次（只取音频，不录画面）；Windows：装好 `pyaudiowpatch` 即可，无需额外授权
+2. 首次点录音时允许麦克风权限
+3. 若要指定麦克风，去「设置 → 录音 → 麦克风输入源」选（默认跟随系统）
+4. 用云端的话：设置 → 对话模式 → 云端 → 填接口 → 测试连接
 
-听道会自动探测输出设备并在录制期间切换，结束后切回；设备名不对可在「录音来源 → 小扳手」里手动指定。
+系统声音内录直接读取系统正在播放的音频，无需切换或新建任何输出/聚合设备，插耳机、切扬声器都会自动跟随，你自己始终照常听得见。
 
 ---
 
@@ -185,7 +201,8 @@ BlackHole 2ch / 聚合设备（系统声内录）─┘                   │
 
 - **拖拽区补丁会被升级冲掉**：顶部拖拽靠改 `pywebview/platforms/cocoa.py`（标记 `PATCH(shengji)`）。`pip install -U pywebview` 会覆盖，需重打补丁并清 `__pycache__`。
 - **路径写死**：模型目录、venv 路径、本地模型库路径是硬编码，换机器要改 `app.py` 顶部常量。
-- **多输出设备下系统音量失效**：macOS 多输出设备本身没有音量属性。听道绕过它直接读写扬声器那台设备的音量，所以录制中仍能调。
+- **音量直控仅 macOS**：录制不再切换任何输出设备，音量按钮走 CoreAudio 直接读写扬声器那台硬件的音量；Windows 上该按钮显示「不可控」（用系统音量调节即可）。
+- **系统声内录跟的是"默认输出设备"**：录到一半切换系统默认输出（比如从扬声器切到蓝牙耳机），Windows 的 loopback 会听不到新设备的声音——需停止后重开录制。macOS 的 ScreenCaptureKit 不受影响，会自动跟随。
 - **Whisper 幻觉**：尾部静音可能被脑补成无意义重复文本。已加段内判定（语速 >15 字/秒、长文本字符多样性过低、段起点超出音频时长）**加跨段复读过滤**（相邻同文成串，连串 ≥3 整串丢弃；门槛 3 是在两份干净稿上零误伤、两份多人稿上只删真环实测出来的）。
 - **“跳过静音”不能全局开**：库内置的 `hallucination_silence_threshold` 实测能把幻觉块整块清零，但会连清晰单人录音里约 9% 的真实语音一起删掉、还慢 42%。所以它只在项目页「跳过静音重跑」这个手动入口里打开，默认精修路径不碰任何 Whisper 参数。
 - **云端 ASR 没有说话人分离的很常见**：多数转写接口一般只出文字；带分离能力的服务需要在请求里显式开启，听道固定带上，若某模型不吃这个参数会自动去掉重发（宁可没标签也不丢稿）。

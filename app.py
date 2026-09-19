@@ -10,6 +10,7 @@
 - 历史会话列表, 逐字稿搜索, 时间线笔记, 一键复制
 """
 import base64
+from collections import deque
 import json
 import getpass
 import hashlib
@@ -94,6 +95,11 @@ def setup_log():
 # TINGDAO_PORTFILE 指向的临时文件回报给壳; 单独跑则直接用它喂给 pywebview。这里是占位, main() 会改写。
 PORT = 0
 SR = 16000
+# SCK 音频助手: macOS 系统声音(ScreenCaptureKit)+麦克风在助手进程内混成单轨,
+# stdout 输出 s16le/SR/mono —— 与 ffmpeg avfoundation 的输出协议逐字节一致,
+# _read_loop/_finish 全链路零改动。替代 BlackHole 虚拟声卡+多输出设备方案,
+# 录制期间不再切换系统输出(用户正常听自己的扬声器)。
+SCK_HELPER = Path(__file__).resolve().parent / "tingdao-mix"
 CHUNK = 1.5                       # 流式小块秒数(前端即时显示粒度)
 VAD_WINDOW = 512                  # silero 要求的窗口样本数
 
@@ -1487,6 +1493,68 @@ def output_monitor():
     return (load_setting("output_monitor") or "").strip() or detect_monitor()
 
 
+def mic_device():
+    """设置里手动指定的麦克风名('' = 系统默认输入)。SCK 助手与仅麦克风模式共用。"""
+    return (load_setting("mic_device") or "").strip()
+
+
+def _win_mic_names():
+    """Windows 麦克风名单 + 默认输入名(给设置面板的下拉用)。
+    pyaudiowpatch 没装就返回空 —— 录音启动时会有明确的中文报错, 这里不打扰界面。"""
+    try:
+        import pyaudiowpatch as pyaudio
+    except Exception:
+        return [], ""
+    names, dflt = [], ""
+    p = None
+    try:
+        p = pyaudio.PyAudio()
+        try:
+            wasapi = p.get_host_api_info_by_type(pyaudio.const.WASAPI)
+            lo, hi = wasapi["deviceIndex"], wasapi["deviceIndex"] + wasapi["deviceCount"]
+        except Exception:
+            lo, hi = 0, p.get_device_count()
+        for i in range(lo, hi):
+            try:
+                info = p.get_device_info_by_index(i)
+            except Exception:
+                continue
+            if int(info.get("maxInputChannels", 0) or 0) <= 0:
+                continue
+            if info.get("isLoopbackDevice"):
+                continue                      # 环回设备是"系统声"入口, 不当麦列
+            nm = (info.get("name") or "").strip()
+            if nm and nm not in names:
+                names.append(nm)
+        dflt = (p.get_default_input_device_info() or {}).get("name", "").strip()
+    except Exception:
+        pass
+    finally:
+        if p:
+            try:
+                p.terminate()
+            except Exception:
+                pass
+    return names, dflt
+
+
+def _pcm_to_sr_mono(data: bytes, rate: int, channels: int):
+    """int16 PCM(设备原生采样率/多声道) → float32 SR 单声道, 供混音泵消费。
+    线性插值重采样对语音足够(下游本来也统一按 SR 走 ASR)。"""
+    a = np.frombuffer(data, dtype=np.int16)
+    if a.size == 0:
+        return np.zeros(0, dtype=np.float32)
+    c = max(int(channels), 1)
+    n = a.size // c
+    a = a[:n * c].reshape(n, c).astype(np.float32).mean(axis=1) if c > 1 \
+        else a.astype(np.float32)
+    a *= 1.0 / 32768.0
+    if rate and rate != SR and n > 1:
+        idx = np.linspace(0.0, n - 1.0, max(int(n * SR / rate), 1))
+        a = np.interp(idx, np.arange(n), a).astype(np.float32)
+    return a
+
+
 # 预处理档位。注意 afftdn 的合法参数是 nr/nf（不是 n=）——
 # 曾误写成 afftdn=n=-24, ffmpeg 直接报 Option not found, 导致预处理静默失效。
 PRETREAT_FILTERS = {
@@ -1558,7 +1626,8 @@ class _CAAddr(ctypes.Structure):
 
 _CA_SYS = 1
 _SEL_VOLM, _SEL_LNAM, _SEL_DEV, _SEL_DOUT = _fcc("volm"), _fcc("lnam"), _fcc("dev#"), _fcc("dOut")
-_SCOPE_GLOB, _SCOPE_OUTP = _fcc("glob"), _fcc("outp")
+_SEL_STRM, _SEL_DIN, _SEL_SLAY = _fcc("str#"), _fcc("dIn "), _fcc("slay")
+_SCOPE_GLOB, _SCOPE_OUTP, _SCOPE_INP = _fcc("glob"), _fcc("outp"), _fcc("inpt")
 _ca_cache = {}
 
 
@@ -1627,6 +1696,41 @@ def ca_output_devices():
     return out
 
 
+def ca_input_devices():
+    """{设备名: deviceID}（只收有输入声道的设备, 供设置里的麦克风选择）。
+    输入能力用 slay(StreamConfiguration) 探: 空的 AudioBufferList 是 8 字节,
+    >8 = 有输入流。str# 在 macOS 27 上对全部设备回 'what', 不可用(实测)。"""
+    ca, _ = _ca()
+    a = _CAAddr(_SEL_DEV, _SCOPE_GLOB, 0)
+    sz = ctypes.c_uint32(0)
+    if ca.AudioObjectGetPropertyDataSize(_CA_SYS, ctypes.byref(a), 0, None, ctypes.byref(sz)):
+        return {}
+    cnt = sz.value // 4
+    if cnt <= 0:
+        return {}
+    buf = (ctypes.c_uint32 * cnt)()
+    if ca.AudioObjectGetPropertyData(_CA_SYS, ctypes.byref(a), 0, None, ctypes.byref(sz), buf):
+        return {}
+    out = {}
+    for did in buf:
+        s = _CAAddr(_SEL_SLAY, _SCOPE_INP, 0)
+        ssz = ctypes.c_uint32(0)
+        if ca.AudioObjectGetPropertyDataSize(did, ctypes.byref(s), 0, None, ctypes.byref(ssz)):
+            continue
+        if ssz.value <= 8:                # 空 AudioBufferList = 没有输入流
+            continue
+        nm = ca_device_name(did)
+        if nm:
+            out[nm] = did
+    return out
+
+
+def ca_default_input():
+    """系统当前默认输入设备的名字"""
+    d = _ca_get(_CA_SYS, _SEL_DIN, _SCOPE_GLOB, 0, ctypes.c_uint32)
+    return ca_device_name(d) if d else ""
+
+
 def ca_get_volume(dev_id):
     v = _ca_get(dev_id, _SEL_VOLM, _SCOPE_OUTP, 0, ctypes.c_float)
     return None if v is None else float(v)
@@ -1654,6 +1758,9 @@ def volume_target():
 
 
 def volume_state():
+    # 音量直控走 CoreAudio(ca_*), 是 macOS 专属能力; 其它平台如实报"不可控"而不是崩。
+    if platform.system() != "Darwin":
+        return {"device": "", "volume": None, "writable": False}
     did, nm = volume_target()
     v = None if did is None else ca_get_volume(did)
     return {"device": nm, "volume": None if v is None else int(round(v * 100)),
@@ -1834,6 +1941,212 @@ class Engine:
 ENGINE = Engine()
 
 # ---------------- 应用状态 ----------------
+class WinRec:
+    """Windows 系统级录音: WASAPI loopback 采系统声 + WASAPI 采麦克风,
+    线程内 numpy 混成 SR 单声道, 匿名管道吐 s16le —— 与 ffmpeg 的 stdout 协议一致。
+    不需要任何虚拟声卡: loopback 是 Windows 自带的音频环回(对标 mac 的 SCK)。
+
+    接口刻意做成 subprocess.Popen 同形(stdout/stderr/poll/send_signal/wait/kill),
+    所以 _read_loop / _ffmpeg_err_loop / _kill_ffmpeg_sync 那套一行不改就能共用。
+    设备打不开/缺依赖在 __init__ 里同步抛中文 RuntimeError → start() 返回 400 弹错,
+    不会留下半死会话。"""
+
+    TICK = 0.02    # 混音泵一拍的秒数
+
+    def __init__(self, mode, mic_name=""):
+        try:
+            import pyaudiowpatch as pyaudio
+        except ImportError:
+            raise RuntimeError("Windows 缺少 pyaudiowpatch：请在听道的 venv 里 pip install pyaudiowpatch")
+        self.mode = mode
+        self.returncode = None
+        self._lk = threading.Lock()
+        self._q = {"sys": deque(), "mic": deque()}
+        self._res = {"sys": None, "mic": None}   # 一拍多出来的零头, 留到下拍
+        self._stop = threading.Event()
+        self._streams = []
+        r, w = os.pipe()
+        self.stdout = os.fdopen(r, "rb")
+        self._w = os.fdopen(w, "wb")
+        er, ew = os.pipe()
+        self.stderr = os.fdopen(er, "rb")
+        self._ew = os.fdopen(ew, "w", encoding="utf-8", errors="replace")
+        self._pa = pyaudio.PyAudio()
+        try:
+            self._open_streams(pyaudio, mic_name)
+        except Exception:
+            self._close_pipes()
+            try:
+                self._pa.terminate()
+            except Exception:
+                pass
+            raise
+        self._pth = threading.Thread(target=self._pump_loop, daemon=True)
+        self._pth.start()
+
+    def log(self, s):
+        try:
+            self._ew.write(f"[winrec] {s}\n")
+            self._ew.flush()
+        except Exception:
+            pass
+
+    def _wasapi_range(self, pyaudio):
+        try:
+            w = self._pa.get_host_api_info_by_type(pyaudio.const.WASAPI)
+            return int(w["deviceIndex"]), int(w["deviceIndex"] + w["deviceCount"])
+        except Exception:
+            return 0, self._pa.get_device_count()
+
+    def _open_streams(self, pyaudio, mic_name):
+        lo, hi = self._wasapi_range(pyaudio)
+        try:
+            out_name = self._pa.get_default_output_device_info()["name"]
+        except Exception:
+            out_name = ""
+        try:
+            mic_dflt = self._pa.get_default_input_device_info()["name"]
+        except Exception:
+            mic_dflt = ""
+        loop, mics = None, []
+        for i in range(lo, hi):
+            try:
+                info = self._pa.get_device_info_by_index(i)
+            except Exception:
+                continue
+            if int(info.get("maxInputChannels", 0) or 0) <= 0:
+                continue
+            nm = (info.get("name") or "").strip()
+            if info.get("isLoopbackDevice"):
+                # 环回设备名 = "<渲染设备名> [Loopback]"; 优先默认输出那台的
+                if loop is None or (out_name and nm.startswith(out_name)):
+                    loop = info
+            else:
+                mics.append(info)
+        mic = None
+        if mics:
+            if mic_name:
+                mic = next((m for m in mics
+                            if mic_name.lower() in (m.get("name") or "").lower()), None)
+            mic = mic or next((m for m in mics
+                               if (m.get("name") or "").strip() == mic_dflt.strip()), mics[0])
+        want_sys = self.mode in ("mix", "system")
+        want_mic = self.mode in ("mix", "mic")
+        if want_sys and loop is None:
+            raise RuntimeError("未找到 WASAPI 环回设备，系统声音内录不可用（检查 Windows 音频服务/声卡驱动）")
+        if want_mic and mic is None:
+            raise RuntimeError("找不到任何麦克风输入设备")
+        for key, info in (("sys", loop if want_sys else None),
+                          ("mic", mic if want_mic else None)):
+            if info is None:
+                continue
+            rate = int(info.get("defaultSampleRate") or 48000)
+            chans = min(int(info["maxInputChannels"]), 2)
+
+            def cb(in_data, frame_count, time_info, status, key=key, rate=rate, chans=chans):
+                try:
+                    arr = _pcm_to_sr_mono(in_data, rate, chans)
+                    if arr.size:
+                        with self._lk:
+                            self._q[key].append(arr)
+                except Exception as e:
+                    self.log(f"{key} 回调异常: {e}")
+                return (None, pyaudio.paContinue)
+
+            st = self._pa.open(format=pyaudio.paInt16, channels=chans, rate=rate,
+                               input=True, frames_per_buffer=1024,
+                               input_device_index=int(info["index"]),
+                               stream_callback=cb)
+            self._streams.append(st)
+            self.log(f"{key} device → {info.get('name')} ({chans}ch {rate}Hz)")
+        self.log("ready")
+
+    def _take(self, key, n):
+        """取一拍需要的 n 个样本; 零头回库存着, 不足补静音(设备时钟抖动的兜底)"""
+        parts, got = [], 0
+        r = self._res[key]
+        if r is not None and r.size:
+            parts.append(r)
+            got += r.size
+            self._res[key] = None
+        while got < n:
+            with self._lk:
+                q = self._q[key]
+                arr = q.popleft() if q else None
+            if arr is None:
+                break
+            parts.append(arr)
+            got += arr.size
+        if not parts:
+            return np.zeros(n, dtype=np.float32)
+        cat = np.concatenate(parts) if len(parts) > 1 else parts[0]
+        if cat.size >= n:
+            self._res[key] = cat[n:] if cat.size > n else None
+            return cat[:n]
+        out = np.zeros(n, dtype=np.float32)
+        out[:cat.size] = cat
+        return out
+
+    def _pump_loop(self):
+        n = int(SR * self.TICK)
+        want_sys = self.mode in ("mix", "system")
+        want_mic = self.mode in ("mix", "mic")
+        try:
+            while not self._stop.wait(self.TICK):
+                acc = self._take("sys", n) if want_sys else None
+                if want_mic:
+                    m = self._take("mic", n)
+                    acc = m if acc is None else acc + m
+                if acc is None:
+                    continue
+                np.clip(acc, -1.0, 1.0, out=acc)
+                self._w.write((acc * 32767.0).astype(np.int16).tobytes())
+        except Exception as e:
+            self.log(f"泵线程退出: {e}")
+        finally:
+            self._shutdown()
+
+    def _shutdown(self):
+        for s in self._streams:
+            try:
+                s.stop_stream()
+                s.close()
+            except Exception:
+                pass
+        try:
+            self._pa.terminate()
+        except Exception:
+            pass
+        self._close_pipes()
+        self.returncode = 0
+
+    def _close_pipes(self):
+        for f in (getattr(self, "_w", None), getattr(self, "_ew", None)):
+            try:
+                if f:
+                    f.close()
+            except Exception:
+                pass
+
+    # ---- Popen 同形接口: 停止收尾逻辑(_kill_ffmpeg_sync 等)零改动共用 ----
+    def poll(self):
+        return self.returncode
+
+    def send_signal(self, sig):
+        self._stop.set()
+
+    def terminate(self):
+        self._stop.set()
+
+    def kill(self):
+        self._stop.set()
+
+    def wait(self, timeout=None):
+        self._stop.set()
+        self._pth.join(timeout if timeout else 5)
+        return self.returncode
+
+
 class App:
     def __init__(self):
         self.lock = threading.RLock()
@@ -2104,9 +2417,6 @@ class App:
         with self.lock:
             if self.state != "idle":
                 raise RuntimeError("已有进行中的会话，请先停止")
-            dev = self._device_for_mode(mode)
-            if dev is None:
-                raise RuntimeError("找不到录音设备，请检查音频 MIDI 设置")
             if ENGINE.engine_name == "sensevoice" and ENGINE._sv is None:
                 raise RuntimeError("未配置 SenseVoice 模型：设置 → 本地模型")
             self.session = self._new_session(name, mode, lang)
@@ -2115,20 +2425,21 @@ class App:
             self._chunk_t0 = 0
             self.vad_lang = lang
             ENGINE.new_vad()
-            self._spawn_ffmpeg(dev)
+            self._start_recorder(mode)
             self.state = "recording"
             self.emit(type="status", **self.status())
-        if mode in ("mix", "system"):
-            _mon = output_monitor()
-            if _mon:
-                switch_output(_mon)
-        return {"ok": True, "device": dev}
+        return {"ok": True, "device": mode}
 
     def _device_for_mode(self, mode):
         if mode == "mix":
             return find_device(["聚合", "Aggregate"])
         if mode == "system":
             return find_device(["BlackHole 2ch"])
+        # 麦克风: 设置里手动指定的优先, 没配才按内置名单猜
+        if mic_device():
+            d = find_device([mic_device()])
+            if d is not None:
+                return d
         return find_device(["MacBook Pro麦克风", "麦克风"])
 
     def _spawn_ffmpeg(self, idx):
@@ -2145,6 +2456,73 @@ class App:
         # 单独起线程按行读入 sys.stderr(_Tee 会自动加时间戳落日志), 不能并进 stdout(那是 PCM)。
         threading.Thread(target=self._ffmpeg_err_loop, daemon=True).start()
 
+    def _spawn_sck(self, mode):
+        """SCK 系统级采集(mix=系统声+麦克风, system=仅系统声)。
+        tingdao-mix 助手在进程内实时混成单轨, stdout 输出 s16le/SR/mono,
+        与 ffmpeg 的输出协议一致 → _read_loop 原样工作。进程句柄沿用 self.ffmpeg:
+        停止/收尾(SIGINT、等退出、关 raw_f)逻辑完全共用, 零改动。
+        起动失败(最常见=缺屏幕录制权限)时助手秒退: 这里等不到 ready 信号,
+        把 stderr 里的中文原因如实抛出去, 不静默卡死。"""
+        if not SCK_HELPER.exists():
+            raise RuntimeError("找不到音频助手 tingdao-mix（应与 app.py 同目录）")
+        self.raw_f = open(self.session["dir"] / "raw.s16", "ab")
+        self._sck_ready = threading.Event()
+        self._sck_errbuf = []
+        cmd = [str(SCK_HELPER), "--mode", mode, "--rate", str(SR)]
+        if mic_device():
+            cmd += ["--mic", mic_device()]   # 设置里指定的麦克风输入源
+        self.ffmpeg = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.reader_thread = threading.Thread(target=self._read_loop, daemon=True)
+        self.reader_thread.start()
+        threading.Thread(target=self._ffmpeg_err_loop, daemon=True).start()
+        if not self._sck_ready.wait(timeout=8):
+            ff = self.ffmpeg
+            try:
+                ff.send_signal(signal.SIGTERM)
+                ff.wait(timeout=2)
+            except Exception:
+                try:
+                    ff.kill()
+                except Exception:
+                    pass
+            err = self._sck_errbuf[-1] if self._sck_errbuf else ""
+            self.ffmpeg = None
+            try:
+                self.raw_f.close()
+            except Exception:
+                pass
+            self.raw_f = None
+            try:
+                self.session["dir"].rmdir()   # 清掉刚建的空会话目录(非空则rmdir不动)
+            except Exception:
+                pass
+            raise RuntimeError(err or "音频助手起动超时（检查屏幕录制/麦克风权限）")
+
+    def _start_recorder(self, mode):
+        """录音源按平台分流(锁内调用; 起动失败抛 RuntimeError → 界面弹错):
+        Windows        全部模式走 WinRec(WASAPI loopback + 麦, 免虚拟声卡)
+        macOS mix/system 走 tingdao-mix(SCK, 免 BlackHole)
+        macOS mic        沿用 ffmpeg avfoundation(麦克风直采)"""
+        if platform.system() == "Windows":
+            self._spawn_winrec(mode)
+        elif mode in ("mix", "system"):
+            self._spawn_sck(mode)
+        else:
+            dev = self._device_for_mode(mode)
+            if dev is None:
+                raise RuntimeError("找不到录音设备，请检查音频 MIDI 设置")
+            self._spawn_ffmpeg(dev)
+
+    def _spawn_winrec(self, mode):
+        """Windows: WinRec 的接口与 Popen 同形 → 读流/日志/停止收尾全部共用既有
+        self.ffmpeg 那套。设备打不开/缺 pyaudiowpatch 在 WinRec.__init__ 同步抛错,
+        不需要像 mac 助手那样等 ready 信号。"""
+        self.raw_f = open(self.session["dir"] / "raw.s16", "ab")
+        self.ffmpeg = WinRec(mode, mic_device())
+        self.reader_thread = threading.Thread(target=self._read_loop, daemon=True)
+        self.reader_thread.start()
+        threading.Thread(target=self._ffmpeg_err_loop, daemon=True).start()
+
     def _ffmpeg_err_loop(self):
         """把录音 ffmpeg 的 stderr 逐行写进日志; 进程退出(EOF)后自然结束。"""
         ff = self.ffmpeg
@@ -2153,6 +2531,14 @@ class App:
                 msg = line.decode("utf-8", "replace").rstrip()
                 if msg:
                     print(f"[ffmpeg] {msg}", flush=True)
+                    # SCK 助手的就绪信号 / 报错行(起动失败要如实抛给界面)
+                    if "[sckmix] ready" in msg:
+                        rd = getattr(self, "_sck_ready", None)
+                        if rd:
+                            rd.set()
+                    eb = getattr(self, "_sck_errbuf", None)
+                    if eb is not None:
+                        eb.append(msg)
         except Exception:
             pass
         finally:
@@ -2285,23 +2671,18 @@ class App:
             self._chunk_t0 = self.total_samples  # 流式块时间轴与暂停点对齐
             self.state = "paused"
             self.emit(type="status", **self.status())
-        switch_output(output_restore())
+        if platform.system() != "Windows" and self.session["mode"] not in ("mix", "system"):
+            switch_output(output_restore())   # SCK 方案不切系统输出, 无需恢复
         return {"ok": True}
 
     def resume(self):
         with self.lock:
             if self.state != "paused":
                 raise RuntimeError("当前不在暂停")
-            dev = self._device_for_mode(self.session["mode"])
-            if dev is None:
-                raise RuntimeError("找不到录音设备")
-            self._spawn_ffmpeg(dev)
+            mode = self.session["mode"]
+            self._start_recorder(mode)
             self.state = "recording"
             self.emit(type="status", **self.status())
-        if self.session["mode"] in ("mix", "system"):
-            _mon = output_monitor()
-            if _mon:
-                switch_output(_mon)
         return {"ok": True}
 
     def stop(self):
@@ -2334,7 +2715,8 @@ class App:
         try:
             self._kill_ffmpeg_sync()
         finally:
-            switch_output(output_restore())
+            if platform.system() != "Windows" and self.session["mode"] not in ("mix", "system"):
+                switch_output(output_restore())   # SCK 方案不切系统输出, 无需恢复
         with self.lock:
             self._finish()
             self.state = "idle"
@@ -3575,9 +3957,7 @@ class App:
             s["name"], s["dir"] = name, new_dir
             self.emit(type="status", **self.status())
             if was_rec:
-                dev = self._device_for_mode(s["mode"])
-                if dev is not None:
-                    self._spawn_ffmpeg(dev)
+                self._start_recorder(s["mode"])
                 self.state = "recording"
         return {"ok": True, "name": name}
 
@@ -3911,9 +4291,17 @@ class Handler(BaseHTTPRequestHandler):
             devs = list_output_devices()
             r_set = (load_setting("output_restore") or "").strip()
             m_set = (load_setting("output_monitor") or "").strip()
+            if platform.system() == "Windows":
+                inputs, dflt = _win_mic_names()
+            else:
+                inputs, dflt = list(ca_input_devices().keys()), ca_default_input()
             self._json({"outputs": devs,
                         "restore": output_restore(), "restoreAuto": not bool(r_set),
-                        "monitor": output_monitor(), "monitorAuto": not bool(m_set)})
+                        "monitor": output_monitor(), "monitorAuto": not bool(m_set),
+                        # SCK 内录不碰输出设备, 麦克风输入源是唯一需要确认的
+                        "inputs": inputs,
+                        "defaultInput": dflt,
+                        "mic": mic_device()})
         elif u.path.startswith("/api/session/"):
             try:
                 sid = unquote(u.path[len("/api/session/"):])

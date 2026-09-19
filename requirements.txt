@@ -6,7 +6,9 @@
 #   pip install -r requirements.txt
 #
 # 另需（用户自行安装，见 README「首次配置」，不在本文件内）：
-#   系统工具：ffmpeg（全平台）、switchaudio-osx（mac）、BlackHole 2ch（mac，系统声音内录）
+#   系统工具：ffmpeg（全平台）、switchaudio-osx（mac，仅音量/输出切换用）
+#   系统声音内录不再需要虚拟声卡：mac 走 ScreenCaptureKit（需屏幕录制权限，程序自带），
+#   Windows 走 WASAPI loopback（下面 pyaudiowpatch，系统自带无需驱动）
 #   模型：SenseVoice / Silero VAD / whisper-large-v3-turbo —— 自行下载后在「设置 → 本地模型」里填路径
 #
 # 提示：以下未钉死版本，首次在你机器上跑通后，建议用 `pip freeze` 固化成可复现版本再发布。
@@ -15,6 +17,9 @@ numpy
 requests
 sherpa-onnx
 pywebview
+
+# Windows 系统声音内录（WASAPI loopback）+ 麦克风采集，免 BlackHole 类虚拟声卡
+pyaudiowpatch ; sys_platform == "win32"
 
 # 本地精修/导入转写引擎：仅 Apple Silicon + macOS 可用。
 # Intel Mac / Windows 请改走云端模式，或另接 faster-whisper 等实现。

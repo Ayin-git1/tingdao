@@ -42,3 +42,7 @@ audio_listen.m4a
 
 # 构建前从根目录 stage 的程序本体副本（勿入库，由打包脚本生成）
 tauri-shell/program/
+
+# tingdao-mix 是 swift 源码的编译产物（源码 tingdao-mix.swift 入库）；
+# 打包时编译后放进 program/ 随 app 分发，仓库只留源码
+/tingdao-mix
