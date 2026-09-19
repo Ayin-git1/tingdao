@@ -8,12 +8,14 @@
   /* 在页面绘制前应用外观，避免切换时闪烁。 */
   (() => {
     const key = 'tingdao-appearance';
+    const valid = ['light', 'dark', 'system'];
     const media = window.matchMedia('(prefers-color-scheme: dark)');
+    // 外观偏好以后端 .settings.json 为准: 端口每次启动现取, localStorage 按 origin 隔离会换桶丢,
+    // 只当本机缓存兜底。后端返回本页时把下面标记替换成已保存值; 未走后端(如 file://)时标记原样保留。
+    const serverVal = "__TINGDAO_APPEARANCE__";
     let mode = 'system';
-    try {
-      const saved = localStorage.getItem(key);
-      if (['light', 'dark', 'system'].includes(saved)) mode = saved;
-    } catch (_) {}
+    if (valid.includes(serverVal)) mode = serverVal;
+    else { try { const saved = localStorage.getItem(key); if (valid.includes(saved)) mode = saved; } catch (_) {} }
     const apply = () => {
       const dark = mode === 'dark' || (mode === 'system' && media.matches);
       document.documentElement.dataset.appearance = dark ? 'dark' : 'light';
@@ -24,9 +26,12 @@
     window.tingdaoAppearance = {
       get: () => mode,
       set: value => {
-        if (!['light', 'dark', 'system'].includes(value)) return;
+        if (!valid.includes(value)) return;
         mode = value;
         try { localStorage.setItem(key, value); } catch (_) {}
+        // 落盘到后端: 换个端口 localStorage 就找不回, 必须持久化才能跨重启保留
+        try { fetch('/api/setting', {method:'POST', headers:{'Content-Type':'application/json'},
+              body: JSON.stringify({key:'appearance', value})}); } catch (_) {}
         apply();
       }
     };
@@ -1881,7 +1886,7 @@
      </div>
 
      <div class="ssec" id="sec-key"><div class="sgh">快捷键</div>
-      <div class="ptinfo" style="max-width:420px;margin:0">按 <b style="font-weight:600;color:var(--txt)">⌘/</b> 查看全部 · <b style="font-weight:600;color:var(--txt)">⌘,</b> 打开 / 收起设置 · <b style="font-weight:600;color:var(--txt)">Esc</b> 关掉当前弹层</div>
+      <div class="ptinfo" style="max-width:420px;margin:0">按 <b style="font-weight:600;color:var(--txt)">⌘⇧R</b> 开始录音 · <b style="font-weight:600;color:var(--txt)">⌘/</b> 查看全部 · <b style="font-weight:600;color:var(--txt)">⌘,</b> 打开 / 收起设置 · <b style="font-weight:600;color:var(--txt)">Esc</b> 关掉当前弹层</div>
      </div>
 
     </div>
@@ -2194,6 +2199,7 @@
       <kbd>⌘ K</kbd><span>搜索全部转录标题<i>（命令面板）</i></span>
       <kbd>⌘ N</kbd><span>记一条时间线笔记<i>（非录音时=课后笔记）</i></span>
       <kbd>⌘ E</kbd><span>复制不带时间戳的纯文本</span>
+      <kbd>⌘ ⇧ R</kbd><span>开始录音<i>（空闲时）</i></span>
       <kbd>⌘ ,</kbd><span>打开 / 收起设置</span>
       <kbd>双击</kbd><span>就地改这一句<i> · Enter 落稿 · Esc 放弃</i></span>
       <kbd>⌘ /</kbd><span>打开这张卡</span>
@@ -2395,7 +2401,7 @@ function updateChrome(){
   fab.classList.toggle('rec', rec);
   fab.classList.toggle('stopping', state==='stopping');
   fab.classList.remove('gone');
-  fab.title = rec ? '停止录音' : '开始录音';
+  fab.title = rec ? '停止录音' : '开始录音（⌘⇧R）';
 }
 
 setInterval(async ()=>{
@@ -3675,7 +3681,7 @@ document.querySelectorAll('.setpop .seg, .cloudpop .seg').forEach(seg=>{
   });
   seg.addEventListener('mouseleave', ()=> segInd(seg, segSel(seg), false));
 });
-/* 个性化外观：偏好仅保存在本机前端。 */
+/* 个性化外观：偏好落后端 .settings.json(跨重启保留), 本机 localStorage 仅作兜底缓存。 */
 function syncAppearanceUI(){
   const seg = $('setAppearance');
   const mode = window.tingdaoAppearance.get();
@@ -5071,9 +5077,13 @@ document.addEventListener('keydown', e=>{
     return;
   }
   const cmd = e.metaKey || e.ctrlKey;
+  const k = String(e.key).toLowerCase();
+  if(cmd && e.shiftKey && !e.altKey && k === 'r'){
+    if(typingHere(e) || state !== 'idle') return;
+    e.preventDefault(); $('fab').click(); return;
+  }
   if(cmd && e.key === '/'){ e.preventDefault(); openKeyCard(); return; }
   if(cmd && !e.shiftKey && !e.altKey){
-    const k = String(e.key).toLowerCase();
     if(k === 'f' && view){ e.preventDefault(); $('btnFind').click(); return; }
     if(k === 'n'){ e.preventDefault();
       (state === 'recording' || state === 'paused' ? $('btnNoteTool') : $('btnNoteTop')).click(); return; }

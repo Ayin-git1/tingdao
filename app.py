@@ -99,7 +99,11 @@ SR = 16000
 # stdout 输出 s16le/SR/mono —— 与 ffmpeg avfoundation 的输出协议逐字节一致,
 # _read_loop/_finish 全链路零改动。替代 BlackHole 虚拟声卡+多输出设备方案,
 # 录制期间不再切换系统输出(用户正常听自己的扬声器)。
-SCK_HELPER = Path(__file__).resolve().parent / "tingdao-mix"
+# 热测试版可由 Tauri 壳注入包内已签名的助手，确保 ScreenCaptureKit 的权限主体
+# 属于测试 App；正式包和直接运行源码时仍使用 app.py 同目录的助手。
+_sck_helper_override = os.environ.get("TINGDAO_SCK_HELPER")
+SCK_HELPER = (Path(_sck_helper_override).expanduser()
+              if _sck_helper_override else Path(__file__).resolve().parent / "tingdao-mix")
 CHUNK = 1.5                       # 流式小块秒数(前端即时显示粒度)
 VAD_WINDOW = 512                  # silero 要求的窗口样本数
 
@@ -4228,7 +4232,15 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         u = urlparse(self.path)
         if u.path in ("/", "/index.html"):
-            body = INDEX.read_bytes()
+            # 外观偏好注入预绘制脚本, 让首帧就是用户上次选的模式。
+            # 为何注入而非前端异步读 API: 预绘制脚本是同步的, 异步取会先闪一下默认主题;
+            # 又因端口每次启动由 OS 现取(见 main), localStorage 按 origin 隔离会换桶丢失,
+            # 所以必须像其它设置一样落 .settings.json。未保存过时给空串, 前端回落默认。
+            am = load_setting("appearance")
+            if am not in ("light", "dark", "system"):
+                am = ""
+            body = INDEX.read_text(encoding="utf-8").replace(
+                "__TINGDAO_APPEARANCE__", am).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))

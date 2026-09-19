@@ -1,8 +1,13 @@
 [package]
 name = "tingdao-shell"
-version = "1.0.1"
+version = "2.5.0"
 description = "听道原生窗口壳 (Tauri v2)"
 edition = "2021"
+
+[features]
+# 仅为本机热测试版编译：启动时优先使用编译时指定的源码目录。
+# 正式 DMG 不启用此 feature，继续只使用包内自包含资源。
+test-source = []
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
