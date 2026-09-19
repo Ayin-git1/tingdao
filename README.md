@@ -1,6 +1,6 @@
 # 听道 · 本地实时转写
 
-当前版本：**v1.0.1**
+当前版本：**v2.5.0**
 
 [![License: PolyForm Noncommercial](https://img.shields.io/badge/license-PolyForm%20Noncommercial-4b5563)](./LICENSE)
 ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-34C759)
@@ -14,18 +14,18 @@ macOS 转写工具。录系统声音、麦克风或两者同时，说话即出�
 
 ---
 
-## v1.0.1 更新
+## v2.5.0 更新
 
-- 设置新增「个性化 → 外观」：浅色、深色、跟随系统三档；跟随系统时随 macOS 外观变化自动切换，选择保存在本机前端。
-- 深色界面覆盖主要页面、设置和弹窗；调整录音胶囊悬浮态的文字对比度，并降低绿色描边与光晕亮度。
-- 修正深色模式下历史记录多选复选框的选中颜色，选中后显示绿色。
-- 保留独立的 `index-test.html` 外观预览副本，不影响正式页面的外观偏好。
+- 设置新增「个性化 → 外观」：浅色、深色、跟随系统三档；跟随系统时会随 macOS 外观变化自动切换。
+- 外观偏好现在保存到本机设置，重启应用后仍会保留；首屏会在绘制前应用已保存的模式，避免启动时闪一下默认主题。
+- 新增 `⌘⇧R`：在空闲状态快速开始录音；录音中或正在输入文本时不会触发。
+- macOS 安装包最低支持 macOS 12.3（Apple Silicon），以使用系统自带的 ScreenCaptureKit 录制系统声音。
 
 ---
 
 ## 获取
 
-- **macOS（Apple Silicon）**：到 [Releases](https://github.com/Ayin-git1/tingdao/releases) 下载最新的 `tingdao_<版本>_aarch64.dmg`（发布资源用 ASCII 文件名，挂载后里面的程序仍是「听道.app」），打开后把「听道.app」拖进「应用程序」即可。因未经 Apple 开发者签名，首次打开若被 Gatekeeper 拦下，右键点 app → 「打开」→ 再确认一次就好（只需一次）。
+- **macOS（Apple Silicon，macOS 12.3+）**：到 [Releases](https://github.com/Ayin-git1/tingdao/releases) 下载最新的 `tingdao_<版本>_aarch64.dmg`（发布资源用 ASCII 文件名，挂载后里面的程序仍是「听道.app」），打开后把「听道.app」拖进「应用程序」即可。因未经 Apple 开发者签名，首次打开若被 Gatekeeper 拦下，右键点 app → 「打开」→ 再确认一次就好（只需一次）。
 - **Windows / Intel Mac**：下载源码 zip，解压后按下方「依赖」装好 Python 虚拟环境，用 `TINGDAO_HOME` 指向程序目录运行；本地精修改走云端模式或自行接 faster-whisper。
 - 无论哪种形态，安装包都**只含程序本体**——Python 环境、模型、ffmpeg 均需自备，详见下方「依赖」与「首次配置」。系统声音内录走系统自带能力（mac ScreenCaptureKit / Windows WASAPI loopback），**不再需要 BlackHole 等虚拟声卡**。
 
@@ -160,7 +160,7 @@ macOS 转写工具。录系统声音、麦克风或两者同时，说话即出�
 
 ## 依赖
 
-**硬件与系统**：本地精修依赖 MLX，仅 **Apple Silicon Mac** 可用；Intel Mac / Windows 请走云端模式（或在代码里改接 faster-whisper 等其它本地引擎）。
+**硬件与系统**：macOS 安装包仅支持 **Apple Silicon Mac（macOS 12.3+）**；本地精修依赖 MLX。Intel Mac / Windows 请走云端模式（或在代码里改接 faster-whisper 等其它本地引擎）。
 
 **命令行工具**（macOS Homebrew）：`ffmpeg`（解码/抽轨/预处理/仅麦克风采集）、`switchaudio-osx`（可选，仅用于录制中调输出音量）
 

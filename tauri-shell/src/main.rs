@@ -34,6 +34,18 @@ fn bundle_contents_dir() -> Option<std::path::PathBuf> {
     Some(contents.to_path_buf())
 }
 
+/// 热测试版在编译时写入源码目录。正式版不会编入这段路径，保持完全自包含。
+#[cfg(feature = "test-source")]
+fn test_source_dir() -> std::path::PathBuf {
+    std::path::PathBuf::from(env!("TINGDAO_TEST_SOURCE_DIR"))
+}
+
+/// ScreenCaptureKit 助手必须位于测试 App 包内，TCC 才能稳定归属其录屏权限。
+#[cfg(feature = "test-source")]
+fn test_sck_helper_path(contents: &Path) -> std::path::PathBuf {
+    contents.join("MacOS").join("tingdao-mix")
+}
+
 fn port_open(port: u16) -> bool {
     let addr: SocketAddr = ([127, 0, 0, 1], port).into();
     TcpStream::connect_timeout(&addr, Duration::from_millis(300)).is_ok()
@@ -64,8 +76,10 @@ fn start_backend() -> Result<u16, String> {
     let home = std::env::var("HOME").unwrap_or_default();
 
     // 程序本体(app.py)所在目录，按优先级取第一个真实含 app.py 的：
-    //   ① TINGDAO_HOME 环境变量  ② .app 包内 Resources/program  ③ Resources  ④ ~/tingdao
+    //   ① 热测试版编入的源码目录 ② TINGDAO_HOME ③ .app 包内资源 ④ ~/tingdao
     let mut prog_candidates: Vec<std::path::PathBuf> = Vec::new();
+    #[cfg(feature = "test-source")]
+    prog_candidates.push(test_source_dir());
     if let Ok(h) = std::env::var("TINGDAO_HOME") {
         prog_candidates.push(std::path::PathBuf::from(h));
     }
@@ -97,13 +111,23 @@ fn start_backend() -> Result<u16, String> {
     let _ = std::fs::remove_file(&portfile);
     *PORTFILE.lock().unwrap() = Some(portfile.clone());
 
-    let child = Command::new(&py)
+    let mut command = Command::new(&py);
+    command
         .arg(&app_py)
         .arg("--no-window")
         .env("TINGDAO_PORTFILE", &portfile)
         .current_dir(&app_dir)
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stderr(Stdio::null());
+    #[cfg(feature = "test-source")]
+    {
+        let helper = bundle_contents_dir()
+            .map(|contents| test_sck_helper_path(&contents))
+            .filter(|path| path.is_file())
+            .ok_or_else(|| "测试版缺少包内音频助手 tingdao-mix".to_string())?;
+        command.env("TINGDAO_SCK_HELPER", helper);
+    }
+    let child = command
         .spawn()
         .map_err(|e| format!("后端进程起不来：{e}"))?;
     *BACKEND.lock().unwrap() = Some(child);
@@ -136,6 +160,24 @@ fn start_backend() -> Result<u16, String> {
         std::thread::sleep(Duration::from_millis(100));
     }
     Ok(port)
+}
+
+#[cfg(all(test, feature = "test-source"))]
+mod tests {
+    use super::test_source_dir;
+
+    #[test]
+    fn test_source_build_should_prefer_the_configured_source_directory() {
+        assert_eq!(test_source_dir().to_string_lossy(), env!("TINGDAO_TEST_SOURCE_DIR"));
+    }
+
+    #[test]
+    fn test_source_build_uses_embedded_mix_helper() {
+        assert_eq!(
+            super::test_sck_helper_path(std::path::Path::new("/Test.app/Contents")),
+            std::path::Path::new("/Test.app/Contents/MacOS/tingdao-mix")
+        );
+    }
 }
 
 fn stop_backend() {
