@@ -1,6 +1,6 @@
 # 听道 · 本地实时转写
 
-当前版本：**v2.5.0**
+当前版本：**v2.6.0**
 
 [![License: PolyForm Noncommercial](https://img.shields.io/badge/license-PolyForm%20Noncommercial-4b5563)](./LICENSE)
 ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-34C759)
@@ -14,7 +14,7 @@ macOS 转写工具。录系统声音、麦克风或两者同时，说话即出�
 
 ---
 
-## v2.5.0 更新
+## v2.6.0 更新
 
 - 设置新增「个性化 → 外观」：浅色、深色、跟随系统三档；跟随系统时会随 macOS 外观变化自动切换。
 - 外观偏好现在保存到本机设置，重启应用后仍会保留；首屏会在绘制前应用已保存的模式，避免启动时闪一下默认主题。
