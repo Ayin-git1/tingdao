@@ -7,16 +7,17 @@
 // 从根上避免「默认端口被别的程序占了就起不来 / 抢不到端口显示空白窗」。
 
 use std::fs::File;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
-use tauri::{utils::config::Color, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{menu::{Menu, MenuItem, PredefinedMenuItem, Submenu}, utils::config::Color, Manager, WebviewUrl, WebviewWindowBuilder};
 
 const READY_TIMEOUT_SECS: u64 = 60;
 const SERVE_TIMEOUT_SECS: u64 = 10;
+const MICROPHONE_MODES_MENU_ID: &str = "microphone_modes";
 
 // 只有本进程亲手拉起的那份后端才归我们关; 端口文件也只由本进程创建、退出时清掉。
 static BACKEND: LazyLock<Mutex<Option<Child>>> = LazyLock::new(|| Mutex::new(None));
@@ -34,6 +35,25 @@ fn bundle_contents_dir() -> Option<std::path::PathBuf> {
     Some(contents.to_path_buf())
 }
 
+fn runtime_program_candidates(
+    bundle_contents: Option<std::path::PathBuf>,
+    configured_program: Option<std::path::PathBuf>,
+    home: &str,
+) -> Vec<std::path::PathBuf> {
+    let mut candidates = Vec::new();
+    #[cfg(feature = "test-source")]
+    candidates.push(test_source_dir());
+    if let Some(contents) = bundle_contents {
+        candidates.push(contents.join("Resources").join("program"));
+        candidates.push(contents.join("Resources"));
+    }
+    if let Some(program) = configured_program {
+        candidates.push(program);
+    }
+    candidates.push(std::path::PathBuf::from(format!("{home}/tingdao")));
+    candidates
+}
+
 /// 热测试版在编译时写入源码目录。正式版不会编入这段路径，保持完全自包含。
 #[cfg(feature = "test-source")]
 fn test_source_dir() -> std::path::PathBuf {
@@ -46,9 +66,37 @@ fn test_sck_helper_path(contents: &Path) -> std::path::PathBuf {
     contents.join("MacOS").join("tingdao-mix")
 }
 
+/// 麦克风模式助手必须以独立 .app 身份经 LaunchServices 启动；测试壳也必须用包内副本，
+/// 不能悄悄落回开发目录，否则 TCC/签名与用户实际运行版本不一致。
+#[cfg(feature = "test-source")]
+fn test_mic_app_path(contents: &Path) -> std::path::PathBuf {
+    contents.join("Resources").join("TingdaoMic.app")
+}
+
 fn port_open(port: u16) -> bool {
     let addr: SocketAddr = ([127, 0, 0, 1], port).into();
     TcpStream::connect_timeout(&addr, Duration::from_millis(300)).is_ok()
+}
+
+fn request_microphone_modes(port: u16) -> Result<(), String> {
+    let mut stream = TcpStream::connect_timeout(&([127, 0, 0, 1], port).into(), Duration::from_secs(2))
+        .map_err(|e| format!("无法连接录音服务：{e}"))?;
+    let body = r#"{"mode":"mic"}"#;
+    write!(stream, "POST /api/microphone_modes HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body)
+        .map_err(|e| format!("无法请求系统麦克风模式：{e}"))?;
+    let mut response = String::new();
+    stream.read_to_string(&mut response).map_err(|e| format!("无法读取系统麦克风模式响应：{e}"))?;
+    if response.contains("\"ok\": true") { Ok(()) }
+    else { Err("请先开始“仅麦克风”录制，再从“听道”菜单打开麦克风模式。".to_string()) }
+}
+
+fn app_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<Menu<R>> {
+    let microphone_modes = MenuItem::with_id(app, MICROPHONE_MODES_MENU_ID, "麦克风模式…", true, None::<&str>)?;
+    Menu::with_items(app, &[&Submenu::with_items(app, "听道", true, &[
+        &microphone_modes,
+        &PredefinedMenuItem::separator(app)?,
+        &PredefinedMenuItem::quit(app, None)?,
+    ])?])
 }
 
 /// 读后端回报的端口号; 文件还没写好 / 内容非法就返回 None, 交给上层轮询。
@@ -76,19 +124,13 @@ fn start_backend() -> Result<u16, String> {
     let home = std::env::var("HOME").unwrap_or_default();
 
     // 程序本体(app.py)所在目录，按优先级取第一个真实含 app.py 的：
-    //   ① 热测试版编入的源码目录 ② TINGDAO_HOME ③ .app 包内资源 ④ ~/tingdao
-    let mut prog_candidates: Vec<std::path::PathBuf> = Vec::new();
-    #[cfg(feature = "test-source")]
-    prog_candidates.push(test_source_dir());
-    if let Ok(h) = std::env::var("TINGDAO_HOME") {
-        prog_candidates.push(std::path::PathBuf::from(h));
-    }
-    if let Some(c) = bundle_contents_dir() {
-        prog_candidates.push(c.join("Resources").join("program"));
-        prog_candidates.push(c.join("Resources"));
-    }
-    prog_candidates.push(std::path::PathBuf::from(format!("{home}/tingdao")));
-    let app_dir = prog_candidates
+    //   ① 热测试版编入的源码目录 ② .app 包内资源 ③ TINGDAO_HOME ④ ~/tingdao
+    // 正式 App 始终优先自身 Resources/program，避免意外引用开发机文件。
+    let app_dir = runtime_program_candidates(
+        bundle_contents_dir(),
+        std::env::var("TINGDAO_HOME").ok().map(std::path::PathBuf::from),
+        &home,
+    )
         .into_iter()
         .find(|d| d.join("app.py").is_file())
         .ok_or_else(|| -> String {
@@ -126,6 +168,11 @@ fn start_backend() -> Result<u16, String> {
             .filter(|path| path.is_file())
             .ok_or_else(|| "测试版缺少包内音频助手 tingdao-mix".to_string())?;
         command.env("TINGDAO_SCK_HELPER", helper);
+        let mic_app = bundle_contents_dir()
+            .map(|contents| test_mic_app_path(&contents))
+            .filter(|path| path.is_dir())
+            .ok_or_else(|| "测试版缺少包内麦克风助手 TingdaoMic.app".to_string())?;
+        command.env("TINGDAO_MIC_APP", mic_app);
     }
     let child = command
         .spawn()
@@ -178,6 +225,35 @@ mod tests {
             std::path::Path::new("/Test.app/Contents/MacOS/tingdao-mix")
         );
     }
+
+    #[test]
+    fn test_source_build_uses_embedded_microphone_app() {
+        assert_eq!(
+            super::test_mic_app_path(std::path::Path::new("/Test.app/Contents")),
+            std::path::Path::new("/Test.app/Contents/Resources/TingdaoMic.app")
+        );
+    }
+}
+
+#[cfg(test)]
+mod release_tests {
+    #[test]
+    fn bundled_program_resources_precede_developer_override() {
+        let candidates = super::runtime_program_candidates(
+            Some(std::path::PathBuf::from("/Bundle/Contents")),
+            Some(std::path::PathBuf::from("/External/program")),
+            "/User",
+        );
+        assert_eq!(
+            candidates,
+            vec![
+                std::path::PathBuf::from("/Bundle/Contents/Resources/program"),
+                std::path::PathBuf::from("/Bundle/Contents/Resources"),
+                std::path::PathBuf::from("/External/program"),
+                std::path::PathBuf::from("/User/tingdao"),
+            ]
+        );
+    }
 }
 
 fn stop_backend() {
@@ -228,7 +304,16 @@ fn main() {
         }
     };
 
+    let menu_port = port;
     let app = tauri::Builder::default()
+        .menu(app_menu)
+        .on_menu_event(move |_app, event| {
+            if event.id() == MICROPHONE_MODES_MENU_ID {
+                if let Err(error) = request_microphone_modes(menu_port) {
+                    alert("无法打开麦克风模式", &error);
+                }
+            }
+        })
         // macOS 默认"关最后一个窗口不退出", 对这个单窗口工具就是坑: 窗口没了、后端还在悄悄
         // 占着麦克风。这里把"关窗"直接等价于"退出", 退出再触发下面的 stop_backend。
         .on_window_event(|window, event| {

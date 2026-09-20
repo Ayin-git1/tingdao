@@ -1481,6 +1481,9 @@
   html[data-appearance="dark"] .titlebar {
     background:linear-gradient(to bottom, var(--bg) 68%, transparent);
   }
+  html[data-appearance="dark"] .hang .rope {
+    background:linear-gradient(to bottom, rgba(181,183,189,.42), rgba(181,183,189,.24));
+  }
   html[data-appearance="dark"] .statepill,
   html[data-appearance="dark"] .setclose,
   html[data-appearance="dark"] .hp-empty .hp-ebox,
@@ -1584,6 +1587,9 @@
   html[data-appearance="dark"] .mbtn.red { color:#1d1110; }
   html[data-appearance="dark"] .nameconfirm::before,
   html[data-appearance="dark"] .hchk:checked::after { color:#102116; border-color:#102116; }
+  html[data-appearance="dark"] .setclose:hover {
+    background:#5a5c63; border-color:#6a6c73; color:#fff;
+  }
   html[data-appearance="dark"] .tpb { color:var(--sub); }
   html[data-appearance="dark"] .devfield:hover { border-color:var(--gry-dim); }
   html[data-appearance="dark"] .findbar input,
@@ -1883,6 +1889,13 @@
         <button type="button" data-v="system" class="on">跟随系统</button>
       </div>
       <div class="ptinfo" style="max-width:320px;margin:0">跟随系统会在 macOS 外观改变时自动切换。</div>
+      <div class="st" style="margin-top:20px;">任务完成提示音</div>
+      <div class="seg" id="setCompletionSound" style="max-width:320px" role="group" aria-label="任务完成提示音">
+        <i class="segin" aria-hidden="true"></i>
+        <button type="button" data-v="warm" class="on">温馨</button>
+        <button type="button" data-v="distant">悠远</button>
+      </div>
+      <div class="ptinfo" style="max-width:320px;margin:0">转录等任务完成时播放；删除项目使用废纸篓提示音。</div>
      </div>
 
      <div class="ssec" id="sec-key"><div class="sgh">快捷键</div>
@@ -2216,6 +2229,17 @@
 <script>
 let state = 'idle';
 let mode = 'system';
+const RECORD_MODES = ['system', 'mix', 'mic'];
+function syncRecordModeUI(){
+  const seg = $('setMode');
+  if(!seg) return;
+  seg.querySelectorAll('button').forEach(b=>{
+    const selected = b.dataset.v === mode;
+    b.classList.toggle('on', selected);
+    b.setAttribute('aria-pressed', String(selected));
+  });
+  segInd(seg, seg.querySelector('button.on') || seg.querySelector('button'), false, true);
+}
 let engine = 'sensevoice';
 let view = null;
 let sessionName = '';
@@ -2573,7 +2597,7 @@ function handleEvent(e){
     }).catch(()=>{});
     if(view && view.id === e.id){
       // 笔记只新增 note.md, 不动文稿 —— 必须在这里分岔走, 否则会误触 reloadRefined
-      if(e.kind === 'note'){ onNoteDone(e); return; }
+      if(e.kind === 'note'){ onNoteDone(e); playCompletionSound(); return; }
       if(e.ok === false){
         if(e.cancelled){
           // 用户按了停止: 不报失败; 空壳项目重拉 meta 让黄横幅出来
@@ -2617,7 +2641,7 @@ function handleEvent(e){
         }
       } else {
         refineStage = ''; refinePct = null;
-        reloadRefined(e.id).then(()=> toast('文稿已更新'));
+        reloadRefined(e.id).then(()=>{ toast('文稿已更新'); playCompletionSound(); });
       }
     } else if(e.id && e.ok === false){
       // 不在该项目页面时失败也必须出声, 否则前端看着像"什么都没发生"
@@ -2626,6 +2650,7 @@ function handleEvent(e){
             : '复核失败，已保留原稿');
     } else if(e.id){
       toast(e.kind === 'note' ? '课后笔记已生成' : '后台复核完成');   // 通知, 不打断当前视图
+      playCompletionSound();
     }
   }
   if(e.type === 'status'){
@@ -2848,6 +2873,7 @@ async function waitForFinishThenLoad(sid){
       applyStatus(st);
       await loadSession(sid);        // 加载 txt 同源的权威整句版
       toast('录制完成，已加载完整文稿');
+      playCompletionSound();
       return;
     }
     await new Promise(r=>setTimeout(r, 1000));
@@ -3162,6 +3188,8 @@ function paintTalk(){
 async function loadTalkState(){
   try{
     const st = await api('/api/settings');
+    mode = RECORD_MODES.includes(st.record_mode) ? st.record_mode : 'system';
+    syncRecordModeUI();
     talkMode = ['single','cloud'].includes(st.talk_mode) ? st.talk_mode : 'single';
     cloudProv = (st.cloud_provider === 'dashscope') ? 'dashscope' : 'openai';
     cloudFlow = (st.cloud_flow === 'local_post') ? 'local_post' : 'asr_post';
@@ -3699,11 +3727,67 @@ $('setAppearance').addEventListener('click', e=>{
   window.tingdaoAppearance.set(b.dataset.v);
   syncAppearanceUI();
 });
+const COMPLETION_SOUNDS = ['warm', 'distant'];
+let completionSound = 'warm';
+function syncCompletionSoundUI(){
+  const seg = $('setCompletionSound');
+  seg.querySelectorAll('button').forEach(b=>{
+    const selected = b.dataset.v === completionSound;
+    b.classList.toggle('on', selected);
+    b.setAttribute('aria-pressed', String(selected));
+  });
+  segInd(seg, seg.querySelector('button.on'), false, true);
+}
+async function loadCompletionSoundState(){
+  try{
+    const st = await api('/api/settings');
+    completionSound = COMPLETION_SOUNDS.includes(st.completion_sound) ? st.completion_sound : 'warm';
+  }catch(e){
+    completionSound = 'warm';
+  }
+  syncCompletionSoundUI();
+}
+$('setCompletionSound').addEventListener('click', async e=>{
+  const b = e.target.closest('button[data-v]');
+  if(!b || !COMPLETION_SOUNDS.includes(b.dataset.v)) return;
+  const previous = completionSound;
+  completionSound = b.dataset.v;
+  syncCompletionSoundUI();
+  try{
+    const d = await api('/api/setting', {key:'completion_sound', value:completionSound});
+    if(!d || d.ok === false) throw new Error('save failed');
+  }catch(e){
+    completionSound = previous;
+    syncCompletionSoundUI();
+    toast('提示音保存失败，已恢复上次选择');
+  }
+});
+function playNotificationSound(name){
+  const audio = new Audio('/sound/' + encodeURIComponent(name));
+  audio.volume = 0.14;
+  audio.play().catch(()=>{});
+}
+function playCompletionSound(){
+  playNotificationSound(`task_complete_${completionSound}.mp3`);
+}
 $('setMode').addEventListener('click', e=>{
   const b = e.target.closest('button'); if(!b) return;
-  mode = b.dataset.v;
-  $('setMode').querySelectorAll('button').forEach(x=>x.classList.toggle('on', x===b));
-  segInd($('setMode'), b, false);            // 滑块滑到刚点的那格
+  const next = b.dataset.v;
+  if(!RECORD_MODES.includes(next)) return;
+  const previous = mode;
+  mode = next;
+  syncRecordModeUI();
+  api('/api/setting', {key:'record_mode', value:mode}).then(d=>{
+    if(!d || d.ok === false){
+      mode = previous;
+      syncRecordModeUI();
+      toast('录音来源保存失败，已恢复上次选择');
+    }
+  }).catch(()=>{
+    mode = previous;
+    syncRecordModeUI();
+    toast('录音来源保存失败，已恢复上次选择');
+  });
 });
 /* ---- 识别引擎切换 ---- */
 function syncEngineUI(){
@@ -3898,6 +3982,7 @@ $('delConfirm').onclick = async ()=>{
   // 成败分开报：移不进废纸篓时后端不会硬删，东西还在原处，必须让用户知道
   if(errs.length) toast(`${ok} 个已移入废纸篓，${errs.length} 个没动（仍在原处）：${errs[0]}`);
   else toast(`${ok} 个${full ? '项目' : '录音'}已移入废纸篓，可随时找回`);
+  if(ok) playNotificationSound('project_delete.mp3');
   selected.clear();
   if(view && delTargets.includes(view.id)) exitView();
   refreshHistory();
@@ -5647,6 +5732,7 @@ pollStatus();
 // 启动就同步对话模式/云端流程: 以前只有打开设置面板才会 loadTalkState,
 // 重载后 talkMode 一直停在默认 single → 云端设置下导入不弹窗直接本地转写
 loadTalkState().finally(renderHomePanel);
+loadCompletionSoundState();
 pickDraw('lang');
 setInterval(refreshHistory, 15000);
 updateChrome();

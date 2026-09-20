@@ -18,6 +18,7 @@ import hmac
 import io
 import os
 import platform
+import queue
 import re
 import signal
 import sys
@@ -95,6 +96,7 @@ def setup_log():
 # TINGDAO_PORTFILE 指向的临时文件回报给壳; 单独跑则直接用它喂给 pywebview。这里是占位, main() 会改写。
 PORT = 0
 SR = 16000
+MASTER_RAW_FILE = "raw-master.s16"
 # SCK 音频助手: macOS 系统声音(ScreenCaptureKit)+麦克风在助手进程内混成单轨,
 # stdout 输出 s16le/SR/mono —— 与 ffmpeg avfoundation 的输出协议逐字节一致,
 # _read_loop/_finish 全链路零改动。替代 BlackHole 虚拟声卡+多输出设备方案,
@@ -106,6 +108,108 @@ SCK_HELPER = (Path(_sck_helper_override).expanduser()
               if _sck_helper_override else Path(__file__).resolve().parent / "tingdao-mix")
 CHUNK = 1.5                       # 流式小块秒数(前端即时显示粒度)
 VAD_WINDOW = 512                  # silero 要求的窗口样本数
+
+
+# 仅麦克风走「助手 App」(TingdaoMic.app): 只有被 LaunchServices 登记过的进程, 系统才允许它
+# 呈现原生麦克风模式面板(实测: 被 python 直接 exec 的裸 helper 调 showSystemUserInterface 静默无效)。
+# 混录/系统声仍用直起的 tingdao-mix —— 那条路要的是屏幕录制授权, 换身份会重弹权限且用不上麦模式。
+_mic_app_override = os.environ.get("TINGDAO_MIC_APP")
+MIC_APP = (Path(_mic_app_override).expanduser() if _mic_app_override
+           else Path(__file__).resolve().parent / "TingdaoMic.app")
+
+
+class _LogFileReader:
+    """把助手 --log 文件伪装成 pipe 的 stderr: 有新行就给行, 没新行就等;
+    进程已死且读干了才返回 b'' (让 _ffmpeg_err_loop 正常收尾)。"""
+
+    def __init__(self, path, owner):
+        self.f = open(path, "rb")
+        self.owner = owner
+
+    def readline(self):
+        while True:
+            line = self.f.readline()
+            if line:
+                return line
+            if not self.owner.alive():
+                return b""
+            time.sleep(0.15)
+
+    def close(self):
+        try:
+            self.f.close()
+        except Exception:
+            pass
+
+
+class _MicAppHandle:
+    """TingdaoMic.app 的进程替身: 补齐 Popen 那几个成员, 让既有读流/停录/日志逻辑零改动。
+    助手是 open 拉起的孤儿进程(ppid=1), 拿不到 Popen 对象, 只能靠 pidfile 回报的 pid 发信号。"""
+
+    def __init__(self, stdout_f, log_path, pid, tmp_paths):
+        self.stdout = stdout_f
+        self.pid = pid
+        self.stderr = _LogFileReader(log_path, self)
+        self._tmp = tmp_paths
+
+    def alive(self):
+        try:
+            os.kill(self.pid, 0)
+            return True
+        except OSError:
+            return False
+
+    def send_signal(self, sig):
+        os.kill(self.pid, sig)
+
+    def terminate(self):
+        try:
+            os.kill(self.pid, signal.SIGTERM)
+        except OSError:
+            pass
+
+    def poll(self):
+        return None if self.alive() else 0
+
+    @property
+    def returncode(self):
+        return None if self.alive() else 0
+
+    def wait(self, timeout=None):
+        deadline = time.time() + (timeout or 30)
+        while time.time() < deadline:
+            if not self.alive():
+                self._cleanup()
+                return 0
+            time.sleep(0.1)
+        raise subprocess.TimeoutExpired("TingdaoMic", timeout)
+
+    def kill(self):
+        try:
+            os.kill(self.pid, signal.SIGKILL)
+        except OSError:
+            pass
+        self._cleanup()
+
+    def _cleanup(self):
+        for p in self._tmp:
+            try:
+                os.unlink(str(p))
+            except OSError:
+                pass
+
+
+def open_microphone_modes(mode):
+    """仅供 macOS 原生菜单在“仅麦克风”录制中打开系统模式面板。"""
+    if mode != "mic" or APP.state != "recording" or not APP.session or APP.session.get("mode") != "mic":
+        return {"ok": False, "error": "请先开始“仅麦克风”录制"}
+    if APP.ffmpeg is None:
+        return {"ok": False, "error": "录音助手未启动"}
+    try:
+        APP.ffmpeg.send_signal(signal.SIGUSR1)
+    except OSError as e:
+        return {"ok": False, "error": f"无法打开系统麦克风模式：{e}"}
+    return {"ok": True}
 
 
 def sv_model_dir():
@@ -133,6 +237,7 @@ def vad_model_path():
 SESSIONS_DIR = DATA_DIR
 HOTWORDS_FILE = DATA_DIR / ".hotwords.txt"      # 全局热词表
 SETTINGS_FILE = DATA_DIR / ".settings.json"     # 应用设置(预处理开关等)
+RECORDING_MODES = ("system", "mix", "mic")
 
 
 def load_settings():
@@ -152,6 +257,12 @@ def save_setting(key, value):
     SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
     SETTINGS_FILE.write_text(json.dumps(s, ensure_ascii=False, indent=1),
                              encoding="utf-8")
+
+
+def recording_mode():
+    """录音来源的全局选择；坏值/旧版本没有该键时回到仅系统声音。"""
+    v = load_setting("record_mode")
+    return v if v in RECORDING_MODES else "system"
 
 
 def talk_mode():
@@ -1567,11 +1678,10 @@ PRETREAT_FILTERS = {
 }
 
 
-LISTEN_FILE = "audio_listen.m4a"
-# 回放专用链: 降噪 + 高通 + 响度归一, 固定用这条、不看设置档位 —— 这样即使
-# 「音频预处理」设在关闭, 回放也永远比原始音频好懂。转写用的母本(audio.m4a)
-# 在停录时按档位处理, 两份各司其职、互不污染。
-LISTEN_FILTER = "highpass=f=80,afftdn=nr=12:nf=-30,loudnorm=I=-16:TP=-1.5"
+LISTEN_FILE = "audio_listen.wav"
+# 回放专用链: 温和高通 + 轻度降噪, 不做响度归一, 避免把底噪整体抬高。
+# 它只作用于无损 WAV 回放副本；转写母本(audio.m4a)仍按用户预处理档位独立处理。
+LISTEN_FILTER = "highpass=f=80,afftdn=nr=6:nf=-35"
 
 
 def encode_listen(src, dst, input_opts=None):
@@ -1581,11 +1691,15 @@ def encode_listen(src, dst, input_opts=None):
     "Invalid data found when processing input" 退出 —— 旧代码正是这么写的,
     于是"结束录音"的回放降噪副本从来没成功过(导入路径不传这些参数所以一直是好的)。
     失败清掉半成品、返回 (None, 报错原文), 由上层记下来, 不静默吞掉。
-    统一 16kHz 单声道 64k —— 目标是"能听清谁在说什么", 不做音乐级保真。"""
+    WAV 回放副本保持 16kHz 单声道无损；旧 m4a 调用仍保留 AAC 兼容路径。"""
     cmd = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error"]
     cmd += (input_opts or [])
-    cmd += ["-i", str(src), "-vn", "-af", LISTEN_FILTER, "-ar", str(SR), "-ac", "1",
-            "-c:a", "aac", "-b:a", "64k", str(dst)]
+    cmd += ["-i", str(src), "-vn", "-af", LISTEN_FILTER, "-ar", str(SR), "-ac", "1"]
+    if dst.suffix.lower() == ".wav":
+        cmd += ["-c:a", "pcm_s16le"]
+    else:
+        cmd += ["-c:a", "aac", "-b:a", "96k"]
+    cmd += [str(dst)]
     try:
         r = subprocess.run(cmd, capture_output=True, timeout=1800)
     except Exception as e:
@@ -2154,6 +2268,7 @@ class WinRec:
 class App:
     def __init__(self):
         self.lock = threading.RLock()
+        self.capture_lock = threading.RLock()  # PCM 读写不能被识别/VAD 占住
         self._procs = {}        # sid -> Whisper 子进程 Popen(停止时 SIGTERM 它)
         self._cancel = set()    # 用户按过停止的 sid(云端链路在检查点自查)
         # 任务表: sid -> {kind,state,stage,pct}。批量导入后 refining 只是
@@ -2173,6 +2288,8 @@ class App:
         # 录音过程态
         self.ffmpeg = None
         self.reader_thread = None
+        self.decoder_thread = None
+        self._pcm_q = None
         self.raw_f = None
         self._pending_ff = None
         self.total_samples = 0        # 已喂入 VAD 的总样本(=时间轴)
@@ -2410,9 +2527,20 @@ class App:
         while d.exists():
             d = SESSIONS_DIR / f"{name}-{stamp}-{i}"; i += 1
         d.mkdir(parents=True)
+        started = time.strftime("%Y-%m-%d %H:%M:%S")
+        # 起录就先落一份最小 session.json(字段口径与 _finish 收尾一致, 收尾时整体重写):
+        # 否则录音中途被杀/崩溃时, 项目夹里只剩 raw.s16 又没有 session.json,
+        # history() 认不出它 → 在文稿里永远隐形、永远删不掉。
+        (d / "session.json").write_text(json.dumps({
+            "name": name, "started": started, "stamp": stamp,
+            "mode": mode, "lang": lang, "duration": 0,
+            "audio": None, "audioMaster": None, "audioSampleRate": SR,
+            "audioListen": None, "audioListenError": "",
+            "segments": [], "notes": [],
+        }, ensure_ascii=False, indent=1), encoding="utf-8")
         return {
             "name": name, "stamp": stamp, "dir": d, "mode": mode, "lang": lang,
-            "started": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "started": started,
             "segments": [],   # [{t, d, text}]
             "notes": [],      # [{t, text}]
         }
@@ -2454,11 +2582,24 @@ class App:
         self.raw_f = open(self.session["dir"] / "raw.s16", "ab")
         self.ffmpeg = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                                        stderr=subprocess.PIPE)
-        self.reader_thread = threading.Thread(target=self._read_loop, daemon=True)
-        self.reader_thread.start()
+        self._start_pcm_threads()
         # ffmpeg 的 stderr 不能丢 DEVNULL: 设备打不开(如缺麦克风权限)时是唯一线索。
         # 单独起线程按行读入 sys.stderr(_Tee 会自动加时间戳落日志), 不能并进 stdout(那是 PCM)。
         threading.Thread(target=self._ffmpeg_err_loop, daemon=True).start()
+
+    @staticmethod
+    def _discard_fresh_session(d):
+        """起动失败的收尾: 起录时已写过 session.json, 这里把一次性文件清掉再 rmdir。
+        目录非空(比如已有 PCM 落盘)就整体留着 —— 不硬删, 留在列表里可见可删。"""
+        for n in ("session.json", "raw.s16", MASTER_RAW_FILE):
+            try:
+                (d / n).unlink()
+            except OSError:
+                pass
+        try:
+            d.rmdir()
+        except OSError:
+            pass
 
     def _spawn_sck(self, mode):
         """SCK 系统级采集(mix=系统声+麦克风, system=仅系统声)。
@@ -2467,6 +2608,8 @@ class App:
         停止/收尾(SIGINT、等退出、关 raw_f)逻辑完全共用, 零改动。
         起动失败(最常见=缺屏幕录制权限)时助手秒退: 这里等不到 ready 信号,
         把 stderr 里的中文原因如实抛出去, 不静默卡死。"""
+        if mode == "mic" and MIC_APP.exists():
+            return self._spawn_mic_app()
         if not SCK_HELPER.exists():
             raise RuntimeError("找不到音频助手 tingdao-mix（应与 app.py 同目录）")
         self.raw_f = open(self.session["dir"] / "raw.s16", "ab")
@@ -2476,8 +2619,7 @@ class App:
         if mic_device():
             cmd += ["--mic", mic_device()]   # 设置里指定的麦克风输入源
         self.ffmpeg = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        self.reader_thread = threading.Thread(target=self._read_loop, daemon=True)
-        self.reader_thread.start()
+        self._start_pcm_threads()
         threading.Thread(target=self._ffmpeg_err_loop, daemon=True).start()
         if not self._sck_ready.wait(timeout=8):
             ff = self.ffmpeg
@@ -2496,20 +2638,120 @@ class App:
             except Exception:
                 pass
             self.raw_f = None
+            self._discard_fresh_session(self.session["dir"])
+            raise RuntimeError(err or "音频助手起动超时（检查屏幕录制/麦克风权限）")
+
+    def _spawn_mic_app(self):
+        """仅麦克风: 用 open 拉起 TingdaoMic.app。它被 LaunchServices 登记过, 系统才允许
+        它呈现原生麦克风模式面板(裸 exec 的 helper 调 showSystemUserInterface 静默无效)。
+        PCM 走命名管道回喂; 停止/开面板靠 pidfile 回报的 pid 发信号。"""
+        self.raw_f = open(self.session["dir"] / "raw.s16", "ab")
+        self._sck_ready = threading.Event()
+        self._sck_errbuf = []
+        tmp = DATA_DIR / ".micapp"
+        tmp.mkdir(parents=True, exist_ok=True)
+        tag = f"{int(time.time() * 1000)}"
+        fifo, pidf, logf, ratef = (tmp / f"pcm.{tag}", tmp / f"pid.{tag}",
+                                   tmp / f"log.{tag}", tmp / f"rate.{tag}")
+        master = self.session["dir"] / MASTER_RAW_FILE
+        os.mkfifo(str(fifo))
+        open(str(logf), "ab").close()
+        helper_args = ["--mode", "mic", "--rate", str(SR),
+                       "--fifo", str(fifo), "--pidfile", str(pidf), "--log", str(logf),
+                       "--master", str(master), "--master-rate-file", str(ratef)]
+        if mic_device():
+            helper_args += ["--mic", mic_device()]
+        lsregister = ("/System/Library/Frameworks/CoreServices.framework/Versions/A/"
+                      "Frameworks/LaunchServices.framework/Versions/A/Support/lsregister")
+        try:
+            subprocess.run([lsregister, "-f", str(MIC_APP)], capture_output=True, timeout=5)
+        except OSError:
+            pass
+        opened = subprocess.run(["open", "-n", str(MIC_APP), "--args", *helper_args],
+                                capture_output=True)
+        if opened.returncode != 0:
+            detail = opened.stderr.decode("utf-8", "replace").strip()
+            for p in (fifo, pidf, logf, ratef, master):
+                try:
+                    os.unlink(str(p))
+                except OSError:
+                    pass
+            raise RuntimeError(f"麦克风助手启动失败（open 返回 {opened.returncode}: {detail}）")
+        pid = None
+        deadline = time.time() + 8
+        while time.time() < deadline:
             try:
-                self.session["dir"].rmdir()   # 清掉刚建的空会话目录(非空则rmdir不动)
+                pid = int(pidf.read_text().strip())
+                break
+            except Exception:
+                time.sleep(0.1)
+        if not pid:
+            for p in (fifo, pidf, logf, ratef, master):
+                try:
+                    os.unlink(str(p))
+                except OSError:
+                    pass
+            raise RuntimeError("麦克风助手启动超时（没回报 pid，检查麦克风权限）")
+        # 打开管道读端, 解除助手那边写端的阻塞。
+        # 必须用【带缓冲】读: buffering=0 会让 read(2048) 短读返回(有多少给多少),
+        # 循环次数与锁竞争暴涨 → 泵写阻塞丢拍(实测丢 11.5s)。语义要和原来 Popen.stdout 一致。
+        out_f = os.fdopen(os.open(str(fifo), os.O_RDONLY), "rb")
+        self.ffmpeg = _MicAppHandle(out_f, logf, pid, (fifo, pidf, logf, ratef))
+        self._start_pcm_threads()
+        threading.Thread(target=self._ffmpeg_err_loop, daemon=True).start()
+        if not self._sck_ready.wait(timeout=12):
+            ff = self.ffmpeg
+            try:
+                ff.send_signal(signal.SIGTERM)
+                ff.wait(timeout=2)
+            except Exception:
+                try:
+                    ff.kill()
+                except Exception:
+                    pass
+            err = self._sck_errbuf[-1] if self._sck_errbuf else ""
+            self.ffmpeg = None
+            try:
+                self.raw_f.close()
             except Exception:
                 pass
-            raise RuntimeError(err or "音频助手起动超时（检查屏幕录制/麦克风权限）")
+            self.raw_f = None
+            self._discard_fresh_session(self.session["dir"])
+            raise RuntimeError(err or "麦克风助手起动超时（检查麦克风权限）")
+        try:
+            rate = int(ratef.read_text(encoding="utf-8").strip())
+            if not 8000 <= rate <= 192000:
+                raise ValueError("采样率超出范围")
+            self.session["master_rate"] = rate
+        except Exception as e:
+            ff = self.ffmpeg
+            try:
+                ff.send_signal(signal.SIGTERM)
+                ff.wait(timeout=2)
+            except Exception:
+                try:
+                    ff.kill()
+                except Exception:
+                    pass
+            self.ffmpeg = None
+            try:
+                self.raw_f.close()
+            except Exception:
+                pass
+            self.raw_f = None
+            try:
+                master.unlink()
+            except OSError:
+                pass
+            raise RuntimeError(f"高保真母带初始化失败：{e}")
 
     def _start_recorder(self, mode):
         """录音源按平台分流(锁内调用; 起动失败抛 RuntimeError → 界面弹错):
         Windows        全部模式走 WinRec(WASAPI loopback + 麦, 免虚拟声卡)
-        macOS mix/system 走 tingdao-mix(SCK, 免 BlackHole)
-        macOS mic        沿用 ffmpeg avfoundation(麦克风直采)"""
+        macOS 全部模式走 tingdao-mix；mic 模式不启动 ScreenCaptureKit。"""
         if platform.system() == "Windows":
             self._spawn_winrec(mode)
-        elif mode in ("mix", "system"):
+        elif platform.system() == "Darwin":
             self._spawn_sck(mode)
         else:
             dev = self._device_for_mode(mode)
@@ -2523,8 +2765,7 @@ class App:
         不需要像 mac 助手那样等 ready 信号。"""
         self.raw_f = open(self.session["dir"] / "raw.s16", "ab")
         self.ffmpeg = WinRec(mode, mic_device())
-        self.reader_thread = threading.Thread(target=self._read_loop, daemon=True)
-        self.reader_thread.start()
+        self._start_pcm_threads()
         threading.Thread(target=self._ffmpeg_err_loop, daemon=True).start()
 
     def _ffmpeg_err_loop(self):
@@ -2551,30 +2792,50 @@ class App:
             except Exception:
                 pass
 
+    def _start_pcm_threads(self):
+        """PCM 读取优先于识别：管道必须持续排空，避免反压打乱录音时钟。"""
+        self._pcm_q = queue.Queue()
+        self.decoder_thread = threading.Thread(target=self._decode_loop,
+                                               args=(self._pcm_q,), daemon=True)
+        self.reader_thread = threading.Thread(target=self._read_loop, daemon=True)
+        self.decoder_thread.start()
+        self.reader_thread.start()
+
     def _read_loop(self):
-        """持续读取 ffmpeg PCM → VAD → 断句识别"""
+        """持续排空采集进程的 PCM 并立即落盘；识别交给独立线程。"""
         ff = self.ffmpeg
+        pcm_q = self._pcm_q
         try:
             while True:
                 data = ff.stdout.read(2048)  # 1024 样本
                 if not data:
                     break
-                with self.lock:
-                    if self.ffmpeg is not ff or self.raw_f is None:
+                with self.capture_lock:
+                    # stop() 会先把活动引用移到 _pending_ff，再给助手发 SIGINT。
+                    # 此时管道内已写出的尾部 PCM 仍应落盘；只有被 pause/新会话替换时才丢弃。
+                    if (self.ffmpeg is not ff and self._pending_ff is not ff) or self.raw_f is None:
                         break  # 已被 pause/stop 换掉
                     self.raw_f.write(data)
-                    self._feed(np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0)
+                    self.total_samples += len(data) // 2
+                pcm_q.put(data)
         except Exception as e:
             print(f"[reader] 异常(录音线程退出): {e}", flush=True)
         finally:
-            # reader 自己退出时(如 ffmpeg 意外死亡)同步状态
-            pass
+            pcm_q.put(None)
+
+    def _decode_loop(self, pcm_q):
+        """保持既有 VAD/识别节奏，但绝不阻塞 PCM 读端。"""
+        while True:
+            data = pcm_q.get()
+            if data is None:
+                return
+            with self.lock:
+                self._feed(np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0)
 
     def _feed(self, samples):
         """喂 VAD(锁内调用); 断句即识别并广播; 同时按小块流式吐字"""
-        if self.state != "recording":
+        if self.state not in ("recording", "stopping"):
             return  # 已停/暂停: 迟到数据作废, 防止重复识别
-        self.total_samples += len(samples)
         # ---- 电平采样: 供前端底部电平条(峰值保持 + 缓 decay) ----
         try:
             rms = float(np.sqrt(np.mean(samples * samples)))
@@ -2653,13 +2914,17 @@ class App:
                 ff.kill()
         self.ffmpeg = None
         if self.raw_f:
-            try:
-                self.raw_f.close()
-            except Exception:
-                pass
+            with self.capture_lock:
+                try:
+                    self.raw_f.close()
+                except Exception:
+                    pass
         if self.reader_thread:
             self.reader_thread.join(timeout=5)
             self.reader_thread = None
+        if self.decoder_thread:
+            self.decoder_thread.join(timeout=5)
+            self.decoder_thread = None
 
     def pause(self):
         with self.lock:
@@ -2770,6 +3035,10 @@ class App:
         if rt:
             rt.join(timeout=6)
             self.reader_thread = None
+        dt = self.decoder_thread
+        if dt:
+            dt.join(timeout=6)
+            self.decoder_thread = None
         # raw_f 关闭放锁内, 与 reader 的写入互斥
         with self.lock:
             if self.raw_f:
@@ -2790,11 +3059,18 @@ class App:
         d = s["dir"]
         # 编码音频 m4a
         raw = d / "raw.s16"
+        master_raw = d / MASTER_RAW_FILE
+        master_rate = int(s.get("master_rate") or 0)
+        master_source, master_source_rate = raw, SR
+        if (master_rate >= 8000 and master_raw.exists()
+                and master_raw.stat().st_size > master_rate * 2):
+            master_source, master_source_rate = master_raw, master_rate
         audio_rel = None
         listen_rel = None
+        master = d / "audio.wav"
         # 降噪在"源头"做: raw.s16 是整条录音唯一的全信息素材, 就在这一次编码里
-        # 把处理档位的滤镜链一次成型进 audio.m4a。之后本地转写、上云转写、
-        # 回放读到的都是同一份已经降噪的母本, 不再各走各的。
+        # 把处理档位的滤镜链一次成型进 audio.m4a，供本地转写和上云转写使用。
+        # 回放另存无损 WAV 副本，避免 AAC 编码伪影与响度处理互相叠加。
         # 旧做法是把滤镜链塞在 Whisper 之前、作用在已经压成 16k/AAC 的
         # audio.m4a 上 —— 那等于跟编码器失真打架, 噪声明显的录音也救不动,
         # 表现就是"结束录音的降噪形同没跑"(只有导入原始文件那条路看着有效)。
@@ -2803,6 +3079,21 @@ class App:
         listen_err = ""
         if raw.exists() and raw.stat().st_size > SR * 2:  # >1s
             m4a = d / "audio.m4a"
+            # 无损母带：回放与后续问题定位不再受 AAC 编码伪影影响。
+            master_cmd = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+                          "-f", "s16le", "-ar", str(master_source_rate), "-ac", "1",
+                          "-i", str(master_source), "-c:a", "pcm_s16le", str(master)]
+            try:
+                master_result = subprocess.run(master_cmd, capture_output=True, timeout=600)
+            except Exception as e:
+                master_result = type("_R", (), {"returncode": -1,
+                                                 "stderr": str(e).encode()})()
+            if master_result.returncode != 0 or not master.exists() or master.stat().st_size < 1024:
+                print("[finish] ⚠ 无损母带生成失败，继续保留 AAC 副本", flush=True)
+                try:
+                    master.unlink()
+                except FileNotFoundError:
+                    pass
 
             def _enc(with_chain):
                 cmd = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
@@ -2810,7 +3101,7 @@ class App:
                        "-i", str(raw)]
                 if with_chain:
                     cmd += ["-af", with_chain]
-                cmd += ["-c:a", "aac", "-b:a", "48k", str(m4a)]
+                cmd += ["-c:a", "aac", "-b:a", "96k", str(m4a)]
                 try:
                     return subprocess.run(cmd, capture_output=True, timeout=600)
                 except Exception as e:
@@ -2835,14 +3126,12 @@ class App:
             listen_err = ""
             if audio_rel and chain != LISTEN_FILTER:
                 listen_rel, listen_err = encode_listen(
-                    raw, d / LISTEN_FILE,
-                    ["-f", "s16le", "-ar", str(SR), "-ac", "1"])
-            elif audio_rel:
-                listen_rel = audio_rel      # 母本即降噪后的那份
-            try:
-                raw.unlink()
-            except Exception:
-                pass
+                    master_source, d / LISTEN_FILE,
+                    ["-f", "s16le", "-ar", str(master_source_rate), "-ac", "1"])
+            elif audio_rel and master.exists():
+                listen_rel = master.name
+            if not listen_rel and master.exists():
+                listen_rel = master.name
             save_setting("last_pretreat", {
                 "chain": audio_proc, "at": time.strftime("%m-%d %H:%M"),
                 "error": err if audio_proc == "failed" else "",
@@ -2852,12 +3141,31 @@ class App:
                     print(f"[finish] 源头降噪已应用: {chain}", flush=True)
                 else:
                     print("[finish] 源头降噪未生效, 已回退未处理编码", flush=True)
+        # 不足一秒的录音不会进入编码分支，但 raw.s16 始终只是临时采集文件，
+        # 不能让它成为一个看似已删除项目的唯一残留。
+        try:
+            raw.unlink()
+        except FileNotFoundError:
+            pass
+        except OSError as e:
+            print(f"[finish] ⚠ 未能清理临时录音: {e}", flush=True)
+        try:
+            master_raw.unlink()
+        except FileNotFoundError:
+            pass
+        except OSError as e:
+            print(f"[finish] ⚠ 未能清理高保真临时录音: {e}", flush=True)
         # session.json (新格式, 供回放/搜索)
         (d / "session.json").write_text(json.dumps({
             "name": s["name"], "started": s["started"], "stamp": s["stamp"],
             "mode": s["mode"], "lang": s["lang"],
             "duration": round(self.total_samples / SR, 1),
-            "audio": audio_rel, "audioListen": listen_rel,
+            "audio": audio_rel,
+            # 默认试听永远走未经频谱降噪的无损母带；audioListen 只是兼容副本，
+            # 不能让算法处理在人声段制造金属感或颗粒声。
+            "audioMaster": master.name if master.exists() else None,
+            "audioSampleRate": master_source_rate if master.exists() else SR,
+            "audioListen": listen_rel,
             "audioListenError": listen_err if listen_rel is None else "",
             # 这份 audio.m4a 编码时吃了哪条滤镜链 —— 后续重跑精修据此决定
             # 要不要跳过预处理, 防止在已降噪的母本上二次处理。
@@ -4029,6 +4337,17 @@ class App:
                               "date": time.strftime("%Y-%m-%d %H:%M", time.localtime(d.stat().st_mtime)),
                               "duration": 0, "lines": len(lines),
                               "hasAudio": False, "notes": 0, "group": "", "legacy": True})
+            elif (d / "raw.s16").exists() or (d / MASTER_RAW_FILE).exists() \
+                    or any(d.glob("*.m4a")) or any(d.glob("*.wav")):
+                # 孤儿夹(多为旧版残留): 录音起过但没走到收尾(进程被杀/起动失败),
+                # 只有临时采集文件、没有 session.json —— 过去在列表里隐形,
+                # 在文稿里永远删不掉。按「已停止」空壳列出, 走统一删除链路进废纸篓,
+                # 不做任何自动清扫 —— 宁可让她自己点删, 不可悄悄删。
+                items.append({"id": d.name, "name": self._clean_title(d.name),
+                              "date": time.strftime("%Y-%m-%d %H:%M", time.localtime(d.stat().st_mtime)),
+                              "duration": 0, "lines": 0,
+                              "hasAudio": False, "cloud": False, "stopped": True,
+                              "group": "", "notes": 0})
         return items
 
     # ---- 分组: 成员写各项目 session.json 的 group 字段, 顺序/折叠在 groups.json ----
@@ -4096,10 +4415,17 @@ class App:
         if sj.exists():
             meta = json.loads(sj.read_text(encoding="utf-8"))
             meta["name"] = self._clean_title(meta.get("name", sid))
-            # 回放优先给降噪副本, 没有则退回原始转写用音频
-            play = meta.get("audioListen") if (meta.get("audioListen")
-                                               and (d / meta["audioListen"]).exists()) \
+            # 试听优先走未处理的 WAV 母带。旧项目没有 audioMaster 字段时，
+            # 仍能直接发现既有 audio.wav；再退回旧的回放/兼容文件。
+            master = meta.get("audioMaster")
+            if not master and (d / "audio.wav").exists():
+                master = "audio.wav"
+            if master and not (d / master).exists():
+                master = None
+            fallback = meta.get("audioListen") if (meta.get("audioListen")
+                                                    and (d / meta["audioListen"]).exists()) \
                 else meta.get("audio")
+            play = master if master else fallback
             meta["audioUrl"] = f"/audio/{sid}/{play}" if play else None
             meta["id"] = sid
             meta["spkLabels"] = meta.get("spk_labels") or {}
@@ -4187,10 +4513,11 @@ class App:
         sj = d / "session.json"
         if sj.exists():
             meta = json.loads(sj.read_text(encoding="utf-8"))
-            names = [meta.get("audio"), LISTEN_FILE]
+            names = [meta.get("audio"), meta.get("audioListen"), "audio.wav",
+                     LISTEN_FILE, "raw.s16", MASTER_RAW_FILE]
             meta["audio"] = None
         else:
-            names = [f.name for f in d.glob("*.m4a")]
+            names = [f.name for f in d.glob("*.m4a")] + [f.name for f in d.glob("*.wav")] + ["raw.s16", MASTER_RAW_FILE]
         for n in [x for x in names if x]:
             f = d / n
             if not f.exists():
@@ -4216,6 +4543,12 @@ APP = App()
 
 # ---------------- HTTP (内部回环, 供窗口加载与音频流) ----------------
 INDEX = Path(__file__).parent / "index.html"
+SOUNDS_DIR = Path(__file__).parent / "sounds"
+SOUND_FILES = {
+    "task_complete_warm.mp3",
+    "task_complete_distant.mp3",
+    "project_delete.mp3",
+}
 
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):
@@ -4266,6 +4599,7 @@ class Handler(BaseHTTPRequestHandler):
             self._json(load_groups())
         elif u.path == "/api/settings":
             s = load_settings()
+            s["record_mode"] = recording_mode()
             s["last_pretreat"] = load_setting("last_pretreat")
             k = cloud_key()
             # 真实 key 和密文都不下发, 只给缩短形态; 解不开时给个 stale 标记
@@ -4280,6 +4614,18 @@ class Handler(BaseHTTPRequestHandler):
             self._json(s)
         elif u.path == "/api/volume":
             self._json(volume_state())
+        elif u.path.startswith("/sound/"):
+            name = unquote(u.path[len("/sound/"):])
+            sound = SOUNDS_DIR / name
+            if name in SOUND_FILES and sound.is_file():
+                body = sound.read_bytes()
+                self.send_response(200)
+                self.send_header("Content-Type", "audio/mpeg")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+            else:
+                self.send_error(404)
         elif u.path == "/api/pick_file":
             # 原生文件选择器(多选): 阻塞到用户选完或取消
             # 顺带报每个文件的体积/时长: 云端导入的确认弹窗要在建项目前给真实数字
@@ -4321,13 +4667,14 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:
                 self._json({"error": str(e)}, 404)
         elif u.path.startswith("/audio/"):
-            # /audio/<sid>/audio.m4a
+            # /audio/<sid>/audio.m4a 或无损 WAV 回放副本
             parts = unquote(u.path[len("/audio/"):]).split("/")
             f = SESSIONS_DIR / parts[0] / parts[1]
-            if f.exists() and f.suffix == ".m4a":
+            mime = {".m4a": "audio/mp4", ".wav": "audio/wav"}.get(f.suffix.lower())
+            if f.exists() and mime:
                 body = f.read_bytes()
                 self.send_response(200)
-                self.send_header("Content-Type", "audio/mp4")
+                self.send_header("Content-Type", mime)
                 self.send_header("Content-Length", str(len(body)))
                 self.send_header("Accept-Ranges", "bytes")
                 self.end_headers()
@@ -4346,8 +4693,17 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"ok": False, "error": "参数错误"}, 400)
         try:
             if u.path == "/api/start":
-                return self._json(APP.start(body.get("mode", "system"),
+                requested_mode = body.get("mode")
+                selected_mode = (requested_mode if requested_mode in RECORDING_MODES
+                                 else recording_mode())
+                # 直接调用启动接口(快捷键/壳)也要留下最后一次明确选择，
+                # 否则重启后设置面板会回到默认的“仅系统”。
+                if requested_mode in RECORDING_MODES:
+                    save_setting("record_mode", selected_mode)
+                return self._json(APP.start(selected_mode,
                                             body.get("lang", "zh"), body.get("name", "")))
+            if u.path == "/api/microphone_modes":
+                return self._json(open_microphone_modes(body.get("mode", "")))
             if u.path == "/api/pause":
                 return self._json(APP.pause())
             if u.path == "/api/resume":
@@ -4543,6 +4899,8 @@ class Handler(BaseHTTPRequestHandler):
                     # 密钥只能走 /api/cloud_key_save(加密落盘)。这个通用口子写 key
                     # 正是上一个 bug 的成因: 失焦时把显示用的掩码当 key 存了进去。
                     return self._json({"ok": False, "error": "密钥请走专用保存接口"}, 400)
+                if kk == "record_mode" and body.get("value") not in RECORDING_MODES:
+                    return self._json({"ok": False, "error": "无效的录音来源"}, 400)
                 save_setting(kk, body.get("value"))
                 return self._json({"ok": True})
             if u.path == "/api/hotword_templates/save":
