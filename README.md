@@ -1,4 +1,10 @@
+<p align="center">
+  <img src="./assets/readme/hero.png" width="100%" alt="tingdao 听道本地实时转写：让声音成稿，默认留在本机，支持 macOS 与 Windows">
+</p>
+
 # 听道 · 本地实时转写
+
+听道面向 macOS 与 Windows。录制系统声音、麦克风或两者同时输入，说话即出实时字幕，逐句带时间戳；停录后可整理成正式稿。默认本地运行；只有选择云端模式并确认后，音频才会离开本机。
 
 当前版本：**v2.7.0**
 
@@ -6,49 +12,14 @@
 ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-34C759)
 ![Release](https://img.shields.io/github/v/release/Ayin-git1/tingdao?label=%E4%B8%8B%E8%BD%BD)
 
-macOS 转写工具。录系统声音、麦克风或两者同时，说话即出字，逐句带时间戳；停录后按你选的模式重听一遍出正式稿。
-
-默认全程离线：不联网、不注册、不上传。只有你主动选「云端」模式并确认上传时，音频才会离开本机。
-
-存在的理由：把「语音转文字」这件事放回自己机器上——不用订阅、不用注册、不默认上传；需要更高精度或说话人分离时，再由你主动把音频交给外部服务。
-
----
-
-## v2.7.0 更新
-
-- macOS 应用图标升级为 OTO 视觉；安装包使用浅色图标，并附带暗色图标与可编辑的 Icon Composer 源文件。
-
-## v2.6.0 更新
-
-- 设置新增「个性化 → 外观」：浅色、深色、跟随系统三档；跟随系统时会随 macOS 外观变化自动切换。
-- 外观偏好现在保存到本机设置，重启应用后仍会保留；首屏会在绘制前应用已保存的模式，避免启动时闪一下默认主题。
-- 新增 `⌘⇧R`：在空闲状态快速开始录音；录音中或正在输入文本时不会触发。
-- macOS 安装包最低支持 macOS 12.3（Apple Silicon），以使用系统自带的 ScreenCaptureKit 录制系统声音。
-- 采集链路升级：系统声音 / 混音由 tingdao-mix 助手在进程内实时混音成单轨直喂转写，Windows 走 WASAPI loopback。
-- 仅麦克风录音支持系统原生「麦克风模式」：录音中从菜单栏切换 标准 / 宽谱 / 语音隔离（须完全退出重开应用后生效）。
-- 端口改为由系统现取空闲端口，可同时开多个听道互不冲突。
-- 设置里的录音设备简化为只选「麦克风输入源」，系统声音采集与输出设备无关。
-- 新增录音源头降噪三档（关闭 / 轻度 / 强力，默认关闭）：停录时一次性处理进母带，转写、上云、回放共用同一条链。
-- 云端精修新增「深度思考」开关：默认开启提精度，并按所接模型的支持度自动适配；摘要会自动生成固定标题。
-- 修复：录音异常退出后项目夹会在文稿目录残留且无法删除——现在起录即建元数据，残留项目会在列表里显示为「已停止」空壳，可正常删除；起动失败的空目录会自动清理。
-- 侧栏图标统一重绘（同一笔画体系，跟随行色）；新增任务完成与删除项目的提示音。
-
 ---
 
 ## 获取
 
 - **macOS（Apple Silicon，macOS 12.3+）**：到 [Releases](https://github.com/Ayin-git1/tingdao/releases) 下载最新的 `tingdao_<版本>_aarch64.dmg`（发布资源用 ASCII 文件名，挂载后里面的程序仍是「听道.app」），打开后把「听道.app」拖进「应用程序」即可。因未经 Apple 开发者签名，首次打开若被 Gatekeeper 拦下，右键点 app → 「打开」→ 再确认一次就好（只需一次）。
-- **Windows / Intel Mac**：下载源码 zip，解压后按下方「依赖」装好 Python 虚拟环境，用 `TINGDAO_HOME` 指向程序目录运行；本地精修改走云端模式或自行接 faster-whisper。
+- **Windows 10/11 x64**：到 [Releases](https://github.com/Ayin-git1/tingdao/releases) 下载 `听道_<版本>_x64-setup.exe` 并运行。安装器会检查并在需要时下载 WebView2；Python、ffmpeg 和模型仍需自行准备，详见下方「依赖」与「首次配置」。源码 zip 保留为手动运行备用方式。
+- **Intel Mac**：下载源码 zip，按下方「依赖」准备环境后运行；本地精修改走云端模式或自行接 faster-whisper。
 - 无论哪种形态，安装包都**只含程序本体**——Python 环境、模型、ffmpeg 均需自备，详见下方「依赖」与「首次配置」。系统声音内录走系统自带能力（mac ScreenCaptureKit / Windows WASAPI loopback），**不再需要 BlackHole 等虚拟声卡**。
-
----
-
-## 许可与发布形态
-
-- **许可**：源码公开，但**仅供个人非商业使用**，采用 [PolyForm Noncommercial License 1.0.0](./LICENSE)。因此本项目严格意义上不是 OSI 定义的「开源」（开源必须允许商用）——措辞请用「源码公开 / source-available」。第三方库、命令行工具、驱动与模型各自遵循其上游许可，详见 [`THIRD-PARTY-NOTICES.md`](./THIRD-PARTY-NOTICES.md)。
-- **只发程序本体**：本仓库**不打包 Python 环境、不打包模型、不打包 ffmpeg 等**。这些由你自行安装/下载，见下方「依赖」与「首次配置」。本地精修依赖 MLX，仅 Apple Silicon 可用；Intel Mac / Windows 走云端模式。
-- **交付形态**：Windows 提供 **zip 源码包**，解压后按引导装环境即可运行；macOS 提供可安装进 `/Applications` 的 **DMG 镜像**。
-- **路径不写死**：模型、数据等路径一律在应用内「设置 → 本地模型」里填，由程序存进配置，用户无需、也不该去改源码里的路径。
 
 ---
 
@@ -80,8 +51,8 @@ macOS 转写工具。录系统声音、麦克风或两者同时，说话即出�
 
 **键盘**
 
-- 空格 播放/暂停 · ↑ ↓ 上下一句并跳播 · ⌘F 查找 · ⌘N 记笔记 · ⌘E 复制纯文本 · 双击句子就地改字 · Esc 关闭
-- 忘了就按 ⌘/ 调出快捷键卡（设置面板里也有一行提示）
+- 空格 播放/暂停 · ↑ ↓ 上下一句并跳播 · ⌘F / Ctrl+F 查找 · ⌘N / Ctrl+N 记笔记 · ⌘E / Ctrl+E 复制纯文本 · 双击句子就地改字 · Esc 关闭
+- 忘了就按 ⌘/（macOS）或 Ctrl+/（Windows）调出快捷键卡（设置面板里也有一行提示）
 
 **逐句时间戳**
 
@@ -99,7 +70,7 @@ macOS 转写工具。录系统声音、麦克风或两者同时，说话即出�
 - 新项目默认名 = `文件名 · 导入时间`
 - 本地路径优先使用原始文件转写，不做有损中转；云端路径上传已抽好的 16k 音轨
 
-**历史管理**：标题搜索、三种排序（时间倒序 / 正序 / 拼音）、多选批量删除、一键在 Finder 打开
+**历史管理**：标题搜索、三种排序（时间倒序 / 正序 / 拼音）、多选批量删除、一键在 Finder / Explorer 打开
 
 **删除怎么删**：一律移到系统回收站（macOS 废纸篓 / Windows 回收站 / Linux gio），不硬删。默认只移走录音、文稿留下；勾选后整个项目进回收站，随时能拖回来。回收站不可用时界面会报错并保持原文件不动 —— 宁可删不掉，不会悄悄删干净
 
@@ -108,6 +79,117 @@ macOS 转写工具。录系统声音、麦克风或两者同时，说话即出�
 - `transcript.md`：带时间戳正文（含说话人标记）+ 云端摘要 + 时间线笔记
 - `audio.m4a`：转写用音频（未处理）
 - `audio_listen.m4a`：回放用音频（降噪 + 高通 + 响度归一，听着更清楚），删录音时两份一起走
+
+---
+
+## 隐私
+
+- 默认零联网：无账号、无遥测、无更新检查，模型全部本地运行，音频不出机器
+- 内部 HTTP 只绑 `127.0.0.1` 回环，端口是启动时现取的空闲端口（不写死），不对外
+- **只有你选了云端模式并在弹窗里点“上传”，录音才会离开本机**；不想上传可用「本地转写 + 云端后制作」（只走文字）或干脆用单人模式
+- 用云端时项目会在侧栏标一枚小云图标，一眼看出哪份稿子经过外部服务
+- 所有产物是普通文件，放在 `~/Documents/transcripts/`，可随时自行备份或删除
+
+---
+
+## 首次配置
+
+1. macOS：首次点录音会自动弹出「屏幕录制」授权，允许「听道」一次（只取音频，不录画面）；Windows：安装好 Python 依赖后即可使用 WASAPI，无需额外驱动。首次安装若系统没有 WebView2，安装器需要联网下载运行时
+2. 首次点录音时允许麦克风权限
+3. 若要指定麦克风，去「设置 → 录音 → 麦克风输入源」选（默认跟随系统）
+4. 用云端的话：设置 → 对话模式 → 云端 → 填接口 → 测试连接
+
+系统声音内录直接读取系统正在播放的音频，无需切换或新建任何输出/聚合设备，插耳机、切扬声器都会自动跟随，你自己始终照常听得见。
+
+---
+
+## 依赖
+
+**硬件与系统**：macOS 安装包仅支持 **Apple Silicon Mac（macOS 12.3+）**；本地精修依赖 MLX。Intel Mac / Windows 请走云端模式（或在代码里改接 faster-whisper 等其它本地引擎）。
+
+**命令行工具**（macOS Homebrew）：`ffmpeg`（解码/抽轨/预处理/仅麦克风采集）、`switchaudio-osx`（可选，仅用于录制中调输出音量）
+
+**系统声音内录**（免虚拟声卡，全系统自带能力）：
+- macOS：ScreenCaptureKit —— 需在「系统设置 → 隐私与安全性 → 屏幕录制」里允许「听道」一次（它只取音频，不录画面）
+- Windows：WASAPI loopback —— 装 `pyaudiowpatch` 即可（已进 `requirements.txt`），无需任何驱动或声卡软件
+
+**Python 环境**（自行安装，安装包不含）：建议 Python 3.10。Windows 安装版默认从 `%USERPROFILE%\tingdao-venv\Scripts\python.exe` 启动后端；首次安装请按文末「Windows 首次安装引导」创建环境并安装运行依赖。源码 zip 用户在项目目录执行 `pip install -r requirements.txt`。自定义 Python 路径可通过 `TINGDAO_PY` 指定。Windows 本地 Whisper 精修不可用，请使用云端转写模式。
+
+Windows 源码 zip 备用启动方式：解压后在项目目录运行 `& "$env:USERPROFILE\tingdao-venv\Scripts\python.exe" .\app.py`；使用打包壳时才需要额外设置 `TINGDAO_HOME` 指向解压后的程序目录。
+
+**模型**
+
+| 模型 | 体积 | 用途 |
+|---|---|---|
+| SenseVoiceSmall (zh-en-ja-ko-yue, int8) | 228 MB | 实时识别 |
+| Silero VAD (`silero_vad.onnx`) | 2 MB | 断句 |
+| whisper-large-v3-turbo (MLX) | 1.5 GB | 本地精修 / 导入转写 |
+
+模型不随包分发，请自行下载；下载后在「设置 → 本地模型」里填各自路径（留空即对应功能不可用，代码不再内置任何默认位置）。
+
+> 以上均为各自开源许可证下的第三方组件与模型，本项目仅在本地调用、不随包再分发；请遵循其原始许可证使用。
+
+**云端**（可选，不装任何东西）：任何兼容标准「对话补全 / 音频转写」接口的第三方服务均可。在「设置 → 对话模式 → 云端 → 扳手」里填接口地址 / Key / 转写模型 / 后处理模型，点「测试连接」当场告诉你通不通。
+
+---
+
+## Windows 首次安装引导
+
+适用于 Windows 10/11 x64 安装版。发行页提供 `听道_<版本>_x64-setup.exe`；安装包包含听道程序，不包含 Python、运行依赖库、模型或 FFmpeg。首次启动前按以下步骤准备一次环境。安装器若检测到系统没有 WebView2，会联网下载并安装运行时。
+
+### 1. 下载并安装听道
+
+从 [Releases](https://github.com/Ayin-git1/tingdao/releases) 下载最新的 `听道_<版本>_x64-setup.exe` 并运行。安装完成后先不要启动听道，继续准备 Python 环境。
+
+### 2. 安装 Python 3.10 与 FFmpeg
+
+在 PowerShell 中运行以下命令。若电脑没有 `winget`，请从 [Python 官方下载页](https://www.python.org/downloads/windows/) 安装 Python 3.10，并从 [FFmpeg 下载页](https://ffmpeg.org/download.html)选择 Windows 版本；安装后重新打开 PowerShell。
+
+```powershell
+winget install --id Python.Python.3.10 --exact
+winget install --id Gyan.FFmpeg.Shared --exact
+```
+
+FFmpeg 用于导入音视频、音频转换和后处理。安装后确认命令可用：
+
+```powershell
+py -3.10 --version
+ffmpeg -version
+```
+
+### 3. 创建听道专用环境并安装运行依赖
+
+安装版默认查找 `%USERPROFILE%\tingdao-venv\Scripts\python.exe`。在 PowerShell 中逐行运行：
+
+```powershell
+$venv = "$env:USERPROFILE\tingdao-venv"
+py -3.10 -m venv $venv
+$python = Join-Path $venv "Scripts\python.exe"
+& $python -m pip install --upgrade pip
+& $python -m pip install numpy requests sherpa-onnx pyaudiowpatch
+```
+
+这些命令只创建听道自己的 Python 环境，不会替换 Windows 系统 Python。`pyaudiowpatch` 提供 Windows 系统声音与麦克风采集能力，无需安装虚拟声卡或额外驱动。
+
+### 4. 准备模型并首次启动
+
+模型不随安装包分发。下载 SenseVoiceSmall 与 Silero VAD 模型后，打开听道，在「设置 → 本地模型」中填入模型路径；未配置模型前，实时字幕无法识别语音。Windows 当前不支持内置的本地 Whisper 精修，停录后的转写请选择云端模式，并在「设置 → 对话模式 → 云端」配置服务；音频只有在你确认上传后才会离开本机。首次录音时按 Windows 提示允许麦克风访问。
+
+系统声音采集使用 WASAPI loopback，读取当前默认输出设备。录音中切换默认扬声器或耳机后，请停止并重新开始录音。
+
+### 源码 zip 手动运行（备用）
+
+源码 zip 需要先解压。以下命令在解压后的项目目录中运行，会安装 `requirements.txt` 中的依赖并以 Python 窗口模式启动：
+
+```powershell
+py -3.10 -m venv "$env:USERPROFILE\tingdao-venv"
+$python = "$env:USERPROFILE\tingdao-venv\Scripts\python.exe"
+& $python -m pip install --upgrade pip
+& $python -m pip install -r .\requirements.txt
+& $python .\app.py
+```
+
+源码方式同样需要 FFmpeg 和模型。日常使用安装版时无需克隆仓库或下载源码 zip。
 
 ---
 
@@ -170,49 +252,10 @@ macOS 转写工具。录系统声音、麦克风或两者同时，说话即出�
 
 ---
 
-## 依赖
-
-**硬件与系统**：macOS 安装包仅支持 **Apple Silicon Mac（macOS 12.3+）**；本地精修依赖 MLX。Intel Mac / Windows 请走云端模式（或在代码里改接 faster-whisper 等其它本地引擎）。
-
-**命令行工具**（macOS Homebrew）：`ffmpeg`（解码/抽轨/预处理/仅麦克风采集）、`switchaudio-osx`（可选，仅用于录制中调输出音量）
-
-**系统声音内录**（免虚拟声卡，全系统自带能力）：
-- macOS：ScreenCaptureKit —— 需在「系统设置 → 隐私与安全性 → 屏幕录制」里允许「听道」一次（它只取音频，不录画面）
-- Windows：WASAPI loopback —— 装 `pyaudiowpatch` 即可（已进 `requirements.txt`），无需任何驱动或声卡软件
-
-**Python 环境**（自行安装，仓库不含）：建一个独立虚拟环境（建议 Python 3.10，例如 `~/tingdao-venv`），再 `pip install -r requirements.txt`（`sherpa-onnx`、`mlx-whisper`、`pywebview`、`numpy`、`requests`）。启动壳默认在 `~/tingdao-venv`，可用环境变量 `TINGDAO_PY` 指向你自己的解释器。
-
-**模型**
-
-| 模型 | 体积 | 用途 |
-|---|---|---|
-| SenseVoiceSmall (zh-en-ja-ko-yue, int8) | 228 MB | 实时识别 |
-| Silero VAD (`silero_vad.onnx`) | 2 MB | 断句 |
-| whisper-large-v3-turbo (MLX) | 1.5 GB | 本地精修 / 导入转写 |
-
-模型不随包分发，请自行下载；下载后在「设置 → 本地模型」里填各自路径（留空即对应功能不可用，代码不再内置任何默认位置）。
-
-> 以上均为各自开源许可证下的第三方组件与模型，本项目仅在本地调用、不随包再分发；请遵循其原始许可证使用。
-
-**云端**（可选，不装任何东西）：任何兼容标准「对话补全 / 音频转写」接口的第三方服务均可。在「设置 → 对话模式 → 云端 → 扳手」里填接口地址 / Key / 转写模型 / 后处理模型，点「测试连接」当场告诉你通不通。
-
----
-
-## 首次配置
-
-1. macOS：首次点录音会自动弹出「屏幕录制」授权，允许「听道」一次（只取音频，不录画面）；Windows：装好 `pyaudiowpatch` 即可，无需额外授权
-2. 首次点录音时允许麦克风权限
-3. 若要指定麦克风，去「设置 → 录音 → 麦克风输入源」选（默认跟随系统）
-4. 用云端的话：设置 → 对话模式 → 云端 → 填接口 → 测试连接
-
-系统声音内录直接读取系统正在播放的音频，无需切换或新建任何输出/聚合设备，插耳机、切扬声器都会自动跟随，你自己始终照常听得见。
-
----
-
 ## 已知限制
 
 - **拖拽区补丁会被升级冲掉**：顶部拖拽靠改 `pywebview/platforms/cocoa.py`（标记 `PATCH(shengji)`）。`pip install -U pywebview` 会覆盖，需重打补丁并清 `__pycache__`。
-- **路径写死**：模型目录、venv 路径、本地模型库路径是硬编码，换机器要改 `app.py` 顶部常量。
+- **路径与运行环境**：模型路径在「设置 → 本地模型」中配置并保存；数据目录默认位于用户文稿目录，可用 `TINGDAO_DATA` 指定；Windows 安装版默认使用 `%USERPROFILE%\tingdao-venv`，可用 `TINGDAO_PY` 指向其他 Python 解释器。
 - **音量直控仅 macOS**：录制不再切换任何输出设备，音量按钮走 CoreAudio 直接读写扬声器那台硬件的音量；Windows 上该按钮显示「不可控」（用系统音量调节即可）。
 - **系统声内录跟的是"默认输出设备"**：录到一半切换系统默认输出（比如从扬声器切到蓝牙耳机），Windows 的 loopback 会听不到新设备的声音——需停止后重开录制。macOS 的 ScreenCaptureKit 不受影响，会自动跟随。
 - **Whisper 幻觉**：尾部静音可能被脑补成无意义重复文本。已加段内判定（语速 >15 字/秒、长文本字符多样性过低、段起点超出音频时长）**加跨段复读过滤**（相邻同文成串，连串 ≥3 整串丢弃；门槛 3 是在两份干净稿上零误伤、两份多人稿上只删真环实测出来的）。
@@ -226,10 +269,30 @@ macOS 转写工具。录系统声音、麦克风或两者同时，说话即出�
 
 ---
 
-## 隐私
+## 许可与发布形态
 
-- 默认零联网：无账号、无遥测、无更新检查，模型全部本地运行，音频不出机器
-- 内部 HTTP 只绑 `127.0.0.1` 回环，端口是启动时现取的空闲端口（不写死），不对外
-- **只有你选了云端模式并在弹窗里点“上传”，录音才会离开本机**；不想上传可用「本地转写 + 云端后制作」（只走文字）或干脆用单人模式
-- 用云端时项目会在侧栏标一枚小云图标，一眼看出哪份稿子经过外部服务
-- 所有产物是普通文件，放在 `~/Documents/transcripts/`，可随时自行备份或删除
+- **许可**：源码公开，但**仅供个人非商业使用**，采用 [PolyForm Noncommercial License 1.0.0](./LICENSE)。因此本项目严格意义上不是 OSI 定义的「开源」（开源必须允许商用）——措辞请用「源码公开 / source-available」。第三方库、命令行工具、驱动与模型各自遵循其上游许可，详见 [`THIRD-PARTY-NOTICES.md`](./THIRD-PARTY-NOTICES.md)。
+- **只发程序本体**：本仓库**不打包 Python 环境、不打包模型、不打包 ffmpeg 等**。这些由你自行安装/下载，见下方「依赖」与「首次配置」。本地精修依赖 MLX，仅 Apple Silicon 可用；Intel Mac / Windows 走云端模式。
+- **交付形态**：Windows 主路径为 **NSIS setup.exe 安装包**，源码 zip 作为备用；macOS 提供可安装进 `/Applications` 的 **DMG 镜像**。
+- **路径不写死**：模型、数据等路径一律在应用内「设置 → 本地模型」里填，由程序存进配置，用户无需、也不该去改源码里的路径。
+
+---
+
+## v2.7.0 更新
+
+- macOS 应用图标升级为 OTO 视觉；安装包使用浅色图标，并附带暗色图标与可编辑的 Icon Composer 源文件。
+
+## v2.6.0 更新
+
+- 设置新增「个性化 → 外观」：浅色、深色、跟随系统三档；跟随系统时会随 macOS 外观变化自动切换。
+- 外观偏好现在保存到本机设置，重启应用后仍会保留；首屏会在绘制前应用已保存的模式，避免启动时闪一下默认主题。
+- 新增 `⌘⇧R`：在空闲状态快速开始录音；录音中或正在输入文本时不会触发。
+- macOS 安装包最低支持 macOS 12.3（Apple Silicon），以使用系统自带的 ScreenCaptureKit 录制系统声音。
+- 采集链路升级：系统声音 / 混音由 tingdao-mix 助手在进程内实时混音成单轨直喂转写，Windows 走 WASAPI loopback。
+- 仅麦克风录音支持系统原生「麦克风模式」：录音中从菜单栏切换 标准 / 宽谱 / 语音隔离（须完全退出重开应用后生效）。
+- 端口改为由系统现取空闲端口，可同时开多个听道互不冲突。
+- 设置里的录音设备简化为只选「麦克风输入源」，系统声音采集与输出设备无关。
+- 新增录音源头降噪三档（关闭 / 轻度 / 强力，默认关闭）：停录时一次性处理进母带，转写、上云、回放共用同一条链。
+- 云端精修新增「深度思考」开关：默认开启提精度，并按所接模型的支持度自动适配；摘要会自动生成固定标题。
+- 修复：录音异常退出后项目夹会在文稿目录残留且无法删除——现在起录即建元数据，残留项目会在列表里显示为「已停止」空壳，可正常删除；起动失败的空目录会自动清理。
+- 侧栏图标统一重绘（同一笔画体系，跟随行色）；新增任务完成与删除项目的提示音。
