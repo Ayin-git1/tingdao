@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 520">
+  <defs>
+    <linearGradient id="mint" x1="0" y1="0" x2="0.8" y2="1">
+      <stop offset="0" stop-color="#E0F7EC"/>
+      <stop offset="1" stop-color="#A8E6D5"/>
+    </linearGradient>
+    <linearGradient id="butter" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFF4D6"/>
+      <stop offset="1" stop-color="#F7D6D6"/>
+    </linearGradient>
+    <linearGradient id="lilac" x1="0" y1="0" x2="0.8" y2="1">
+      <stop offset="0" stop-color="#E5E4FA"/>
+      <stop offset="1" stop-color="#C4EAF0"/>
+    </linearGradient>
+  </defs>
+  <rect width="1600" height="520" fill="#FFF"/>
+  <g transform="translate(28 7) scale(.57)" opacity="0.94">
+    <rect x="252" y="323" width="244" height="378" rx="122" transform="rotate(-18 374 512)" fill="url(#mint)"/>
+    <rect x="390" y="290" width="244" height="444" rx="122" fill="url(#butter)"/>
+    <rect x="530" y="323" width="244" height="378" rx="122" transform="rotate(18 652 512)" fill="url(#lilac)"/>
+  </g>
+  <text x="520" y="344" fill="#4E625D" font-family="Avenir Next, Helvetica Neue, Arial, sans-serif" font-size="220" font-weight="450" letter-spacing="12">oto</text>
+</svg>
