@@ -1,6 +1,6 @@
 # 听道 · 本地实时转写
 
-当前版本：**v2.6.0**
+当前版本：**v2.7.0**
 
 [![License: PolyForm Noncommercial](https://img.shields.io/badge/license-PolyForm%20Noncommercial-4b5563)](./LICENSE)
 ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-34C759)
@@ -13,6 +13,10 @@ macOS 转写工具。录系统声音、麦克风或两者同时，说话即出�
 存在的理由：把「语音转文字」这件事放回自己机器上——不用订阅、不用注册、不默认上传；需要更高精度或说话人分离时，再由你主动把音频交给外部服务。
 
 ---
+
+## v2.7.0 更新
+
+- macOS 应用图标升级为 OTO 视觉；安装包使用浅色图标，并附带暗色图标与可编辑的 Icon Composer 源文件。
 
 ## v2.6.0 更新
 

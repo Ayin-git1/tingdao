@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="mint" x1="0" y1="0" x2="0.8" y2="1">
+      <stop offset="0" stop-color="#E0F7EC"/>
+      <stop offset="1" stop-color="#A8E6D5"/>
+    </linearGradient>
+    <linearGradient id="butter" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFF4D6"/>
+      <stop offset="1" stop-color="#F7D6D6"/>
+    </linearGradient>
+    <linearGradient id="lilac" x1="0" y1="0" x2="0.8" y2="1">
+      <stop offset="0" stop-color="#E5E4FA"/>
+      <stop offset="1" stop-color="#C4EAF0"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="224" fill="#FFF"/>
+  <g fill="none" stroke="#91AAA2" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" opacity="0.12">
+    <g transform="translate(142 174) rotate(-27) scale(3.4)">
+      <path d="M12 4 67 3q5 5 0 11l-55 1Z"/>
+      <path d="m12 4-10 5 10 6m55-12 9 1v12l-9-1"/>
+      <path d="m18 7 39-1m-40 7 38-1" opacity=".55"/>
+      <path d="m15 3 46-1m-41 14 38-2" stroke-width="2.5" opacity=".5"/>
+      <path d="m20 9 3-2 3 2m4-2 3 2m5-2 3 1m4-2 3 2m4-2 3 1" stroke-width="2.5" stroke-dasharray="1 2" opacity=".65"/>
+    </g>
+    <g transform="translate(817 103) rotate(16) scale(2.8)">
+      <path d="M23 3C12 2 6 10 7 21l2 24c1 11 8 17 18 16 11-1 17-9 15-20l-2-22C39 9 33 3 23 3Z"/>
+      <path d="M24 5c-10 0-15 8-14 18l2 23c1 8 5 13 12 14" stroke-width="2.5" opacity=".65"/>
+      <path d="m14 15 21-2m-21 9 22-2m-21 9 21-2m-20 9 21-2m-17 9 14-2" stroke-dasharray="10 3 4 2" opacity=".62"/>
+      <path d="M24 61q-2 10 3 16t-6 11q-5 3-11 2m18-12q2 10 10 10m-31 6q14-4 32 0m-30 5q13-3 29 0"/>
+      <path d="m9 11 4-5m27 4 3 5m-29 45 4 3m19-3 4 4" stroke-width="2.5" opacity=".6"/>
+    </g>
+    <g transform="translate(66 420) rotate(-12) scale(2.7)">
+      <path d="M3 13Q9 7 15 13t12 0m-24 17Q11 20 19 29t16-1M4 47q8-7 16 0t16 0M5 61q7-5 14 0t14 0"/>
+      <path d="M2 15Q8 9 14 15t12 0m-20 14Q10 22 18 31t16-1M7 46q7-5 14 1t14-1" stroke-width="2.5" opacity=".65"/>
+      <path d="m41 24 5-2m-3 7 5 1m-43 18-4 3" stroke-width="3"/>
+    </g>
+    <g transform="translate(785 430) rotate(30) scale(3.2)">
+      <path d="M12 4 67 3q5 5 0 11l-55 1Z"/>
+      <path d="m12 4-10 5 10 6m55-12 9 1v12l-9-1"/>
+      <path d="m18 7 39-1m-40 7 38-1" opacity=".55"/>
+      <path d="m15 3 46-1m-41 14 38-2" stroke-width="2.5" opacity=".5"/>
+      <path d="m20 9 3-2 3 2m4-2 3 2m5-2 3 1m4-2 3 2m4-2 3 1" stroke-width="2.5" stroke-dasharray="1 2" opacity=".65"/>
+    </g>
+    <g transform="translate(146 720) rotate(-14) scale(2.8)">
+      <path d="M23 3C12 2 6 10 7 21l2 24c1 11 8 17 18 16 11-1 17-9 15-20l-2-22C39 9 33 3 23 3Z"/>
+      <path d="M24 5c-10 0-15 8-14 18l2 23c1 8 5 13 12 14" stroke-width="2.5" opacity=".65"/>
+      <path d="m14 15 21-2m-21 9 22-2m-21 9 21-2m-20 9 21-2m-17 9 14-2" stroke-dasharray="10 3 4 2" opacity=".62"/>
+      <path d="M24 61q-2 10 3 16t-6 11q-5 3-11 2m18-12q2 10 10 10m-31 6q14-4 32 0m-30 5q13-3 29 0"/>
+      <path d="m9 11 4-5m27 4 3 5m-29 45 4 3m19-3 4 4" stroke-width="2.5" opacity=".6"/>
+    </g>
+    <g transform="translate(787 726) rotate(18) scale(2.6)">
+      <path d="M3 13Q9 7 15 13t12 0m-24 17Q11 20 19 29t16-1M4 47q8-7 16 0t16 0M5 61q7-5 14 0t14 0"/>
+      <path d="M2 15Q8 9 14 15t12 0m-20 14Q10 22 18 31t16-1M7 46q7-5 14 1t14-1" stroke-width="2.5" opacity=".65"/>
+      <path d="m41 24 5-2m-3 7 5 1m-43 18-4 3" stroke-width="3"/>
+    </g>
+  </g>
+  <g opacity="0.94">
+    <rect x="252" y="323" width="244" height="378" rx="122" transform="rotate(-18 374 512)" fill="url(#mint)"/>
+    <rect x="390" y="290" width="244" height="444" rx="122" fill="url(#butter)"/>
+    <rect x="530" y="323" width="244" height="378" rx="122" transform="rotate(18 652 512)" fill="url(#lilac)"/>
+  </g>
+</svg>

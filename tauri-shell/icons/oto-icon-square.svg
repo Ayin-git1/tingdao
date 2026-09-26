@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="mint" x1="0" y1="0" x2="0.65" y2="1">
+      <stop offset="0" stop-color="#AFEBAC" />
+      <stop offset="1" stop-color="#68CFAD" />
+    </linearGradient>
+    <linearGradient id="green" x1="0" y1="0" x2="0.35" y2="1">
+      <stop offset="0" stop-color="#75DE8C" />
+      <stop offset="0.6" stop-color="#34C759" />
+      <stop offset="1" stop-color="#34C759" />
+    </linearGradient>
+    <linearGradient id="blue" x1="0" y1="0" x2="0.8" y2="1">
+      <stop offset="0" stop-color="#C5D1F0" />
+      <stop offset="1" stop-color="#7ACEDC" />
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="#FFF" />
+  <g fill="none" stroke="#91AAA2" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" opacity="0.085">
+    <g transform="translate(142 174) rotate(-27) scale(3.4)">
+      <path d="M12 4 67 3q5 5 0 11l-55 1Z" />
+      <path d="m12 4-10 5 10 6m55-12 9 1v12l-9-1" />
+      <path d="m18 7 39-1m-40 7 38-1" opacity=".55" />
+      <path d="m15 3 46-1m-41 14 38-2" stroke-width="2.5" opacity=".5" />
+      <path d="m20 9 3-2 3 2m4-2 3 2m5-2 3 1m4-2 3 2m4-2 3 1" stroke-width="2.5" stroke-dasharray="1 2" opacity=".65" />
+    </g>
+    <g transform="translate(809 121) rotate(12) scale(2.8)" stroke-width="3">
+      <path d="M22 3 C14 2 9 8 9 16 L10 37 C10 45 15 50 23 50 C31 50 36 44 35 36 L35 16 C35 8 30 3 22 3" />
+      <path d="M3 32 C2 48 9 59 22 59 C37 59 43 48 43 32" />
+      <path d="M22 60 Q21 69 22 77 M9 79 Q22 77 35 79" />
+      <path d="M16 14 Q22 13 29 14 M16 21 Q23 20 29 21 M16 28 Q23 27 29 28 M17 35 Q23 34 29 35" stroke-width="2.1" opacity=".7" />
+      <path d="M11 14 L12 35 Q11 44 18 46 M5 35 Q4 48 13 54 M23 64 L24 74" stroke-width="1.1" opacity=".45" />
+    </g>
+    <g transform="translate(63 410) rotate(-9) scale(2.7)" stroke-width="3">
+      <path d="M3 33 Q4 38 3 44 M13 23 Q12 38 13 53 M24 10 Q23 38 24 65 M35 20 Q36 38 35 55 M46 30 Q47 39 46 46" stroke-width="3.5" />
+      <path d="M25 15 L26 60 M12 28 L11 48 M37 26 L38 48" stroke-width="1" opacity=".45" />
+    </g>
+    <g transform="translate(785 430) rotate(30) scale(3.2)">
+      <path d="M12 4 67 3q5 5 0 11l-55 1Z" />
+      <path d="m12 4-10 5 10 6m55-12 9 1v12l-9-1" />
+      <path d="m18 7 39-1m-40 7 38-1" opacity=".55" />
+      <path d="m15 3 46-1m-41 14 38-2" stroke-width="2.5" opacity=".5" />
+      <path d="m20 9 3-2 3 2m4-2 3 2m5-2 3 1m4-2 3 2m4-2 3 1" stroke-width="2.5" stroke-dasharray="1 2" opacity=".65" />
+    </g>
+    <g transform="translate(154 732) rotate(-13) scale(2.8)" stroke-width="3">
+      <path d="M22 3 C14 2 9 8 9 16 L10 37 C10 45 15 50 23 50 C31 50 36 44 35 36 L35 16 C35 8 30 3 22 3" />
+      <path d="M3 32 C2 48 9 59 22 59 C37 59 43 48 43 32" />
+      <path d="M22 60 Q21 69 22 77 M9 79 Q22 77 35 79" />
+      <path d="M16 14 Q22 13 29 14 M16 21 Q23 20 29 21 M16 28 Q23 27 29 28 M17 35 Q23 34 29 35" stroke-width="2.1" opacity=".7" />
+      <path d="M11 14 L12 35 Q11 44 18 46 M5 35 Q4 48 13 54 M23 64 L24 74" stroke-width="1.1" opacity=".45" />
+    </g>
+    <g transform="translate(784 716) rotate(14) scale(2.6)" stroke-width="3">
+      <path d="M3 33 Q4 38 3 44 M13 23 Q12 38 13 53 M24 10 Q23 38 24 65 M35 20 Q36 38 35 55 M46 30 Q47 39 46 46" stroke-width="3.5" />
+      <path d="M25 15 L26 60 M12 28 L11 48 M37 26 L38 48" stroke-width="1" opacity=".45" />
+    </g>
+  </g>
+  <g>
+    <rect x="252" y="323" width="244" height="378" rx="122" transform="rotate(-18 374 512)" fill="#FFF" />
+    <rect x="530" y="323" width="244" height="378" rx="122" transform="rotate(18 652 512)" fill="#FFF" />
+    <rect x="390" y="282" width="244" height="460" rx="122" fill="#FFF" />
+  </g>
+  <g>
+    <rect x="252" y="323" width="244" height="378" rx="122" transform="rotate(-18 374 512)" fill="url(#mint)" fill-opacity="0.64" />
+    <rect x="530" y="323" width="244" height="378" rx="122" transform="rotate(18 652 512)" fill="url(#blue)" fill-opacity="0.5" />
+    <rect x="390" y="282" width="244" height="460" rx="122" fill="url(#green)" fill-opacity="0.66" />
+  </g>
+</svg>
