@@ -49,7 +49,7 @@
     const defaultTheme = {h:135.1, s:58.6, l:49.2};
     let theme = defaultTheme;
     try {
-      const saved = JSON.parse("__TINGDAO_THEME_COLOR__");
+      const saved = JSON.parse(__TINGDAO_THEME_COLOR__);
       if (saved && Number.isFinite(+saved.h) && Number.isFinite(+saved.s) && Number.isFinite(+saved.l))
         theme = {h:(+saved.h%360+360)%360, s:Math.max(0,Math.min(100,+saved.s)), l:Math.max(20,Math.min(80,+saved.l))};
     } catch (_) {
