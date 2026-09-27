@@ -3246,7 +3246,7 @@ async function loadTalkState(){
     cloudCfgSeen = !!st.cloud_cfg_seen;
     asrFmt = st.cloud_asr_fmt || 'mp3';
     syncLocalModelFields(st);
-    $('cloudUrl').value = st.cloud_base_url || '';
+    $('cloudUrl').value = st.cloud_base_url || (cloudProv === 'dashscope' ? 'https://dashscope.aliyuncs.com/api/v1' : '');
     /* Key 不回填: 输入框里只要出现过"看起来像 key"的字符串, 就有被当成新 key
        提交回去覆盖真 key 的机会(上一个 bug 就是这么来的)。真实 key 只待在后台,
        这里留空, 缩短形态当 placeholder 提示"已存过哪一把"。 */
@@ -3321,7 +3321,7 @@ function bindThink(which){
 }
 const PH = {
   openai:    {url:"API 地址（服务商文档给出的接口根地址）", asr:"转写模型名（见服务商文档）", chat:"后处理模型名（见服务商文档）"},
-  dashscope: {url:"填服务商接口根域名（末尾不要带 /api/v1）", asr:"转写模型名（需支持异步文件转写）", chat:"后处理模型名（见服务商文档）"},
+  dashscope: {url:"https://dashscope.aliyuncs.com/api/v1", asr:"转写模型名（需支持异步文件转写）", chat:"后处理模型名（见服务商文档）"},
 };
 const FLOW_TXT = {asr_post:'云端转写+后制作：音频上传换时间戳与文字，完成后再让大模型润色一遍并出摘要。',
                   local_post:'本地转写+云端后制作：音频不出本机，只把文稿文字送上去润色与摘要。'};
@@ -3405,7 +3405,9 @@ document.querySelectorAll('.pathpick').forEach(button=>button.addEventListener('
 }));
 $('setProvider').addEventListener('click', async e=>{
   const b = e.target.closest('button'); if(!b || b.dataset.v===cloudProv) return;
-  cloudProv = b.dataset.v; paintProvider();
+  cloudProv = b.dataset.v;
+  if(cloudProv === 'dashscope' && !$('cloudUrl').value.trim()) $('cloudUrl').value = 'https://dashscope.aliyuncs.com/api/v1';
+  paintProvider();
   await api('/api/setting', {key:'cloud_provider', value:cloudProv});
   paintThink('chat'); paintThink('note');
   cloudOK = null; paintCloudSummary(); cloudTest(true);

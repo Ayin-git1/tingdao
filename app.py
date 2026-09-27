@@ -3041,7 +3041,7 @@ class App:
         # 用户点确认才会上传(POST /api/cloud_transcribe), 不点就停在实时字幕稿。
         d = self.session["dir"] if self.session else None
         lang = self.session["lang"] if self.session else "zh"
-        if d and (d / "audio.m4a").exists():
+        if d and ((d / "audio.m4a").exists() or (d / "audio.wav").exists()):
             mode = talk_mode()
             if mode == "cloud" and cloud_flow() == "local_post":
                 # 流程②: 音频不出本机, 本地转完后只把文字送去做后制作
@@ -3053,7 +3053,8 @@ class App:
             elif mode == "cloud":
                 # 流程①: 不启动任何本地精修, 只广播"待确认"事件(带体积与时长)
                 print("[refine] 对话模式=cloud → 等用户确认上传（不跑本地）", flush=True)
-                up = d / "audio.m4a"
+                meta = json.loads((d / "session.json").read_text(encoding="utf-8"))
+                up = self._recording_audio_source(d, meta)
                 self.emit(type="cloud_confirm", id=d.name,
                           mb=round(up.stat().st_size / 2**20, 1),
                           dur=round(float(self.session.get("total_samples", 0)) / SR, 1),
@@ -3177,18 +3178,9 @@ class App:
             else:
                 print(f"[finish] ⚠ M4A 生成失败（检查 FFmpeg）: {err or '无错误详情'}",
                       flush=True)
-            # 回放副本: 必须在删 raw 之前做（raw 是唯一的全信息源）
-            # strong 档位与回放链完全同一条, 母本已经是它处理过的了 —— 这时再出
-            # 一份副本纯属多余(两小时的课要多跑一整趟 ffmpeg), 回退还用母本。
+            # 原始高质量母带是唯一回放文件；不再生成冗余滤镜回放副本。
+            listen_rel = None
             listen_err = ""
-            if audio_rel and chain != LISTEN_FILTER:
-                listen_rel, listen_err = encode_listen(
-                    master_source, d / LISTEN_FILE,
-                    ["-f", "s16le", "-ar", str(master_source_rate), "-ac", "1"])
-            elif audio_rel and master.exists():
-                listen_rel = master.name
-            if not listen_rel and master.exists():
-                listen_rel = master.name
             save_setting("last_pretreat", {
                 "chain": audio_proc, "at": time.strftime("%m-%d %H:%M"),
                 "error": err if audio_proc == "failed" else "",
@@ -3217,7 +3209,7 @@ class App:
             "name": s["name"], "started": s["started"], "stamp": s["stamp"],
             "mode": s["mode"], "lang": s["lang"],
             "duration": round(self.total_samples / SR, 1),
-            "audio": audio_rel,
+            "audio": audio_rel or (master.name if master.exists() else None),
             # 默认试听永远走未经频谱降噪的无损母带；audioListen 只是兼容副本，
             # 不能让算法处理在人声段制造金属感或颗粒声。
             "audioMaster": master.name if master.exists() else None,
@@ -3718,8 +3710,76 @@ class App:
         return cfg
 
     # ---------- 云端重转: 上传录音, 拿云端 ASR 的新稿 ----------
+    @staticmethod
+    def _recording_audio_source(d, meta):
+        """已完成的录音优先复用高质量母带；未完成项目继续用原转写副本。"""
+        m4a = d / "audio.m4a"
+        if m4a.is_file():
+            return m4a
+        master = d / (meta.get("audioMaster") or "audio.wav")
+        return master if master.is_file() else None
+
+    @staticmethod
+    def _cleanup_recording_audio(d, meta):
+        """仅在原生录音已有有效母带、且 ASR 成功后清理持久化副本。"""
+        if meta.get("mode") == "import":
+            return
+        master = d / (meta.get("audioMaster") or "audio.wav")
+        if not master.is_file() or master.stat().st_size < 1024:
+            return
+        for name in ("audio.m4a", LISTEN_FILE):
+            try:
+                (d / name).unlink(missing_ok=True)
+            except OSError as e:
+                print(f"[cleanup] ⚠ 未能清理{name}: {e}", flush=True)
+        meta["audio"] = master.name
+        meta["audioMaster"] = master.name
+        meta["audioListen"] = None
+        meta["audioListenError"] = ""
+        try:
+            (d / "session.json").write_text(
+                json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
+        except OSError as e:
+            print(f"[cleanup] ⚠ 无法更新音频索引: {e}", flush=True)
+
+    def _cloud_recording_source(self, d, meta):
+        """母带重转时按原预处理设置临时制作用于上传的文件。"""
+        source = self._recording_audio_source(d, meta)
+        if source is None:
+            raise RuntimeError("该项目没有可用音频")
+        chain = meta.get("audio_pretreat") or "off"
+        if source.suffix.lower() != ".wav" or chain in ("off", "failed"):
+            return source, None
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        tmp = CACHE_DIR / f"{d.name}.cloud-source.wav"
+        ff = subprocess.Popen(
+            ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-i", str(source),
+             "-af", chain, "-ar", str(SR), "-ac", "1", "-c:a", "pcm_s16le", str(tmp)],
+            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        with self.lock:
+            self._procs[d.name] = ff
+        try:
+            try:
+                err, _ = ff.communicate(timeout=1800)
+            except subprocess.TimeoutExpired:
+                ff.kill()
+                err, _ = ff.communicate()
+            rc = ff.returncode
+        finally:
+            with self.lock:
+                self._procs.pop(d.name, None)
+        if self.is_cancelled(d.name):
+            tmp.unlink(missing_ok=True)
+            raise Cancelled("已停止")
+        if rc != 0 or not tmp.is_file() or tmp.stat().st_size < 1024:
+            tmp.unlink(missing_ok=True)
+            detail = (err or b"").decode(errors="ignore").strip()[:160]
+            raise RuntimeError("从高质量母带准备云端转写音频失败" +
+                               (f"：{detail}" if detail else ""))
+        return tmp, tmp
+
     def cloud_transcribe(self, sid):
-        """把 audio.m4a 上传到 标准兼容接口重新转写并替换稿子。
+        """把项目音频上传到标准兼容接口重新转写并替换稿子。
         这是唯一会把录音送出本机的功能: 仅按钮显式触发, 弹窗已写明。
         原稿备份 segments_pre_cloud, 可还原。失败只广播不自动跑本地
         —— 前端会给「跑本地转写」按钮, 由用户决定(规矩: 绝不双跑)。"""
@@ -3735,7 +3795,8 @@ class App:
         d = SESSIONS_DIR / sid
         if not (d / "session.json").is_file():
             raise RuntimeError("项目不存在")
-        if not (d / "audio.m4a").is_file():
+        meta = json.loads((d / "session.json").read_text(encoding="utf-8"))
+        if self._recording_audio_source(d, meta) is None:
             raise RuntimeError("该项目没有音频")
         self._uncancel(sid)
         self._job_begin(sid, "cloud", state="wait")
@@ -3753,15 +3814,11 @@ class App:
     def _cloud_asr_bg(self, d, cfg, emit_end=True):
         """返回 True=已出稿。emit_end=False 时把终态广播让给后续后处理步骤。"""
         sj = d / "session.json"
+        temporary_source = None
         try:
             t0 = time.time()
-            # 上云用转写母本 audio.m4a —— 停录时它就是从 raw.s16(唯一的全信息源)
-            # 带着降噪滤镜链一次编出来的, 所以云端拿到的也是降噪后的音频,
-            # 和本地 Whisper / 回放用的是同一份, 出稿差异可直接归因。
-            # 仍绝不选 audio_listen.m4a: 那份是专门给人耳回放的副本, 与转写用的
-            # 不是同一条时间轴基准, 换上去会让字幕对不上。
-            up = d / "audio.m4a"
             meta = json.loads(sj.read_text(encoding="utf-8"))
+            up, temporary_source = self._cloud_recording_source(d, meta)
             cfg["lang"] = meta.get("lang")
             cfg["hotwords"] = load_hotwords()
             # 时长给等待阶段估算用; 拿不到就只显示阶段文字, 不给编造的数字
@@ -3807,6 +3864,7 @@ class App:
             sj.write_text(json.dumps(meta, ensure_ascii=False, indent=1),
                           encoding="utf-8")
             self._write_md(d, meta, f"云端转写 {time.time()-t0:.0f}s")
+            self._cleanup_recording_audio(d, meta)
             if emit_end:
                 self.emit(type="refinish", id=d.name, kind="cloud")
             print(f"[cloud-asr] 完成: {d.name}（{len(meta['segments'])} 段）", flush=True)
@@ -3826,6 +3884,12 @@ class App:
                 self.emit(type="refinish", id=d.name, kind="cloud", ok=False,
                           err=cloud_err_text(kind, e), err_kind=kind)
             return False
+        finally:
+            if temporary_source:
+                try:
+                    temporary_source.unlink(missing_ok=True)
+                except OSError as e:
+                    print(f"[cleanup] ⚠ 未能清理临时云端音频: {e}", flush=True)
         # jobs/refining 清理由队列 worker 的 finally 统一兜底
 
     # ---------- 云端增强: 文字后处理(录音不上传) ----------
@@ -4169,8 +4233,7 @@ class App:
             raise                    # 取消/异常终态由 _import_run 分派处统一收尾
 
     def rerun(self, sid):
-        """已停止的空壳项目重跑转写: 用抽好的 audio.m4a(原始文件路径没存,
-        且导入时已按最高可用音质抽过轨)。清 stopped 标记后走本地链路。"""
+        """已停止项目重跑转写；原生录音复用母带，导入项目复用抽出的音轨。"""
         if not sid or ".." in sid or "/" in sid or "\\" in sid:
             raise RuntimeError("非法路径")
         d = SESSIONS_DIR / sid
@@ -4179,17 +4242,22 @@ class App:
             raise RuntimeError("项目不存在")
         if sid in self.progs:
             raise RuntimeError("该项目已在任务队列中")
-        if not (d / "audio.m4a").is_file():
-            raise RuntimeError("该项目没有音频，无法重跑")
         meta = json.loads(sj.read_text(encoding="utf-8"))
+        source = self._recording_audio_source(d, meta)
+        if source is None:
+            raise RuntimeError("该项目没有音频，无法重跑")
         meta.pop("stopped", None)
         sj.write_text(json.dumps(meta, ensure_ascii=False, indent=1),
                       encoding="utf-8")
         self._uncancel(sid)
         lang = meta.get("lang") or "zh"
         self._job_begin(sid, "import", state="wait")
-        self._enqueue(sid, "local",
-                      lambda: self._import_whisper(d, lang, d / "audio.m4a"))
+        if meta.get("mode") == "import":
+            self._enqueue(sid, "local",
+                          lambda: self._import_whisper(d, lang, source))
+        else:
+            self._enqueue(sid, "local",
+                          lambda: self._refinish_whisper(d, lang, allow_empty=True))
         return {"ok": True, "id": sid}
 
     def refine_silence(self, sid):
@@ -4206,16 +4274,18 @@ class App:
         sj = d / "session.json"
         if not sj.is_file():
             raise RuntimeError("项目不存在")
-        if not (d / "audio.m4a").is_file():
+        meta = json.loads(sj.read_text(encoding="utf-8"))
+        if self._recording_audio_source(d, meta) is None:
             raise RuntimeError("该项目没有音频，无法重跑")
-        lang = (json.loads(sj.read_text(encoding="utf-8")) or {}).get("lang", "zh")
+        lang = (meta or {}).get("lang", "zh")
         self._uncancel(sid)
         self._job_begin(sid, "refine", state="wait")
         self._enqueue(sid, "local",
                       lambda: self._refinish_whisper(d, lang, True))
         return {"ok": True, "id": sid}
 
-    def _refinish_whisper(self, d, lang, silence_skip=False, post_flow=False):
+    def _refinish_whisper(self, d, lang, silence_skip=False, post_flow=False,
+                          allow_empty=False):
         """停录后用 Whisper 重识别整条音频(长上下文, 质量高于流式块)。
         直接采用 Whisper 返回的分段起止时间戳, 不再按输出标点切句——
         曾发生整条输出无标点 → 时长比例切分击穿 → 515 字全堆进第一句的事故。
@@ -4226,22 +4296,29 @@ class App:
         try:
             sj_path = d / "session.json"
             meta = json.loads(sj_path.read_text(encoding="utf-8"))
+            source = self._recording_audio_source(d, meta)
+            if source is None:
+                raise RuntimeError("该项目没有可用音频，无法重跑")
             old = [] if silence_skip else (meta.get("segments") or [])
-            if not old and not silence_skip:
+            if not old and not silence_skip and not allow_empty:
                 return
+            saved_chain = meta.get("audio_pretreat") or "off"
+            if source.suffix.lower() == ".wav":
+                pretreat = saved_chain if saved_chain not in ("off", "failed") else False
+            else:
+                pretreat = False if saved_chain not in ("off", "failed") else None
             new_segs, info = self._whisper_segs(
-                d / "audio.m4a", old, float(meta.get("duration") or 0) or 1, lang,
+                source, old, float(meta.get("duration") or 0) or 1, lang,
                 silence_skip=silence_skip, sid=d.name,
-                # 停录时 audio.m4a 已在源头吃过滤镜链(raw.s16 全信息源),
-                # 这里再套一遍就是对同一份噪声处理两次; 老项目没这个字段,
-                # 沿用旧逻辑照设置走。
-                pretreat=False if (meta.get("audio_pretreat") or "off") != "off" else None)
+                # m4a 已按录音档位处理；只剩 WAV 母带时按同一档位临时重建处理音频。
+                pretreat=pretreat)
             if not new_segs:
                 return
             meta["segments"] = new_segs
             meta["pretreat"] = (info["pretreat"] if info["pretreat"] != "off"
                                 else (meta.get("audio_pretreat") or "off"))
             meta["refinished"] = "whisper+silence" if silence_skip else "whisper"
+            meta["transcribe_src"] = source.name
             sj_path.write_text(json.dumps(meta, ensure_ascii=False, indent=1),
                                encoding="utf-8")
             # 重写 transcript.md
@@ -4256,6 +4333,7 @@ class App:
                 lines += ["", "## 时间线笔记", ""]
                 lines += [f"- [{fmt_ts(n['t'])}] {n['text']}" for n in notes]
             (d / "transcript.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+            self._cleanup_recording_audio(d, meta)
             if post_flow:
                 # 本地转完只把文字送云端润色: 终态由后处理那一步统一广播
                 cfgp = self.cloud_cfg_full()
