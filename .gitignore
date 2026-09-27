@@ -53,3 +53,18 @@ releases/
 
 # TingdaoMic.app 是 tingdao-mix.swift 的打包产物(运行时经 open -n 拉起, 可重新生成)
 /TingdaoMic.app/
+
+# 本地维护资料与未集成的设计/诊断稿，不提交到项目仓库
+/MEMORY.md
+/AppIcon.icns
+/micmodes-diag.swift
+/designs/
+/docs/superpowers/
+/docs/reports/
+
+# README 旧主视觉及其生成素材，不参与当前 README 或应用构建
+/assets/readme/hero.png
+/assets/readme/source/hero-layout.svg
+/assets/readme/source/hero-prompt.txt
+/assets/readme/source/hero-subject.png
+/assets/readme/source/render-readme-assets.swift
