@@ -448,7 +448,7 @@
   /* ===== 侧栏开合骨架遮蔽 =====
      手动点「显示/隐藏项目栏」推挤的那 0.58s 里, 用纯静态灰块盖住会重排的正文(#feed)
      与主页最近项目(#hpGrid); 灰块只覆盖这两块, 顶栏/标题/问候都不盖。真内容隐身但保留
-     高度(不跳版), 侧栏落定后 side-skel 移除 → 灰块淡出、真内容淡入。悬浮预览走浮层不重排, 不触发这里。 */
+     高度(不跳版), 侧栏落定后 side-skel 移除 → 灰块淡出、真内容淡入。单纯悬浮预览不触发这里。 */
   #feed, #hpGrid{transition:opacity .2s ease;}
   .skel{position:absolute; left:26px; right:26px; top:16px; bottom:0; z-index:6;
         opacity:0; pointer-events:none; transition:opacity .2s ease;}
@@ -463,6 +463,8 @@
   .sk-body .tsb{height:11px; border-radius:6px; background:#f0f1f4;}
   /* 骨架期间真内容隐身(保留高度→不跳版), 动画结束再渐显 */
   body.side-skel #feed, body.side-skel #hpGrid{opacity:0;}
+  body.side-promoting.side-skel #feed, body.side-promoting.side-skel #hpGrid,
+  body.side-promoting.side-skel .skel{transition:none;}
 
   /* 主页背景光斑: 挂在 .main 下(查看/录音态隐藏), 主页时绿光直达窗口顶部,
      被主区分割线裁出层叠感; 右侧定位故不侵入左栏 */
@@ -774,10 +776,10 @@
   .gearbtn:hover{color:var(--txt); background:var(--hover);}
 
   /* 音频条 */
-  .audiobar{display:none; align-items:center; gap:12px; padding:10px 18px;
+  .audiobar{display:none; align-items:center; gap:16px; padding:12.5px 24px;
             border-top:1px solid var(--line); flex:none; position:relative; z-index:var(--z-chrome);}
   .audiobar.show{display:flex;}
-  .audiobar button{border:none; background:var(--soft); width:34px; height:34px;
+  .audiobar button{border:none; background:var(--soft); width:30px; height:30px;
                    border-radius:50%; cursor:pointer; display:flex;
                    align-items:center; justify-content:center; flex:none;
                    transition:background var(--hov);}
@@ -813,9 +815,9 @@
   /* ============ 右侧: 历史栏 ============ */
   /* padding-left:1px 是补掉原来 border-left 那 1px 的占位(box-sizing:border-box,
      总宽仍是 290), 保证内容一个像素都不横移 */
-  .cols{display:flex; flex:1; min-height:0;}
+  .cols{display:flex; flex:1; min-height:0; position:relative;}
   /* 侧栏底部磨砂条: 列表从它身后滚过, blur 才是真的看得见(与浮层同一族参数) */
-  .sidefoot{position:absolute; left:0; right:0; bottom:0; z-index:var(--z-sidefoot);
+  .sidefoot{position:absolute; left:0; right: -1px; bottom:0; z-index:var(--z-sidefoot);
             display:flex; align-items:center; gap:9px; padding:10px 12px;
             background:rgba(255,255,255,.62);
             backdrop-filter:blur(18px) saturate(1.4);
@@ -828,9 +830,9 @@
   .sidefoot .sf-mode.off{display:inline-flex;}
   .sidefoot .sf-mode .sf-dot{color:var(--gry-dim); font-weight:400;}
   .sidefoot .gearbtn{margin-left:auto;}
-  .sidebar{width:290px; flex:none; padding-left:1px; position:relative;
+  .sidebar{width:290px; height:100%; translate:0 0; flex:none; padding-left:1px; position:relative;
            display:flex; flex-direction:column;
-           background:var(--side);}
+           border:1px solid transparent; border-radius:0; background:var(--side); box-shadow:none;}
   /* 与主区顶栏严格对齐(改之前先对算式, 别只动一个数字):
      主区 .topbar = 14 上留白 + 44 namebox + 12 下留白 + 1 边框 = 71px, 标题文字中心在 36px。
      .sidehead 里最高的是 26px 的 .sbtn(align-items:center 决定内容盒高), 所以
@@ -911,7 +913,7 @@
   .hitem:hover{background:rgba(0,0,0,.03);}
   .hitem > div{position:relative;}
   body:not(.batchmode) .hitem.on,body:not(.batchmode) .hitem.on:hover{background:var(--card); color:var(--txt);
-     border-radius:12px; margin-left:12px; margin-right:12px; padding-left:12px;
+     border-radius:12px; margin-left:8px; margin-right:8px; padding-left:12px;
      box-shadow:inset 0 0 0 1px var(--line), 0 3px 10px rgba(0,0,0,.06);}   /* 选中=悬浮白圆角卡（仅普通模式；批量模式让位给复选框） */
   /* 选中卡呼吸：加高到 68（标题仍钉在 padding-top 10，不跳），拉开标题↔元信息行距，第二行下方留白 */
   body:not(.batchmode) .hitem.on{height:68px;}
@@ -1050,8 +1052,40 @@
   /* hover 预览: 侧栏做「浮层」盖到主区之上(保持 margin 真状态 → 右侧零重排、不跳字),
      松手自动收回。抬层用独立的 .side-peeked 承载, JS 在滑出动画结束后才摘掉它 →
      收起途中侧栏始终压在主区之上, 不会被正文盖住/吞掉。底下 .peekscrim 给一层轻玻璃压暗。 */
-  body.sidehide.side-peek .sidebar{transform:translateX(291px);}
-  body.sidehide.side-peeked .sidebar{z-index:8; box-shadow:16px 0 44px rgba(20,30,60,.16);}
+  /* 收起态悬浮预览: 保留侧栏在 flex 中的占位, 只把同一面板抬成有留白的圆角抽屉。 */
+  body.sidehide.side-peek .sidebar{translate:10px 10px; height:calc(100% - 20px);
+          transform:translateX(291px); border-radius:13px; overflow:hidden;
+          background:transparent;}
+  /* 磨砂玻璃挂独立 ::before 层(z-index:-1, 在侧栏自己的层叠上下文里垫底), 正文控件不再
+     活在 backdrop-filter 元素内部 —— WebKit 对「动画中的 transform + backdrop-filter」
+     整层重建时偶发丢普通流子节点绘制(玻璃出来了、列表隐身, 独立层的 sidefoot 却活着)。
+     玻璃与内容分层后互不牵连; 父级 overflow:hidden+圆角 负责把 ::before 裁成同款胶囊。 */
+  body.sidehide.side-peek .sidebar::before{content:''; position:absolute; z-index:-1; inset:0;
+          border:1px solid var(--line); border-radius:13px;
+          background:rgba(250,250,252,.94); backdrop-filter:blur(24px) saturate(1.5);
+          -webkit-backdrop-filter:blur(24px) saturate(1.5);}
+  body.sidehide.side-peeked .sidebar{z-index:8; box-shadow:0 16px 44px rgba(20,30,50,.18);}
+  /* promote(悬浮→常驻): 两条动画各司其职、同拍配合 ——
+     A 背景滑动: 灰底 .side-dock-bg 滑入 + 主区左缘(main 自身 margin-left -90→0)滑回 +
+       feedzone 遮罩跟边, 边界照常"推"给正文。滑动量全挂在 dock-bg/main 上,
+       侧栏布局被 sideDockPin 钉死在终值 —— 列表不再吃 margin+transform 双轨补偿(抽搐源头)。
+     B 控件归位: 侧栏只走自己的 translate/height .52s 滑回常驻位, 圆角 120ms 收平。 */
+  .side-dock-bg{display:none; position:absolute; inset:0 auto 0 0; width:290px;
+          z-index:7; pointer-events:none; background:var(--side);}
+  body.side-promoting .side-dock-bg{display:block;
+          animation:sideDockWash .52s cubic-bezier(.22,.75,.25,1) both;}
+  body.side-promoting .sidebar{z-index:8; overflow:hidden; background-color:transparent;
+          animation:sideDockPin .52s linear both;
+          transition:translate .52s cubic-bezier(.16,1,.3,1),
+          height .52s cubic-bezier(.16,1,.3,1),
+          border-radius .12s ease;}
+  body.side-promoting .main{background:var(--bg);
+          animation:mainEdge .52s cubic-bezier(.22,.75,.25,1) both;}
+  body.side-promoting .feedzone{animation:sideTextMask .52s cubic-bezier(.22,.75,.25,1) both;}
+  @keyframes sideDockWash{from{transform:translateX(-90px);}to{transform:translateX(0);}}
+  @keyframes sideDockPin{from{margin-left:0; transform:translateX(0);}to{margin-left:0; transform:translateX(0);}}
+  @keyframes mainEdge{from{margin-left:-90px;}to{margin-left:0;}}
+  @keyframes sideTextMask{from{clip-path:inset(0 0 0 90px);}to{clip-path:inset(0);}}
   /* 收起(非悬浮)时淡到 0 → 悬浮进出=边滑边淡, 与课后笔记抽屉退出手感一致 */
   body.sidehide:not(.side-peek) .sidebar{opacity:0;}
   .peekscrim{position:fixed; inset:0; z-index:7; opacity:0; pointer-events:none;
@@ -1150,18 +1184,20 @@
   .cloud-cfg .cst.ok{color:var(--gd);}
   .cloud-cfg .cst.bad{color:var(--warn);}
 
-  /* 云端摘要块: 文稿顶部。底色改用与时间线笔记同一套纸黄(用户定的), 内容走 MD 渲染,
-     所以不再是 pre-wrap 纯文本 —— 块级元素自己带间距 */
-  .seg.sum{background:var(--note-wash); border-left:2.5px solid var(--noted); color:var(--noteink);
-           font-size:var(--fs-body); line-height:1.8;
-           /* 圆角批注框: 与正文同宽, 不再是方角黄带 */
-           border-radius:12px; padding:12px 16px 13px; margin:2px 0 16px;
-           box-shadow:0 1px 3px rgba(0,0,0,.05);}
+  /* 云端摘要块: 作为正文前的阅读导言, 用中性纸面与主题色细节区别于时间线笔记。 */
+  .seg.sum{background:var(--card); border:1px solid var(--line); border-left:3px solid var(--g);
+           color:var(--txt); font-size:var(--fs-body); line-height:1.8;
+           border-radius:14px; padding:16px 20px 18px; margin:2px 0 20px;
+           box-shadow:0 2px 10px rgba(20,30,24,.035);}
   .seg.sum .ts{display:none;}
-  .seg.sum::before{content:'摘要'; font-size:var(--fs-micro); font-weight:700; color:var(--note-ink2);
-                   background:rgba(232,185,60,.18); border:1px solid #f0d27a;
-                   border-radius:5px; padding:1px 6px; margin-right:8px;}
-  .seg.sum .md{display:block; margin-top:7px;}
+  .sumlabel{display:flex; align-items:center; gap:7px; margin-bottom:5px;
+           color:var(--g-ink); font-size:var(--fs-meta); font-weight:700; letter-spacing:.04em;}
+  .sumlabel::before{content:''; width:7px; height:7px; border-radius:50%; background:var(--g);}
+  .seg.sum .md{display:block; max-width:1120px;}
+  .seg.sum .md h1{font-size:19px; margin:0 0 7px; line-height:1.45;}
+  .seg.sum .md h2,.seg.sum .md h3,.seg.sum .md h4{margin-top:11px;}
+  .seg.sum .md ul,.seg.sum .md ol{margin-top:10px;}
+  .seg.sum .md li{margin:6px 0;}
 
   /* ============ MD 渲染通用样式 ============
      摘要(纸黄底)与课后笔记抽屉(白玻璃底)共用一套, 边框/表头取中性色, 免得两边不搭。
@@ -1189,7 +1225,7 @@
      层序: 抽屉仍是全软件第二层(z52), 压在顶栏(53)之下、内容层(≤50)之上。
      形态: 从顶栏下方浮起的圆角卡片, 靠 transform 滑入滑出; 顶距 62 让开顶栏浮空按钮。 */
   .drawer{position:fixed; top:62px; right:12px; bottom:12px; width:var(--dw,470px); z-index:var(--z-drawer);
-          overflow:hidden; border-radius:14px;
+          overflow:hidden; border-radius:13px;
           background:rgba(255,255,255,.94);
           backdrop-filter:blur(24px) saturate(1.5); -webkit-backdrop-filter:blur(24px) saturate(1.5);
           box-shadow:0 1px 2px rgba(20,30,50,.06), 0 16px 44px rgba(20,30,50,.16);
@@ -1725,6 +1761,7 @@
   html[data-appearance="dark"] .confirm,
   html[data-appearance="dark"] .gpop,
   html[data-appearance="dark"] .tagpal { background:rgba(42,43,47,.96); }
+  html[data-appearance="dark"] body.sidehide.side-peek .sidebar::before {background:rgba(42,43,47,.96);}
   html[data-appearance="dark"] .setpop,
   html[data-appearance="dark"] .findbar,
   html[data-appearance="dark"] .editbar { background:rgba(42,43,47,.98); }
@@ -1938,6 +1975,7 @@
 <div class="peekscrim" id="peekscrim"></div>
 
 <div class="cols">
+<div class="side-dock-bg" aria-hidden="true"></div>
 <div class="sidebar">
   <div class="sidehead brand">听<span class="g">道</span></div>
   <div class="sbsearch">
@@ -5491,8 +5529,9 @@ async function loadSession(sid, keepList){
   if(d.summary && d.summary.trim()){
     const sm = document.createElement('div');
     sm.className = 'seg sum';
+    sm.setAttribute('role', 'note');
     // 摘要现在是 MD 文本 → 用同一套渲染器画; 老项目里存的纯文本走同一条路也不会花
-    sm.innerHTML = `<span class="ts"></span><span class="md">${md(d.summary.trim())}</span>`;
+    sm.innerHTML = `<span class="ts"></span><div class="sumlabel">AI 摘要</div><div class="md">${md(d.summary.trim())}</div>`;
     $('feed').appendChild(sm);
   }
   const merged = [];
@@ -5582,6 +5621,7 @@ function exitView(){
   $('findbar').classList.remove('show');
   openDrawer(false);   // 离开查看态: 笔记抽屉跟着收, 不许带到主页
   selected.clear();
+  _histSig = '';       // 进项目时列表没重建(_histSig 停在主页那版), 返回后 sig 对账会短路跳过重建 → .on 残留。强制失效让下面按 view=null 重画
   refreshHistory();
   updateChrome();
   updateNoteBtn();     // 主页态按 talkMode 重算(单人模式回主页即隐)
@@ -6076,6 +6116,12 @@ function skelActivate(){
 }
 $('btnSide').onclick = ()=>{
   if(state !== 'idle'){ toast('请先结束当前录音'); return; }
+  if(document.body.classList.contains('sidehide') && document.body.classList.contains('side-peek')){
+    promoteSidebarPeek();
+    return;
+  }
+  clearTimeout(promoteTimer);
+  document.body.classList.remove('side-promoting');
   document.body.classList.remove('side-peek', 'side-peeked'); peekHold = false;
   clearTimeout(peekedTimer);
   const skel = skelActivate();
@@ -6083,6 +6129,19 @@ $('btnSide').onclick = ()=>{
   if(skel){ clearTimeout(skelTimer);
     skelTimer = setTimeout(()=>document.body.classList.remove('side-skel'), 580); }  // = 侧栏推挤动画时长
 };
+let promoteTimer = null;
+function promoteSidebarPeek(){
+  clearTimeout(peekTimer); clearTimeout(peekOpenTimer); clearTimeout(peekedTimer);
+  clearTimeout(promoteTimer);
+  peekHold = false;
+  const skel = skelActivate();
+  document.body.classList.add('side-promoting');
+  document.body.classList.remove('side-peek', 'side-peeked');
+  document.body.classList.remove('sidehide');
+  if(skel){ clearTimeout(skelTimer);
+    skelTimer = setTimeout(()=>document.body.classList.remove('side-skel'), 580); }
+  promoteTimer = setTimeout(()=>{ document.body.classList.remove('side-promoting'); }, 560);
+}
 /* 收起态: hover 开关钮→侧栏临时滑出; 手离开(钮和侧栏都算"手里")→自动收回。
    peekHold=搜索等场景要求常驻浮出, 释放 hover 也不收 */
 let peekHold = false, peekTimer = null, peekOpenTimer = null, peekedTimer = null;
