@@ -12,6 +12,10 @@
 
 <h2 id="download"><img src="./assets/readme/badges/download.svg" height="40" alt="下载与安装"></h2>
 
+- **让 Agent 帮你安装**：告诉 Agent
+```powershell
+读取 https://github.com/Ayin-git1/tingdao readme,从国内镜像源下载三款适合我[这里填 Mac或Windows]系统的模型，并检查运行环境，若缺少，也请你一并为我安装并配置。
+```
 - **macOS（Apple Silicon，macOS 12.3+）**：从 [Releases](https://github.com/Ayin-git1/tingdao/releases) 下载最新 DMG，将「听道.app」拖入「应用程序」。首次打开若被系统拦截，右键应用并选择「打开」。
 - **Windows 10/11 x64**：下载最新 `听道_<版本>_x64-setup.exe` 并运行。安装器会在需要时下载 WebView2；Python 和模型需自行准备，见[运行依赖](#dependencies)和[Windows 安装步骤](#windows-setup)。
 - 安装包只含程序本体及 Windows 所需的 FFmpeg；Python 环境和模型需自行准备。源码 zip 运行时仍需自行安装 FFmpeg。系统声音采集使用系统自带能力，不需要虚拟声卡。
