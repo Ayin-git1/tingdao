@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="96" viewBox="0 0 1200 96" role="img" aria-labelledby="title desc">
+  <title id="title">工作方式</title><desc id="desc">录音到文稿的处理流程</desc>
+  <rect x="0" y="8" width="1200" height="80" rx="12" fill="#111713"/>
+  <rect x="0" y="8" width="7" height="80" rx="3.5" fill="#91ED8C"/>
+  <text x="32" y="63" fill="#F7FAF7" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC',sans-serif" font-size="54" font-weight="650">工作方式</text>
+  <circle cx="1160" cy="48" r="8" fill="#91ED8C"/>
+</svg>

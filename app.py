@@ -16,11 +16,13 @@ import getpass
 import hashlib
 import hmac
 import io
+import math
 import os
 import platform
 import queue
 import re
 import signal
+import shutil
 import sys
 import subprocess
 import threading
@@ -37,6 +39,19 @@ import sherpa_onnx
 for _p in ("/opt/homebrew/bin", "/usr/local/bin"):
     if _p not in os.environ.get("PATH", ""):
         os.environ["PATH"] = _p + ":" + os.environ.get("PATH", "")
+
+
+def ffmpeg_path(name="ffmpeg"):
+    """Windows 优先用随包分发的工具；POSIX 仍沿 PATH 找到系统安装版本。"""
+    executable = name + (".exe" if platform.system() == "Windows" else "")
+    if platform.system() == "Windows":
+        bundled = Path(__file__).resolve().parent / "ffmpeg" / executable
+        if bundled.is_file():
+            return str(bundled)
+    found = shutil.which(executable)
+    if found:
+        return found
+    raise FileNotFoundError(f"未找到 {executable}，请安装后重试")
 
 # ---------------- 日志 ----------------
 # Finder/Dock 启动时 print 全部进黑洞, 之前"预处理到底有没有生效"根本无从查证
@@ -725,7 +740,7 @@ def to_upload(src: Path, fmt: str, dst: Path):
     """把音频转成指定上传格式(16kHz 单声道不变, 只换容器/编码)。"""
     codec, _mime = ASR_FMT[fmt]
     r = subprocess.run(
-        ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-i", str(src),
+        [ffmpeg_path(), "-y", "-hide_banner", "-loglevel", "error", "-i", str(src),
          "-vn", "-ac", "1", "-ar", str(SR)] + codec + [str(dst)],
         capture_output=True, timeout=1800)
     if r.returncode != 0 or not dst.exists() or dst.stat().st_size < 512:
@@ -1032,6 +1047,8 @@ def cloud_err_kind(e):
                               "timeout", "readtimeout", "unreachable", "reset by peer",
                               "remotedisconnected", "网络错误", "请求超时")):
         return "network"
+    if isinstance(e, FileNotFoundError) and any(x in low for x in ("ffmpeg", "ffprobe")):
+        return "ffmpeg"
     return "other"
 
 
@@ -1042,6 +1059,10 @@ def cloud_err_text(kind, e):
         return "网络不稳定，连不上或超时了。稍后再点一次即可重试。"
     if kind == "expired":
         return "云端结果链接已过期，需要重新转写一次。"
+    if kind == "ffmpeg":
+        if platform.system() == "Windows":
+            return "Windows未安装 ffmpeg，无法准备上传音频。安装后重试，或改用『本地转写+云端后制作』。"
+        return "未找到 ffmpeg，无法准备上传音频。安装后重试，或改用『本地转写+云端后制作』。"
     return str(e)[:160]
 
 
@@ -1104,7 +1125,7 @@ def _cloud_asr_openai(cfg, audio_path, timeout=1800, prog=None, cancel=None):
         blen = min(step, dur - st)
         ck = p.parent / f".cloud_part{k}.m4a"
         r = subprocess.run(
-            ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+            [ffmpeg_path(), "-y", "-hide_banner", "-loglevel", "error",
              "-ss", f"{st:.3f}", "-t", f"{blen:.3f}", "-i", str(p),
              "-vn", "-ac", "1", "-ar", str(SR), "-c:a", "aac", "-b:a", "64k",
              str(ck)], capture_output=True)
@@ -1462,7 +1483,7 @@ def fmt_ts(sec):
 def list_audio_devices():
     try:
         out = subprocess.run(
-            ["ffmpeg", "-hide_banner", "-f", "avfoundation", "-list_devices", "true", "-i", ""],
+            [ffmpeg_path(), "-hide_banner", "-f", "avfoundation", "-list_devices", "true", "-i", ""],
             capture_output=True, text=True, timeout=15).stderr
     except Exception:
         return []
@@ -1543,7 +1564,7 @@ def probe_dur(path):
     """用 ffprobe 取媒体时长(秒), 失败返回 0"""
     try:
         r = subprocess.run(
-            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+            [ffmpeg_path("ffprobe"), "-v", "error", "-show_entries", "format=duration",
              "-of", "default=noprint_wrappers=1:nokey=1", str(path)],
             capture_output=True, text=True, timeout=60)
         return float((r.stdout or "0").strip() or 0)
@@ -1710,7 +1731,7 @@ def encode_listen(src, dst, input_opts=None):
     于是"结束录音"的回放降噪副本从来没成功过(导入路径不传这些参数所以一直是好的)。
     失败清掉半成品、返回 (None, 报错原文), 由上层记下来, 不静默吞掉。
     WAV 回放副本保持 16kHz 单声道无损；旧 m4a 调用仍保留 AAC 兼容路径。"""
-    cmd = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error"]
+    cmd = [ffmpeg_path(), "-y", "-hide_banner", "-loglevel", "error"]
     cmd += (input_opts or [])
     cmd += ["-i", str(src), "-vn", "-af", LISTEN_FILTER, "-ar", str(SR), "-ac", "1"]
     if dst.suffix.lower() == ".wav":
@@ -2621,7 +2642,7 @@ class App:
         return find_device(["MacBook Pro麦克风", "麦克风"])
 
     def _spawn_ffmpeg(self, idx):
-        cmd = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+        cmd = [ffmpeg_path(), "-y", "-hide_banner", "-loglevel", "error",
                "-f", "avfoundation", "-i", f":{idx}",
                "-ac", "1", "-ar", str(SR),
                "-f", "s16le", "-"]
@@ -3149,7 +3170,7 @@ class App:
                     pass
 
             def _enc(with_chain):
-                cmd = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+                cmd = [ffmpeg_path(), "-y", "-hide_banner", "-loglevel", "error",
                        "-f", "s16le", "-ar", str(SR), "-ac", "1",
                        "-i", str(raw)]
                 if with_chain:
@@ -3338,7 +3359,7 @@ class App:
             # cancel_job 掐得到; 掐完先查标记走 Cancelled, 别掉进"预处理失败→
             # 回退原音继续转写"的分支(那是给真失败准备的, 不是给停止准备的)。
             ff = subprocess.Popen(
-                ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+                [ffmpeg_path(), "-y", "-hide_banner", "-loglevel", "error",
                  "-i", str(audio_path), "-af", chain,
                  "-ar", "48000", "-ac", "1", str(tmp_wav)],
                 stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
@@ -3621,7 +3642,7 @@ class App:
         self.stage("抽取音轨中", 0)
         m4a = d / "audio.m4a"
         ff = subprocess.Popen(
-            ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+            [ffmpeg_path(), "-y", "-hide_banner", "-loglevel", "error",
              "-i", str(src), "-vn", "-ac", "1", "-ar", str(SR),
              "-c:a", "aac", "-b:a", "64k", str(m4a)],
             stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
@@ -3753,7 +3774,7 @@ class App:
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
         tmp = CACHE_DIR / f"{d.name}.cloud-source.wav"
         ff = subprocess.Popen(
-            ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-i", str(source),
+            [ffmpeg_path(), "-y", "-hide_banner", "-loglevel", "error", "-i", str(source),
              "-af", chain, "-ar", str(SR), "-ac", "1", "-c:a", "pcm_s16le", str(tmp)],
             stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
         with self.lock:
@@ -3798,6 +3819,13 @@ class App:
         meta = json.loads((d / "session.json").read_text(encoding="utf-8"))
         if self._recording_audio_source(d, meta) is None:
             raise RuntimeError("该项目没有音频")
+        try:
+            ffmpeg_path()
+        except FileNotFoundError as e:
+            err = cloud_err_text("ffmpeg", e)
+            self.emit(type="refinish", id=sid, kind="cloud", ok=False,
+                      err=err, err_kind="ffmpeg")
+            return {"ok": False, "error": err}
         self._uncancel(sid)
         self._job_begin(sid, "cloud", state="wait")
         # 流程①转写完还要接后制作; 流程②不会走到这里(那条是本地转写+云端后制作)
@@ -3872,17 +3900,15 @@ class App:
         except Cancelled:
             print(f"[cloud-asr] 已被用户停止: {d.name}", flush=True)
             self._mark_stopped(d)
-            if emit_end:
-                self.emit(type="refinish", id=d.name, kind="cloud",
-                          ok=False, cancelled=True)
+            self.emit(type="refinish", id=d.name, kind="cloud",
+                      ok=False, cancelled=True)
             return False
         except Exception as e:
             print(f"[cloud-asr] 失败: {e}", flush=True)
-            if emit_end:
-                # 分类 + 人话: 原始堆栈只留在日志里, 界面上给能行动的原因
-                kind = cloud_err_kind(e)
-                self.emit(type="refinish", id=d.name, kind="cloud", ok=False,
-                          err=cloud_err_text(kind, e), err_kind=kind)
+            # emit_end 只控制成功终态归属; 失败时后制作不会启动, 必须立即告知界面。
+            kind = cloud_err_kind(e)
+            self.emit(type="refinish", id=d.name, kind="cloud", ok=False,
+                      err=cloud_err_text(kind, e), err_kind=kind)
             return False
         finally:
             if temporary_source:
@@ -4363,6 +4389,122 @@ class App:
             self.emit(type="note", **item)
             return item
 
+    def add_transcript_note(self, sid, t, text):
+        """把课后时间线笔记写入项目元数据与逐字稿。"""
+        if not sid or ".." in sid or "/" in sid or "\\" in sid:
+            raise RuntimeError("非法路径")
+        if self.state in ("recording", "paused", "stopping"):
+            raise RuntimeError("录制中不能添加课后笔记")
+        if sid in self.progs:
+            raise RuntimeError("该项目正在跑后台任务，等它结束再记笔记")
+        new = (text or "").strip()
+        if not new:
+            raise RuntimeError("笔记内容不能为空")
+        if len(new) > 5000:
+            raise RuntimeError("笔记太长了（上限 5000 字）")
+        try:
+            timestamp = float(t)
+        except (TypeError, ValueError):
+            raise RuntimeError("笔记时间无效") from None
+
+        with self.lock:
+            d = SESSIONS_DIR / sid
+            sj = d / "session.json"
+            if not sj.is_file():
+                raise RuntimeError("项目不存在或没有可写文稿")
+            meta = json.loads(sj.read_text(encoding="utf-8"))
+            duration = float(meta.get("duration") or 0)
+            if not 0 <= timestamp <= duration:
+                raise RuntimeError("笔记时间不能超过录音时长")
+            item = {"t": round(timestamp, 1), "text": new}
+            notes = meta.setdefault("notes", [])
+            notes.append(item)
+            notes.sort(key=lambda note: float(note.get("t") or 0))
+            sj.write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
+            self._write_md(d, meta, meta.get("refinished", "") or "本地")
+        return {"ok": True, "note": item, "notes": notes}
+
+    def update_transcript_note(self, sid, note_index, expected_t, expected_text, t, text):
+        """编辑课后时间线笔记；用索引和原值快照阻止改错重复笔记。"""
+        if not sid or ".." in sid or "/" in sid or "\\" in sid:
+            raise RuntimeError("非法路径")
+        if self.state in ("recording", "paused", "stopping"):
+            raise RuntimeError("录制中不能修改课后笔记")
+        if sid in self.progs:
+            raise RuntimeError("该项目正在跑后台任务，等它结束再修改笔记")
+        new = (text or "").strip()
+        if not new:
+            raise RuntimeError("笔记内容不能为空")
+        if len(new) > 5000:
+            raise RuntimeError("笔记太长了（上限 5000 字）")
+        try:
+            idx = int(note_index)
+            timestamp = float(t)
+            expected_timestamp = float(expected_t)
+        except (TypeError, ValueError):
+            raise RuntimeError("笔记信息无效") from None
+
+        with self.lock:
+            d = SESSIONS_DIR / sid
+            sj = d / "session.json"
+            if not sj.is_file():
+                raise RuntimeError("项目不存在或没有可写文稿")
+            meta = json.loads(sj.read_text(encoding="utf-8"))
+            duration = float(meta.get("duration") or 0)
+            if not 0 <= timestamp <= duration:
+                raise RuntimeError("笔记时间不能超过录音时长")
+            notes = meta.setdefault("notes", [])
+            if idx < 0 or idx >= len(notes):
+                raise RuntimeError("笔记已变化，请重新打开后再试")
+            current = notes[idx]
+            try:
+                current_t = float(current.get("t") or 0)
+            except (TypeError, ValueError):
+                current_t = -1
+            if current_t != expected_timestamp or current.get("text", "") != expected_text:
+                raise RuntimeError("笔记已变化，请重新打开后再试")
+            item = {**current, "t": round(timestamp, 1), "text": new}
+            notes[idx] = item
+            notes.sort(key=lambda note: float(note.get("t") or 0))
+            sj.write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
+            self._write_md(d, meta, meta.get("refinished", "") or "本地")
+        return {"ok": True, "note": item, "notes": notes}
+
+    def delete_transcript_note(self, sid, note_index, expected_t, expected_text):
+        """删除指定课后笔记；校验原值快照以避免列表变化时误删。"""
+        if not sid or ".." in sid or "/" in sid or "\\" in sid:
+            raise RuntimeError("非法路径")
+        if self.state in ("recording", "paused", "stopping"):
+            raise RuntimeError("录制中不能删除课后笔记")
+        if sid in self.progs:
+            raise RuntimeError("该项目正在跑后台任务，等它结束再删除笔记")
+        try:
+            idx = int(note_index)
+            expected_timestamp = float(expected_t)
+        except (TypeError, ValueError):
+            raise RuntimeError("笔记信息无效") from None
+
+        with self.lock:
+            d = SESSIONS_DIR / sid
+            sj = d / "session.json"
+            if not sj.is_file():
+                raise RuntimeError("项目不存在或没有可写文稿")
+            meta = json.loads(sj.read_text(encoding="utf-8"))
+            notes = meta.setdefault("notes", [])
+            if idx < 0 or idx >= len(notes):
+                raise RuntimeError("笔记已变化，请重新打开后再试")
+            current = notes[idx]
+            try:
+                current_t = float(current.get("t") or 0)
+            except (TypeError, ValueError):
+                current_t = -1
+            if current_t != expected_timestamp or current.get("text", "") != expected_text:
+                raise RuntimeError("笔记已变化，请重新打开后再试")
+            removed = notes.pop(idx)
+            sj.write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
+            self._write_md(d, meta, meta.get("refinished", "") or "本地")
+        return {"ok": True, "note": removed, "notes": notes}
+
     def set_spk_labels(self, sid, labels):
         """保存该项目的说话人显示名(键是模型给的 S01/S02, 只在本项目内有效)"""
         if not sid or ".." in sid or "/" in sid or "\\" in sid:
@@ -4768,10 +4910,24 @@ class Handler(BaseHTTPRequestHandler):
             am = load_setting("appearance")
             if am not in ("light", "dark", "system"):
                 am = ""
+            theme_color = load_setting("theme_color")
+            try:
+                h = float(theme_color.get("h"))
+                s = float(theme_color.get("s"))
+                l = float(theme_color.get("l"))
+                if not all(map(math.isfinite, (h, s, l))):
+                    raise ValueError
+                theme_color = {"h": h % 360, "s": max(0, min(100, s)),
+                               "l": max(20, min(80, l))}
+            except (AttributeError, TypeError, ValueError):
+                theme_color = {"h": 135.1, "s": 58.6, "l": 49.2}
+            theme_color_json = json.dumps(
+                json.dumps(theme_color, separators=(",", ":")))
             # 平台标记同注入：首帧前就把 Windows 版式(窗口控件留白)定下来，避免先闪 mac 样式
             body = INDEX.read_text(encoding="utf-8").replace(
                 "__TINGDAO_APPEARANCE__", am).replace(
-                "__TINGDAO_PLATFORM__", platform.system()).encode("utf-8")
+                "__TINGDAO_PLATFORM__", platform.system()).replace(
+                "__TINGDAO_THEME_COLOR__", theme_color_json).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
@@ -5071,6 +5227,18 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(volume_set(body.get("pct", 0)))
             if u.path == "/api/note":
                 return self._json({"ok": True, "note": APP.note(body.get("text", ""))})
+            if u.path == "/api/timeline_note":
+                return self._json(APP.add_transcript_note(body.get("id", ""),
+                                                          body.get("t"),
+                                                          body.get("text", "")))
+            if u.path == "/api/timeline_note_update":
+                return self._json(APP.update_transcript_note(
+                    body.get("id", ""), body.get("index"), body.get("expected_t"),
+                    body.get("expected_text", ""), body.get("t"), body.get("text", "")))
+            if u.path == "/api/timeline_note_delete":
+                return self._json(APP.delete_transcript_note(
+                    body.get("id", ""), body.get("index"), body.get("expected_t"),
+                    body.get("expected_text", "")))
             if u.path == "/api/spk_labels":
                 return self._json(APP.set_spk_labels(body.get("id", ""),
                                                      body.get("labels") or {}))

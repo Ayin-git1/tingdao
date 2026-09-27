@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="240" viewBox="0 0 1200 240" role="img" aria-labelledby="title desc">
+  <title id="title">ting Dao · oto</title><desc id="desc">本地优先录音、转写与复盘工具，支持 macOS 和 Windows。</desc>
+  <rect width="1200" height="240" rx="24" fill="#111713"/>
+  <rect x="0" y="0" width="12" height="240" rx="6" fill="#91ED8C"/>
+  <image href="../../releases/2.7.0-icon-refresh-20260927/Tingdao-default.png" x="48" y="34" width="172" height="172" preserveAspectRatio="xMidYMid meet"/>
+  <text x="278" y="125" fill="#F7FAF7" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC',sans-serif" font-size="68" font-weight="700" letter-spacing="1">ting Dao · oto</text>
+  <text x="282" y="185" fill="#BEC8BF" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC',sans-serif" font-size="36" font-weight="500">本地优先录音 · 转写 · 复盘</text>
+</svg>
