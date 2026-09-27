@@ -6,7 +6,7 @@
 
 <h2 id="overview"><img src="./assets/readme/badges/overview.svg" height="40" alt="概览"></h2>
 
-听道适用于 macOS 与 Windows，可录制系统声音、麦克风或导入音视频转写。录音时显示实时字幕，结束后可逐句回放、记时间线笔记并导出文稿。默认在本机处理；只有选择云端模式并确认上传后，音频才会离开本机。
+听道适用于 macOS 与 Windows，可录制系统声音与麦克风声音。支持本地模型转写和远端api转写两套通路。支持生成笔记与文稿摘要。深度集成从听→学的知识掌握链路。听道服务于：咨询服务、会议记录、私密会话、网课学习等场景。
 
 当前版本：**v2.7.1**　·　[下载页面](https://github.com/Ayin-git1/tingdao/releases)　·　[PolyForm Noncommercial License](./LICENSE)
 
@@ -90,6 +90,9 @@ Windows 安装版已包含 FFmpeg。安装 Python 后重开 PowerShell，并确�
 
 - Windows 新增本地 Whisper 识别与精修，支持 faster-whisper / CTranslate2 模型。
 - Windows 安装包现包含 FFmpeg，首次配置只需另备 Python 依赖和模型。
-- 新增录音结束后的时间线笔记，可添加、编辑和删除；支持自定义主题色。
+- 更新模型填写方式，加入选择器。点击"..."开启，Whisper与SV 为文件夹选择器；VAD 断句为.onnx选择器。
+- 新增录音结束后的时间线笔记，可添加、编辑和删除。
 - 优化录音母带处理，保留高质量母带作为音频来源，减少不必要的转码和回放副本。
 - 更新听道应用图标，并统一 README 首页与章节标题视觉样式。
+- 优化项目抽屉的显示层级和开关动画效果。
+- 新增界面主题色与阅读字号；行距调整。界面显示基本满足个性需求。
