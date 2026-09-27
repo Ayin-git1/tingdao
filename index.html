@@ -507,6 +507,12 @@
   .cloudpop .cst{flex:1; font-size:var(--fs-meta); color:var(--sub); line-height:1.5;}
   .cloudpop .cst.ok{color:var(--gd);}
   .cloudpop .cst.bad{color:var(--warn);}
+  .cloudpop .pathrow{display:flex; gap:6px; align-items:center; margin-bottom:6px;}
+  .cloudpop .pathrow input{flex:1; min-width:0; margin-bottom:0;}
+  .cloudpop .pathpick{flex:none; width:34px; height:34px; border:1px solid var(--line);
+          border-radius:9px; background:var(--bg); color:var(--sub); cursor:pointer;
+          font-family:inherit; font-size:17px; font-weight:600; line-height:1;}
+  .cloudpop .pathpick:hover{background:var(--hover); color:var(--txt);}
   /* 输入框内嵌控件行: 下边距挂在 .inrow 上而不是 input 上,
      否则 .inrow 高度=输入框+6px, 里面靠 top:50% 居中的开关/扳手会整体偏下 3px */
   .cloudpop .inrow{position:relative; margin-bottom:6px;}
@@ -1799,15 +1805,18 @@
      <div class="ssec" id="sec-local"><div class="sgh">本地模型目录</div>
       <div class="cloudpop inline" id="localpop">
         <div class="st" style="margin-top:0;">SenseVoice 实时模型 <span style="font-weight:400;color:var(--sub);">（前端快转 · 录制时的实时字幕）</span></div>
-        <input type="text" id="svPath" spellcheck="false" placeholder="必填：SenseVoice 模型目录">
+        <div class="pathrow"><input type="text" id="svPath" spellcheck="false" placeholder="必填：SenseVoice 模型目录">
+          <button class="pathpick" type="button" data-pick="directory" data-model="sensevoice" aria-label="选择 SenseVoice 模型目录" title="选择模型目录">…</button></div>
         <div class="cst" id="svPathSt"></div>
         <div class="st">Whisper 精修模型 <span style="font-weight:400;color:var(--sub);">（后处理 · 停录复核与导入转写）</span></div>
-        <input type="text" id="whPath" spellcheck="false" placeholder="必填：Whisper 模型目录">
+        <div class="pathrow"><input type="text" id="whPath" spellcheck="false" placeholder="必填：Whisper 模型目录">
+          <button class="pathpick" type="button" data-pick="directory" data-model="whisper" aria-label="选择 Whisper 模型目录" title="选择模型目录">…</button></div>
         <div class="cst" id="whPathSt"></div>
         <div class="st">VAD 断句模型 <span style="font-weight:400;color:var(--sub);">（silero_vad.onnx 文件路径）</span></div>
-        <input type="text" id="vadPath" spellcheck="false" placeholder="必填：silero_vad.onnx 路径">
+        <div class="pathrow"><input type="text" id="vadPath" spellcheck="false" placeholder="必填：silero_vad.onnx 路径">
+          <button class="pathpick" type="button" data-pick="onnx" data-model="vad" aria-label="选择 VAD 模型文件" title="选择 ONNX 文件">…</button></div>
         <div class="cst" id="vadPathSt"></div>
-        <div class="ptinfo">三款模型都需自行下载并配置路径（留空=功能不可用）：SenseVoice 负责实时字幕，Whisper 负责精修与导入转写，VAD 负责断句。改 SenseVoice / VAD 需重启听道生效，Whisper 下个任务起生效。</div>
+        <div class="ptinfo" id="localModelHint">三款模型都需自行下载并配置路径（留空=功能不可用）：SenseVoice 负责实时字幕，Whisper 负责精修与导入转写，VAD 负责断句。改 SenseVoice / VAD 需重启听道生效，Whisper 下个任务起生效。</div>
       </div>
      </div>
 
@@ -2404,6 +2413,9 @@ function syncPlatformUI(platform){
   $('setShortcutHint').textContent = `全部摊开 · 点外面或 ${mod}, 也能关`;
   $('appearanceHint').textContent = mac ? '跟随 macOS 外观自动切换。'
     : platform === 'Windows' ? '跟随 Windows 外观自动切换。' : '跟随系统外观自动切换。';
+  $('localModelHint').textContent = platform === 'Windows'
+    ? '模型需自行下载并配置：SenseVoice 负责实时字幕，CTranslate2 格式 Whisper 负责实时识别、精修与导入转写，VAD 负责断句。Windows Whisper 目录需含 model.bin、config.json 和 tokenizer.json。'
+    : '三款模型都需自行下载并配置路径（留空=功能不可用）：SenseVoice 负责实时字幕，Whisper 负责精修与导入转写，VAD 负责断句。改 SenseVoice / VAD 需重启听道生效，Whisper 下个任务起生效。';
   $('shortcutSummary').textContent = mac
     ? '按 ⌘⇧R 开始录音 · ⌘/ 查看全部 · ⌘, 打开 / 收起设置 · Esc 关掉当前弹层'
     : '按 Ctrl+Shift+R 开始录音 · Ctrl+/ 查看全部 · Ctrl+, 打开 / 收起设置 · Esc 关掉当前弹层';
@@ -3351,13 +3363,17 @@ function syncLocalModelFields(st){
 async function modelSave(kind, input, stId, key){
   const v = input.value.trim();
   const NEED = { sensevoice: 'tokens.txt + model.int8.onnx/model.onnx',
-                 whisper:    'config.json + weights.safetensors',
+                 whisper:    hostPlatform === 'Windows'
+                   ? 'model.bin + config.json + tokenizer.json'
+                   : 'config.json + weights.safetensors',
                  vad:        '一个 .onnx 文件' }[kind];
   const st = $(stId);
   const r = await api('/api/model_check', {path: v, kind});
   if(!r.ok){
     st.className = 'cst bad';
-    st.textContent = (r.msg || ('路径不像该模型（需 ' + NEED + '）')) + '，未保存';
+    st.textContent = (r.msg || (kind === 'vad'
+      ? '所选文件必须是 .onnx'
+      : '所选目录内需包含 ' + NEED)) + '，未保存';
     input.value = input.dataset.saved || '';
     return;
   }
@@ -3372,6 +3388,21 @@ async function modelSave(kind, input, stId, key){
 $('svPath').addEventListener('change', ()=> modelSave('sensevoice', $('svPath'), 'svPathSt', 'sv_model_dir'));
 $('whPath').addEventListener('change', ()=> modelSave('whisper', $('whPath'), 'whPathSt', 'whisper_model'));
 $('vadPath').addEventListener('change', ()=> modelSave('vad', $('vadPath'), 'vadPathSt', 'vad_model'));
+document.querySelectorAll('.pathpick').forEach(button=>button.addEventListener('click', async ()=>{
+  const model = button.dataset.model;
+  const input = $({sensevoice:'svPath', whisper:'whPath', vad:'vadPath'}[model]);
+  const status = {sensevoice:'svPathSt', whisper:'whPathSt', vad:'vadPathSt'}[model];
+  const key = {sensevoice:'sv_model_dir', whisper:'whisper_model', vad:'vad_model'}[model];
+  button.disabled = true;
+  try{
+    const picked = await api('/api/pick_model_path', {kind:button.dataset.pick});
+    if(picked.error) throw new Error(picked.error);
+    if(picked.path){ input.value = picked.path; await modelSave(model, input, status, key); }
+  }catch(e){
+    $(status).className = 'cst bad';
+    $(status).textContent = '无法打开路径选择器：' + e.message;
+  }finally{ button.disabled = false; }
+}));
 $('setProvider').addEventListener('click', async e=>{
   const b = e.target.closest('button'); if(!b || b.dataset.v===cloudProv) return;
   cloudProv = b.dataset.v; paintProvider();

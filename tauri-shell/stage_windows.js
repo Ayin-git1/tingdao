@@ -3,7 +3,7 @@ const path = require('node:path');
 
 const root = path.resolve(__dirname, '..');
 const destination = path.join(__dirname, 'program-windows');
-const files = ['app.py', 'index.html', 'whisper_worker.py'];
+const files = ['app.py', 'index.html', 'whisper_worker.py', 'whisper_worker_windows.py'];
 
 fs.mkdirSync(path.join(destination, 'sounds'), { recursive: true });
 for (const file of files) {

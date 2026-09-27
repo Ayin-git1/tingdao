@@ -40,9 +40,24 @@ for _p in ("/opt/homebrew/bin", "/usr/local/bin"):
 
 # ---------------- 日志 ----------------
 # Finder/Dock 启动时 print 全部进黑洞, 之前"预处理到底有没有生效"根本无从查证
-# 数据根目录: 打包/多实例可用环境变量 TINGDAO_DATA 整体搬家; 默认 ~/Documents/transcripts
+# 数据根目录: 打包/多实例可用环境变量 TINGDAO_DATA 整体搬家; 默认系统「文档」/transcripts
+def _documents_dir():
+    if platform.system() == "Windows":
+        try:
+            import ctypes
+            path = ctypes.create_unicode_buffer(32768)
+            # CSIDL_PERSONAL 会跟随 Windows 对「文档」文件夹的实际重定向位置。
+            if ctypes.windll.shell32.SHGetFolderPathW(None, 5, None, 0, path) == 0 \
+                    and path.value:
+                return Path(path.value)
+        except Exception:
+            pass
+    return Path.home() / "Documents"
+
+
 DATA_DIR = (Path(os.environ["TINGDAO_DATA"]).expanduser()
-            if os.environ.get("TINGDAO_DATA") else Path.home() / "Documents/transcripts")
+            if os.environ.get("TINGDAO_DATA") else _documents_dir() / "transcripts")
+CACHE_DIR = DATA_DIR / ".cache"
 LOG_FILE = DATA_DIR / ".tingdao.log"
 
 
@@ -516,6 +531,7 @@ class Truncated(RuntimeError):
 
 
 WORKER_PY = str(Path(__file__).parent / "whisper_worker.py")
+WINDOWS_WORKER_PY = str(Path(__file__).parent / "whisper_worker_windows.py")
 
 
 class WhisperStdout:
@@ -2013,8 +2029,11 @@ class Engine:
         if name == "whisper" and (wm is None or not wm.exists()):
             raise RuntimeError("未配置 Whisper 模型：设置 → 本地模型")
         if name == "whisper" and self._wh is None:
-            import mlx_whisper  # 惰性导入, 避免拖慢启动
-            self._wh = True
+            if platform.system() == "Windows":
+                self._wh = self._load_windows_whisper(wm)
+            else:
+                import mlx_whisper  # 惰性导入, 避免拖慢启动
+                self._wh = True
         self.engine_name = name
         return name
 
@@ -2047,6 +2066,13 @@ class Engine:
         return (stream.result.text or "").strip()
 
     def _recognize_whisper(self, samples, lang):
+        if platform.system() == "Windows":
+            model = self._load_windows_whisper(whisper_model())
+            kw = {"beam_size": 1}
+            if lang and lang != "auto":
+                kw["language"] = lang
+            segments, _ = model.transcribe(samples, **kw)
+            return "".join(segment.text for segment in segments).strip()
         import contextlib, io
         import mlx_whisper
         kw = dict(path_or_hf_repo=str(whisper_model()), verbose=False,
@@ -2056,6 +2082,23 @@ class Engine:
         with contextlib.redirect_stderr(io.StringIO()):
             r = mlx_whisper.transcribe(samples, **kw)
         return (r.get("text") or "").strip()
+
+    def _load_windows_whisper(self, model_path):
+        """Windows 专用 faster-whisper 实例；macOS 仍使用 MLX 通道。"""
+        if model_path is None:
+            raise RuntimeError("未配置 Whisper 模型：设置 → 本地模型")
+        with self._wh_lock:
+            if (not isinstance(self._wh, bool)
+                    and getattr(self, "_wh_model_path", None) == model_path):
+                return self._wh
+            try:
+                from faster_whisper import WhisperModel
+            except ImportError as exc:
+                raise RuntimeError("Windows Whisper 依赖未安装：请安装 faster-whisper") from exc
+            model = WhisperModel(str(model_path), device="cpu", compute_type="int8")
+            self._wh = model
+            self._wh_model_path = model_path
+            return model
 
 
 ENGINE = Engine()
@@ -3082,16 +3125,22 @@ class App:
         listen_err = ""
         if raw.exists() and raw.stat().st_size > SR * 2:  # >1s
             m4a = d / "audio.m4a"
-            # 无损母带：回放与后续问题定位不再受 AAC 编码伪影影响。
-            master_cmd = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
-                          "-f", "s16le", "-ar", str(master_source_rate), "-ac", "1",
-                          "-i", str(master_source), "-c:a", "pcm_s16le", str(master)]
+            # WAV 回放直接由标准库写出：Windows 安装流程不要求安装 ffmpeg，
+            # 不能让播放母带依赖一个未随程序提供的外部命令。
             try:
-                master_result = subprocess.run(master_cmd, capture_output=True, timeout=600)
+                with master_source.open("rb") as src, wave.open(str(master), "wb") as dst:
+                    dst.setnchannels(1)
+                    dst.setsampwidth(2)
+                    dst.setframerate(master_source_rate)
+                    while chunk := src.read(1024 * 1024):
+                        dst.writeframesraw(chunk)
             except Exception as e:
-                master_result = type("_R", (), {"returncode": -1,
-                                                 "stderr": str(e).encode()})()
-            if master_result.returncode != 0 or not master.exists() or master.stat().st_size < 1024:
+                print(f"[finish] ⚠ 无损母带生成失败: {e}", flush=True)
+                try:
+                    master.unlink()
+                except OSError:
+                    pass
+            if not master.exists() or master.stat().st_size < 1024:
                 print("[finish] ⚠ 无损母带生成失败，继续保留 AAC 副本", flush=True)
                 try:
                     master.unlink()
@@ -3118,11 +3167,16 @@ class App:
                 # 降噪翻车绝不能连音频一起丢掉: 摘掉滤镜链原样再编一次
                 print("[finish] ⚠ 源头降噪失败, 回退未处理编码:", err, flush=True)
                 r = _enc(None)
+                err = (getattr(r, "stderr", b"") or b"").decode(
+                    errors="ignore").strip()[:300]
                 audio_proc = "failed"
             else:
                 audio_proc = chain or "off"
             if r.returncode == 0 and m4a.exists() and m4a.stat().st_size >= 1024:
                 audio_rel = "audio.m4a"
+            else:
+                print(f"[finish] ⚠ M4A 生成失败（检查 FFmpeg）: {err or '无错误详情'}",
+                      flush=True)
             # 回放副本: 必须在删 raw 之前做（raw 是唯一的全信息源）
             # strong 档位与回放链完全同一条, 母本已经是它处理过的了 —— 这时再出
             # 一份副本纯属多余(两小时的课要多跑一整趟 ffmpeg), 回退还用母本。
@@ -3380,8 +3434,13 @@ class App:
         wm = whisper_model()
         if wm is None:
             raise RuntimeError("未配置 Whisper 模型：设置 → 本地模型")
-        out = Path(audio_path).parent / ".whout.json"
-        cmd = [sys.executable, WORKER_PY, "--audio", str(audio_path),
+        if platform.system() == "Windows":
+            CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            out = CACHE_DIR / f"{Path(audio_path).parent.name}.whout.json"
+        else:
+            out = Path(audio_path).parent / ".whout.json"
+        worker = (WINDOWS_WORKER_PY if platform.system() == "Windows" else WORKER_PY)
+        cmd = [sys.executable, worker, "--audio", str(audio_path),
                "--model", str(wm), "--total", str(total or 0),
                "--out", str(out)]
         if lang and lang != "auto":
@@ -3458,6 +3517,42 @@ class App:
             lines += ["", "## 时间线笔记", ""]
             lines += [f"- [{fmt_ts(n['t'])}] {n['text']}" for n in notes]
         (d / "transcript.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    # ---------- 原生路径选择器 ----------
+    def pick_model_path(self, kind):
+        """选择本地模型目录或 VAD 的 ONNX 文件; 取消返回空串。"""
+        if kind not in ("directory", "onnx"):
+            raise ValueError("无效的模型路径类型")
+        if platform.system() == "Windows":
+            if kind == "directory":
+                script = ("[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false);"
+                          "Add-Type -AssemblyName System.Windows.Forms;"
+                          "$d = New-Object System.Windows.Forms.FolderBrowserDialog;"
+                          "$d.Description = '选择模型目录';"
+                          "if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { $d.SelectedPath }")
+            else:
+                script = ("[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false);"
+                          "Add-Type -AssemblyName System.Windows.Forms;"
+                          "$d = New-Object System.Windows.Forms.OpenFileDialog;"
+                          "$d.Title = '选择 VAD 模型文件'; $d.Filter = 'ONNX 模型|*.onnx';"
+                          "if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { $d.FileName }")
+            try:
+                result = subprocess.run(
+                    ["powershell", "-NoProfile", "-STA", "-Command", script],
+                    capture_output=True, text=True, encoding="utf-8", timeout=900,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            except Exception as e:
+                raise RuntimeError(f"无法打开路径选择器：{type(e).__name__}")
+            if result.returncode:
+                raise RuntimeError((result.stderr or "路径选择器启动失败").strip()[:180])
+            return (result.stdout or "").strip()
+        if kind == "directory":
+            script = 'POSIX path of (choose folder with prompt "选择模型目录")'
+        else:
+            script = 'POSIX path of (choose file with prompt "选择 VAD 模型文件")'
+        result = subprocess.run(["osascript", "-e", script],
+                                capture_output=True, text=True, timeout=900)
+        return (result.stdout or "").strip() if result.returncode == 0 else ""
 
     # ---------- 导入音频/视频文件 ----------
     def pick_file(self):
@@ -4755,6 +4850,11 @@ class Handler(BaseHTTPRequestHandler):
                     except Exception as e:
                         errs.append({"path": p, "error": str(e)[:120]})
                 return self._json({"ok": bool(ids), "ids": ids, "errors": errs})
+            if u.path == "/api/pick_model_path":
+                try:
+                    return self._json({"path": APP.pick_model_path(body.get("kind", ""))})
+                except Exception as e:
+                    return self._json({"error": str(e)}, 500)
             if u.path == "/api/model_check":
                 # 保存前把关: 指错的目录会被引擎当成 HF repo id 联网下载大模型,
                 # 或让识别器启动即崩 —— 必须当场拒绝, 不能等出事。
@@ -4771,6 +4871,10 @@ class Handler(BaseHTTPRequestHandler):
                                or (d / "model.onnx").is_file()))
                 elif kind == "vad":
                     ok = d.is_file() and d.suffix.lower() == ".onnx"
+                elif platform.system() == "Windows":
+                    ok = (d.is_dir() and (d / "config.json").is_file()
+                          and (d / "model.bin").is_file()
+                          and (d / "tokenizer.json").is_file())
                 else:
                     ok = (d.is_dir() and (d / "config.json").is_file()
                           and (d / "weights.safetensors").is_file())
@@ -4993,6 +5097,7 @@ def _report_port_to_shell(port):
 def main():
     global PORT, HEADLESS
     SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
     setup_log()
     # 端口交给 OS 现挑(bind 端口 0 = 一个真正空闲的回环端口, 没有「探测到空闲→再占用」之间的抢端口竞态);
     # 绑好后从 socket 读回真实端口, 全进程(含回报给壳、喂给 pywebview)都用这一个值。

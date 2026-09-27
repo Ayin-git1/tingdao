@@ -94,7 +94,7 @@
 
 ## 首次配置
 
-1. macOS：首次点录音会自动弹出「屏幕录制」授权，允许「听道」一次（只取音频，不录画面）；Windows：安装好 Python 依赖后即可使用 WASAPI，无需额外驱动。首次安装若系统没有 WebView2，安装器需要联网下载运行时
+1. macOS：首次点录音会自动弹出「屏幕录制」授权，允许「听道」一次（只取音频，不录画面）；Windows：安装好 Python 依赖与 FFmpeg 后即可使用 WASAPI，无需额外驱动。首次安装若系统没有 WebView2，安装器需要联网下载运行时
 2. 首次点录音时允许麦克风权限
 3. 若要指定麦克风，去「设置 → 录音 → 麦克风输入源」选（默认跟随系统）
 4. 用云端的话：设置 → 对话模式 → 云端 → 填接口 → 测试连接
@@ -105,15 +105,15 @@
 
 ## 依赖
 
-**硬件与系统**：macOS 安装包仅支持 **Apple Silicon Mac（macOS 12.3+）**；本地精修依赖 MLX。Intel Mac / Windows 请走云端模式（或在代码里改接 faster-whisper 等其它本地引擎）。
+**硬件与系统**：macOS 安装包仅支持 **Apple Silicon Mac（macOS 12.3+）**；macOS 本地 Whisper 使用 MLX，Windows 本地 Whisper 使用 faster-whisper 与 CTranslate2 模型。
 
-**命令行工具**（macOS Homebrew）：`ffmpeg`（解码/抽轨/预处理/仅麦克风采集）、`switchaudio-osx`（可选，仅用于录制中调输出音量）
+**命令行工具**：`ffmpeg`（M4A 编码、导入音频解码与预处理；macOS 可用 Homebrew 安装，Windows 需自行安装并加入 PATH）；`switchaudio-osx`（macOS 可选，仅用于录制中调输出音量）。录音回放 WAV 由程序直接写入，不依赖 FFmpeg。
 
 **系统声音内录**（免虚拟声卡，全系统自带能力）：
 - macOS：ScreenCaptureKit —— 需在「系统设置 → 隐私与安全性 → 屏幕录制」里允许「听道」一次（它只取音频，不录画面）
 - Windows：WASAPI loopback —— 装 `pyaudiowpatch` 即可（已进 `requirements.txt`），无需任何驱动或声卡软件
 
-**Python 环境**（自行安装，安装包不含）：建议 Python 3.10。Windows 安装版默认从 `%USERPROFILE%\tingdao-venv\Scripts\python.exe` 启动后端；首次安装请按文末「Windows 首次安装引导」创建环境并安装运行依赖。源码 zip 用户在项目目录执行 `pip install -r requirements.txt`。自定义 Python 路径可通过 `TINGDAO_PY` 指定。Windows 本地 Whisper 精修不可用，请使用云端转写模式。
+**Python 环境**（自行安装，安装包不含）：建议 Python 3.10。Windows 安装版默认从 `%USERPROFILE%\tingdao-venv\Scripts\python.exe` 启动后端；首次安装请按文末「Windows 首次安装引导」创建环境并安装运行依赖，同时安装 FFmpeg 并加入 PATH。源码 zip 用户在项目目录执行 `pip install -r requirements.txt`。自定义 Python 路径可通过 `TINGDAO_PY` 指定。
 
 Windows 源码 zip 备用启动方式：解压后在项目目录运行 `& "$env:USERPROFILE\tingdao-venv\Scripts\python.exe" .\app.py`；使用打包壳时才需要额外设置 `TINGDAO_HOME` 指向解压后的程序目录。
 
@@ -123,9 +123,10 @@ Windows 源码 zip 备用启动方式：解压后在项目目录运行 `& "$env:
 |---|---|---|
 | SenseVoiceSmall (zh-en-ja-ko-yue, int8) | 228 MB | 实时识别 |
 | Silero VAD (`silero_vad.onnx`) | 2 MB | 断句 |
-| whisper-large-v3-turbo (MLX) | 1.5 GB | 本地精修 / 导入转写 |
+| whisper-large-v3-turbo (MLX) | 1.5 GB | macOS 本地精修 / 导入转写 |
+| Whisper CTranslate2 模型 (`model.bin`、`config.json`、`tokenizer.json`) | 依模型而异 | Windows 本地实时识别 / 精修 / 导入转写 |
 
-模型不随包分发，请自行下载；下载后在「设置 → 本地模型」里填各自路径（留空即对应功能不可用，代码不再内置任何默认位置）。
+模型不随包分发，请自行下载；下载后在「设置 → 本地模型」里填各自路径（留空即对应功能不可用，代码不再内置任何默认位置）。macOS 与 Windows 的 Whisper 模型格式不同，MLX 模型不能直接用于 Windows；Windows 请下载 faster-whisper/CTranslate2 格式模型。
 
 > 以上均为各自开源许可证下的第三方组件与模型，本项目仅在本地调用、不随包再分发；请遵循其原始许可证使用。
 
@@ -166,14 +167,14 @@ $venv = "$env:USERPROFILE\tingdao-venv"
 py -3.10 -m venv $venv
 $python = Join-Path $venv "Scripts\python.exe"
 & $python -m pip install --upgrade pip
-& $python -m pip install numpy requests sherpa-onnx pyaudiowpatch
+& $python -m pip install numpy requests sherpa-onnx pyaudiowpatch faster-whisper
 ```
 
 这些命令只创建听道自己的 Python 环境，不会替换 Windows 系统 Python。`pyaudiowpatch` 提供 Windows 系统声音与麦克风采集能力，无需安装虚拟声卡或额外驱动。
 
 ### 4. 准备模型并首次启动
 
-模型不随安装包分发。下载 SenseVoiceSmall 与 Silero VAD 模型后，打开听道，在「设置 → 本地模型」中填入模型路径；未配置模型前，实时字幕无法识别语音。Windows 当前不支持内置的本地 Whisper 精修，停录后的转写请选择云端模式，并在「设置 → 对话模式 → 云端」配置服务；音频只有在你确认上传后才会离开本机。首次录音时按 Windows 提示允许麦克风访问。
+模型不随安装包分发。下载 SenseVoiceSmall、Silero VAD 与 CTranslate2 格式的 Whisper 模型后，打开听道，在「设置 → 本地模型」中填入模型路径；未配置模型前，对应的本地识别功能不可用。Windows 可使用本地 Whisper 实时识别、停录精修与导入转写；云端转写仍需在「设置 → 对话模式 → 云端」配置服务，只有确认上传后音频才会离开本机。首次录音时按 Windows 提示允许麦克风访问。
 
 系统声音采集使用 WASAPI loopback，读取当前默认输出设备。录音中切换默认扬声器或耳机后，请停止并重新开始录音。
 
@@ -204,7 +205,7 @@ $python = "$env:USERPROFILE\tingdao-venv\Scripts\python.exe"
         └──PCM 16kHz mono──┬─ Silero VAD 断句 ─┬─ 实时字幕(前端模型)
                              │                   ├─ session.json
   停录后按“对话模式”三选一：  │                   │  transcript.md
-   · 本地 Whisper（MLX large-v3-turbo + 热词）───┤  audio.m4a
+  · 本地 Whisper（macOS MLX / Windows CTranslate2 + 热词）───┤  audio.m4a
    · 云端 ASR（同步 multipart 上传 / 异步文件转写任务）┘  audio_listen.m4a
      + 云端大模型后制作
 ```
@@ -232,7 +233,8 @@ $python = "$env:USERPROFILE\tingdao-venv\Scripts\python.exe"
 └── whisper_worker.py       # Whisper 精修子进程 worker（可中断、报进度）
 
 ~/Applications/听道.app          # 启动器（bundle id: local.tingdao.app）
-~/Documents/transcripts/         # 项目、设置、热词、日志（默认位置，可用环境变量 TINGDAO_DATA 改）
+Windows「文档」/transcripts/     # Windows 项目、设置、密钥、缓存与日志；跟随系统文档目录重定向
+~/Documents/transcripts/         # macOS 项目、设置、热词、日志（默认位置，可用环境变量 TINGDAO_DATA 改）
 ```
 
 ### 数据文件
@@ -243,11 +245,13 @@ $python = "$env:USERPROFILE\tingdao-venv\Scripts\python.exe"
 | `transcripts/<…>/transcript.md` | 导出文稿 |
 | `transcripts/<…>/audio.m4a` / `audio_listen.m4a` | 转写用 / 回放用音频 |
 | `transcripts/.settings.json` | 对话模式、云端服务商与地址/Key(密文)/模型名/润色提示词、云端流程档位、预处理档位、排序偏好、说话人改名、最近一次预处理回执 |
+| `transcripts/.keybox.key` | 加密云端 Key 所需的本机随机主密钥 |
+| `transcripts/.cache/` | Windows 本地 Whisper 等任务的临时结果文件，启动时自动创建 |
 | `transcripts/.hotword-templates.json` | 热词模板库（含激活项） |
 | `transcripts/.tingdao.log` | 运行日志（带时间戳，超 1MB 轮转） |
 
-> **API Key 怎么存的**：`.settings.json` 里只有 `cloud_api_key_enc` 一个密文字段，不再写明文。加密是纯标准库实现（SHA-256 keystream 做 XOR + HMAC-SHA256 完整性校验），主密钥由「本机主机名 + 登录名」派生，macOS / Windows 走同一套代码——不依赖钥匙串，也不多装第三方包。
-> 它做到的是：配置文件里看不到明文密钥；把整个项目目录打包发给别人，对方拿不到一把能用的 key；换机器或改登录名会解不开，界面会直接提示「请重新输入一次」。首次启动会自动把老版本残留的明文迁成密文并抹掉。
+> **API Key 怎么存的**：`.settings.json` 里只有 `cloud_api_key_enc` 一个密文字段，不再写明文。加密是纯标准库实现（SHA-256 keystream 做 XOR + HMAC-SHA256 完整性校验）；随机主密钥保存在同一数据目录的 `.keybox.key`，macOS / Windows 共用这套代码，不依赖钥匙串或额外第三方包。
+> 只复制 `.settings.json` 到另一台电脑时，因为没有对应的 `.keybox.key`，密钥无法解开；复制整个数据目录也会复制主密钥，因此不要把它当成跨设备的密钥保护。首次启动会自动把老版本残留的明文迁成密文并抹掉。
 > 边界也说清楚：这是**防君子不防小人**。能以自己的身份在你这台机器上运行代码的人，照样读得到密钥——本项目源码公开，别把它当成密码学意义上的保护。内部服务只绑 `127.0.0.1` 回环地址，不对外。
 
 ---
@@ -272,7 +276,7 @@ $python = "$env:USERPROFILE\tingdao-venv\Scripts\python.exe"
 ## 许可与发布形态
 
 - **许可**：源码公开，但**仅供个人非商业使用**，采用 [PolyForm Noncommercial License 1.0.0](./LICENSE)。因此本项目严格意义上不是 OSI 定义的「开源」（开源必须允许商用）——措辞请用「源码公开 / source-available」。第三方库、命令行工具、驱动与模型各自遵循其上游许可，详见 [`THIRD-PARTY-NOTICES.md`](./THIRD-PARTY-NOTICES.md)。
-- **只发程序本体**：本仓库**不打包 Python 环境、不打包模型、不打包 ffmpeg 等**。这些由你自行安装/下载，见下方「依赖」与「首次配置」。本地精修依赖 MLX，仅 Apple Silicon 可用；Intel Mac / Windows 走云端模式。
+- **只发程序本体**：本仓库**不打包 Python 环境、不打包模型、不打包 ffmpeg 等**。这些由你自行安装/下载，见下方「依赖」与「首次配置」。macOS 本地 Whisper 使用 MLX；Windows 使用 faster-whisper 与 CTranslate2 模型。
 - **交付形态**：Windows 主路径为 **NSIS setup.exe 安装包**，源码 zip 作为备用；macOS 提供可安装进 `/Applications` 的 **DMG 镜像**。
 - **路径不写死**：模型、数据等路径一律在应用内「设置 → 本地模型」里填，由程序存进配置，用户无需、也不该去改源码里的路径。
 

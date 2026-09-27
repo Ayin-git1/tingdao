@@ -6,6 +6,7 @@
       "program-windows/app.py",
       "program-windows/index.html",
       "program-windows/whisper_worker.py",
+      "program-windows/whisper_worker_windows.py",
       "program-windows/sounds/"
     ],
     "icon": [
