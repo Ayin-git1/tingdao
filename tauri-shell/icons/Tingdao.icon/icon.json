@@ -1,0 +1,293 @@
+{
+  "features" : [
+    "refractivity"
+  ],
+  "fill" : "system-light",
+  "groups" : [
+    {
+      "layers" : [
+        {
+          "blend-mode-specializations" : [
+            {
+              "value" : "lighten"
+            },
+            {
+              "appearance" : "dark",
+              "value" : "plus-darker"
+            }
+          ],
+          "fill-specializations" : [
+            {
+              "value" : {
+                "linear-gradient" : [
+                  "display-p3:0.89724,0.95766,0.89375,0.85000",
+                  "display-p3:0.94258,1.00000,0.95005,1.00000"
+                ],
+                "orientation" : {
+                  "start" : {
+                    "x" : 0.1160448026128941,
+                    "y" : 1.6327643557422966
+                  },
+                  "stop" : {
+                    "x" : 0,
+                    "y" : 0
+                  }
+                }
+              }
+            },
+            {
+              "appearance" : "dark",
+              "value" : {
+                "linear-gradient" : [
+                  "display-p3:0.48371,0.46747,0.31438,0.00000",
+                  "display-p3:1.00000,0.87641,0.27721,0.00000"
+                ],
+                "orientation" : {
+                  "start" : {
+                    "x" : 0.1160448026128941,
+                    "y" : 1.6327643557422966
+                  },
+                  "stop" : {
+                    "x" : 0,
+                    "y" : 0
+                  }
+                }
+              }
+            }
+          ],
+          "glass" : true,
+          "hidden" : false,
+          "image-name" : "02-black-ring.svg",
+          "name" : "02-black-ring",
+          "opacity" : 1,
+          "position" : {
+            "scale" : 0.4,
+            "translation-in-points" : [
+              -108.71383650060898,
+              -30
+            ]
+          }
+        },
+        {
+          "fill-specializations" : [
+            {
+              "value" : {
+                "linear-gradient" : [
+                  "display-p3:0.00000,0.00000,0.00000,1.00000",
+                  "display-p3:0.00000,0.00000,0.00000,0.82000"
+                ]
+              }
+            },
+            {
+              "appearance" : "dark",
+              "value" : {
+                "linear-gradient" : [
+                  "display-p3:1.00000,1.00000,1.00000,1.00000",
+                  "display-p3:1.00000,1.00000,1.00000,0.82000"
+                ]
+              }
+            }
+          ],
+          "image-name" : "横向随机笔记线条.svg",
+          "name" : "横向随机笔记线条",
+          "position" : {
+            "scale" : 1.8,
+            "translation-in-points" : [
+              27,
+              -11.66637289839548
+            ]
+          }
+        }
+      ],
+      "lighting" : "combined",
+      "refractivity" : {
+        "depth" : 0.976640625,
+        "enabled" : true,
+        "strength" : -0.4496875
+      },
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 2
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.3
+      }
+    },
+    {
+      "blend-mode" : "darken",
+      "blur-material" : null,
+      "layers" : [
+        {
+          "blend-mode" : "lighten",
+          "fill" : {
+            "linear-gradient" : [
+              "display-p3:0.22644,0.81075,0.32203,0.18000",
+              "display-p3:0.48604,0.96783,0.41245,0.87000"
+            ],
+            "orientation" : {
+              "start" : {
+                "x" : 0.5,
+                "y" : 1
+              },
+              "stop" : {
+                "x" : -0.5996151965350226,
+                "y" : 0.3364675971673255
+              }
+            }
+          },
+          "hidden" : false,
+          "image-name" : "05-Green-card.svg",
+          "name" : "05-Green-card",
+          "position" : {
+            "scale" : 1.52,
+            "translation-in-points" : [
+              0,
+              -9
+            ]
+          }
+        }
+      ],
+      "refractivity" : {
+        "depth" : 0.268359375,
+        "enabled" : false,
+        "strength" : 0.420859375
+      },
+      "shadow-specializations" : [
+        {
+          "value" : {
+            "kind" : "layer-color",
+            "opacity" : 0.78
+          }
+        },
+        {
+          "appearance" : "dark",
+          "value" : {
+            "kind" : "neutral",
+            "opacity" : 0.78
+          }
+        }
+      ],
+      "specular" : false,
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.3
+      }
+    },
+    {
+      "blend-mode" : "screen",
+      "blur-material" : 0.6,
+      "layers" : [
+        {
+          "blend-mode" : "lighten",
+          "hidden" : false,
+          "image-name" : "05-Green-card.svg",
+          "name" : "05-Green-card",
+          "position" : {
+            "scale" : 1.54,
+            "translation-in-points" : [
+              0,
+              -9
+            ]
+          }
+        }
+      ],
+      "refractivity" : {
+        "depth" : 0.2967578125,
+        "enabled" : false,
+        "strength" : 0.4453515625
+      },
+      "shadow" : {
+        "kind" : "layer-color",
+        "opacity" : 0.5
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.3
+      }
+    },
+    {
+      "layers" : [
+        {
+          "fill" : {
+            "linear-gradient" : [
+              "srgb:0.47684,0.50481,1.00000,1.00000",
+              "srgb:0.47684,0.50481,1.00000,0.70000"
+            ],
+            "orientation" : {
+              "start" : {
+                "x" : 0.23184227518520553,
+                "y" : 0
+              },
+              "stop" : {
+                "x" : 0.6882412789474905,
+                "y" : 1
+              }
+            }
+          },
+          "image-name" : "03-green-capsule 2.svg",
+          "name" : "03-green-capsule 2",
+          "position" : {
+            "scale" : 0.88,
+            "translation-in-points" : [
+              -242.11121334024222,
+              3.519999999999982
+            ]
+          }
+        },
+        {
+          "fill" : {
+            "linear-gradient" : [
+              "display-p3:0.92517,0.87336,0.40963,1.00000",
+              "display-p3:0.96783,0.95326,0.69429,0.51000"
+            ],
+            "orientation" : {
+              "start" : {
+                "x" : 0.5,
+                "y" : 1
+              },
+              "stop" : {
+                "x" : 0.5,
+                "y" : 0
+              }
+            }
+          },
+          "image-name" : "04-Blue-card.svg",
+          "name" : "04-Blue-card",
+          "position" : {
+            "scale" : 1.57,
+            "translation-in-points" : [
+              -28.320000000000164,
+              2.286649389640502
+            ]
+          }
+        }
+      ],
+      "shadow-specializations" : [
+        {
+          "value" : {
+            "kind" : "layer-color",
+            "opacity" : 0.66
+          }
+        },
+        {
+          "appearance" : "dark",
+          "value" : {
+            "kind" : "neutral",
+            "opacity" : 0.66
+          }
+        }
+      ],
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.3
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "circles" : [
+      "watchOS"
+    ],
+    "squares" : "shared"
+  }
+}

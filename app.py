@@ -95,6 +95,8 @@ def setup_log():
 # 避免「默认端口被别的程序占了就起不来」。被 tauri 壳拉起时, 后端再把取到的端口经
 # TINGDAO_PORTFILE 指向的临时文件回报给壳; 单独跑则直接用它喂给 pywebview。这里是占位, main() 会改写。
 PORT = 0
+HEADLESS = False
+SHUTDOWN_REQUEST = threading.Event()
 SR = 16000
 MASTER_RAW_FILE = "raw-master.s16"
 # SCK 音频助手: macOS 系统声音(ScreenCaptureKit)+麦克风在助手进程内混成单轨,
@@ -2495,6 +2497,7 @@ class App:
             s = self.session
             return {
                 "state": self.state,
+                "platform": platform.system(),
                 "elapsed": round(self.total_samples / SR, 1) if s else 0,
                 "session": s["name"] if s else "",
                 "dir": str(s["dir"]) if s else "",
@@ -3458,8 +3461,25 @@ class App:
 
     # ---------- 导入音频/视频文件 ----------
     def pick_file(self):
-        """唤起 macOS 原生文件选择器(支持多选); 取消返回 []。
+        """唤起系统原生文件选择器(支持多选); 取消返回 []。
         路径按行返回 —— 逗号做分隔会被文件名里的逗号背刺, 换行才是安全的。"""
+        if platform.system() == "Windows":
+            script = ("[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false);"
+                      "Add-Type -AssemblyName System.Windows.Forms;"
+                      "$d = New-Object System.Windows.Forms.OpenFileDialog;"
+                      "$d.Title = '选择音频或视频文件'; $d.Multiselect = $true;"
+                      "$d.Filter = '音频和视频|*.mp3;*.wav;*.m4a;*.aac;*.flac;*.ogg;*.mp4;*.mov;*.avi|所有文件|*.*';"
+                      "if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { $d.FileNames }")
+            try:
+                result = subprocess.run(
+                    ["powershell", "-NoProfile", "-STA", "-Command", script],
+                    capture_output=True, text=True, encoding="utf-8", timeout=900,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            except Exception as e:
+                raise RuntimeError(f"无法打开文件选择器：{type(e).__name__}")
+            if result.returncode:
+                raise RuntimeError((result.stderr or "文件选择器启动失败").strip()[:180])
+            return [p.strip() for p in (result.stdout or "").splitlines() if p.strip()]
         try:
             r = subprocess.run(
                 ["osascript", "-e",
@@ -3608,7 +3628,7 @@ class App:
         这是唯一会把录音送出本机的功能: 仅按钮显式触发, 弹窗已写明。
         原稿备份 segments_pre_cloud, 可还原。失败只广播不自动跑本地
         —— 前端会给「跑本地转写」按钮, 由用户决定(规矩: 绝不双跑)。"""
-        if not sid or ".." in sid or "/" in sid:
+        if not sid or ".." in sid or "/" in sid or "\\" in sid:
             raise RuntimeError("非法路径")
         if self.state in ("recording", "paused", "stopping"):
             raise RuntimeError("录制中不能云端转写")
@@ -3717,7 +3737,7 @@ class App:
     def cloud_refine(self, sid):
         """把本地稿的纯文本交给云端大模型: 修错字/顺标点/理分段 + 全篇摘要。
         音频永远不出本机; 原稿备份进 segments_pre_cloud, 可随时手动还原。"""
-        if not sid or ".." in sid or "/" in sid:
+        if not sid or ".." in sid or "/" in sid or "\\" in sid:
             raise RuntimeError("非法路径")
         if self.state in ("recording", "paused", "stopping"):
             raise RuntimeError("录制中不能云端精修")
@@ -3752,7 +3772,7 @@ class App:
     def study_note(self, sid, tpl_id):
         """按选定模板生成课后笔记, 结果写项目内 note.md。
         笔记是新增物: 不动 segments、不锁页面、不进 refining, 所以 kind='note' 只走任务表。"""
-        if not sid or ".." in sid or "/" in sid:
+        if not sid or ".." in sid or "/" in sid or "\\" in sid:
             raise RuntimeError("非法路径")
         if self.state in ("recording", "paused", "stopping"):
             raise RuntimeError("录制中不能生成笔记")
@@ -4056,7 +4076,7 @@ class App:
     def rerun(self, sid):
         """已停止的空壳项目重跑转写: 用抽好的 audio.m4a(原始文件路径没存,
         且导入时已按最高可用音质抽过轨)。清 stopped 标记后走本地链路。"""
-        if not sid or ".." in sid or "/" in sid:
+        if not sid or ".." in sid or "/" in sid or "\\" in sid:
             raise RuntimeError("非法路径")
         d = SESSIONS_DIR / sid
         sj = d / "session.json"
@@ -4081,7 +4101,7 @@ class App:
         """手动「跳过静音重跑」: 整份稿子被复读幻觉污染时的救急入口。
         默认精修路径不碰任何 Whisper 参数, 只有用户点这个按钮才会打开
         hallucination_silence_threshold —— 因为它实测会连真实语音一起删。"""
-        if not sid or ".." in sid or "/" in sid:
+        if not sid or ".." in sid or "/" in sid or "\\" in sid:
             raise RuntimeError("非法路径")
         if self.state in ("recording", "paused", "stopping"):
             raise RuntimeError("录制中不能重跑")
@@ -4172,7 +4192,7 @@ class App:
 
     def set_spk_labels(self, sid, labels):
         """保存该项目的说话人显示名(键是模型给的 S01/S02, 只在本项目内有效)"""
-        if not sid or ".." in sid or "/" in sid:
+        if not sid or ".." in sid or "/" in sid or "\\" in sid:
             raise RuntimeError("非法路径")
         sj = SESSIONS_DIR / sid / "session.json"
         if not sj.is_file():
@@ -4192,7 +4212,7 @@ class App:
     def edit_segment(self, sid, t, text, undo=False):
         """就地改一句：按时间点定位，改 session.json 里那句的 text，并连带重写 transcript.md。
         撤销不需要后端存副本 —— 前端留着旧文字，再打一次这个接口回填即可。"""
-        if ".." in sid or "/" in sid:
+        if ".." in sid or "/" in sid or "\\" in sid:
             raise RuntimeError("非法路径")
         if self.state in ("recording", "paused", "stopping"):
             raise RuntimeError("录制中不能改稿")
@@ -4409,7 +4429,7 @@ class App:
 
     def load(self, sid):
         d = SESSIONS_DIR / sid
-        if not d.is_dir() or ".." in sid:
+        if not d.is_dir() or ".." in sid or "/" in sid or "\\" in sid:
             raise RuntimeError("会话不存在")
         sj = d / "session.json"
         if sj.exists():
@@ -4472,7 +4492,7 @@ class App:
     def session_pref(self, sid, play_rate=None, last_pos=None):
         """按项目写播放偏好（倍速 / 上次位置）。只写小巧的 .pref.json，
         绝不重写 session.json 或 transcript.md —— 位置每几秒存一次，必须便宜且无副作用。"""
-        if ".." in sid or "/" in sid:
+        if ".." in sid or "/" in sid or "\\" in sid:
             raise RuntimeError("非法路径")
         d = SESSIONS_DIR / sid
         if not d.is_dir():
@@ -4501,7 +4521,7 @@ class App:
     def delete_session(self, sid, full):
         """删除项目: full=False 仅把录音移进废纸篓(文稿留下); full=True 整个项目进废纸篓。
         一律走系统回收站，不硬删 —— 移不进去就报错，让用户自己决定下一步。"""
-        if ".." in sid or "/" in sid:
+        if ".." in sid or "/" in sid or "\\" in sid:
             raise RuntimeError("非法路径")
         d = SESSIONS_DIR / sid
         if not d.is_dir():
@@ -4529,13 +4549,16 @@ class App:
                 "trash": moved[0] if moved else ""}
 
     def reveal(self, sid):
-        """在 Finder 中显示项目文件夹"""
-        if ".." in sid or "/" in sid:
+        """在系统文件管理器中显示项目文件夹"""
+        if sid in (".", "..") or "/" in sid or "\\" in sid:
             raise RuntimeError("非法路径")
         d = SESSIONS_DIR / sid
         if not d.is_dir():
             raise RuntimeError("项目不存在")
-        subprocess.Popen(["open", "-R", str(d)])
+        if platform.system() == "Windows":
+            subprocess.Popen(["explorer.exe", f"/select,{d}"])
+        else:
+            subprocess.Popen(["open", "-R", str(d)])
         return {"ok": True}
 
 
@@ -4572,8 +4595,10 @@ class Handler(BaseHTTPRequestHandler):
             am = load_setting("appearance")
             if am not in ("light", "dark", "system"):
                 am = ""
+            # 平台标记同注入：首帧前就把 Windows 版式(窗口控件留白)定下来，避免先闪 mac 样式
             body = INDEX.read_text(encoding="utf-8").replace(
-                "__TINGDAO_APPEARANCE__", am).encode("utf-8")
+                "__TINGDAO_APPEARANCE__", am).replace(
+                "__TINGDAO_PLATFORM__", platform.system()).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
@@ -4629,7 +4654,10 @@ class Handler(BaseHTTPRequestHandler):
         elif u.path == "/api/pick_file":
             # 原生文件选择器(多选): 阻塞到用户选完或取消
             # 顺带报每个文件的体积/时长: 云端导入的确认弹窗要在建项目前给真实数字
-            paths = APP.pick_file()
+            try:
+                paths = APP.pick_file()
+            except Exception as e:
+                return self._json({"error": str(e)}, 500)
             out = []
             for p in paths:
                 mb = dur = None
@@ -4692,6 +4720,12 @@ class Handler(BaseHTTPRequestHandler):
         except json.JSONDecodeError:
             return self._json({"ok": False, "error": "参数错误"}, 400)
         try:
+            if u.path == "/api/shutdown":
+                if not HEADLESS:
+                    return self._json({"ok": False, "error": "关闭接口仅供桌面壳使用"}, 404)
+                self._json({"ok": True})
+                SHUTDOWN_REQUEST.set()
+                return
             if u.path == "/api/start":
                 requested_mode = body.get("mode")
                 selected_mode = (requested_mode if requested_mode in RECORDING_MODES
@@ -4957,7 +4991,7 @@ def _report_port_to_shell(port):
 
 
 def main():
-    global PORT
+    global PORT, HEADLESS
     SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
     setup_log()
     # 端口交给 OS 现挑(bind 端口 0 = 一个真正空闲的回环端口, 没有「探测到空闲→再占用」之间的抢端口竞态);
@@ -4976,28 +5010,33 @@ def main():
                 print(f"已自动收尾保存({reason})")
             except Exception as e:
                 print(f"收尾失败: {e}")
+        deadline = time.monotonic() + 30
+        while APP.state != "idle" and time.monotonic() < deadline:
+            time.sleep(0.05)
+        if APP.state != "idle":
+            print("等待录音收尾超时，退出时可能未保存完整")
         server.shutdown()
 
     # headless: 窗口交给外部壳(tauri), 本进程只跑 HTTP 常驻。
     # 收到 SIGTERM/SIGINT 走与关窗同一套收尾 —— 壳 kill 我们的时候不能丢稿子。
-    if "--no-window" in sys.argv[1:] or os.environ.get("TINGDAO_HEADLESS") == "1":
+    HEADLESS = "--no-window" in sys.argv[1:] or os.environ.get("TINGDAO_HEADLESS") == "1"
+    if HEADLESS:
         print("headless: 只提供 HTTP 服务, 窗口由外部壳负责")
-        gone = threading.Event()
-        signal.signal(signal.SIGTERM, lambda *_: gone.set())
-        signal.signal(signal.SIGINT, lambda *_: gone.set())
+        signal.signal(signal.SIGTERM, lambda *_: SHUTDOWN_REQUEST.set())
+        signal.signal(signal.SIGINT, lambda *_: SHUTDOWN_REQUEST.set())
         # 第二道闸: 壳被强杀(SIGKILL)时不会走到它的 Exit, 也就没人 kill 我们。
         # 父进程一消失, 我们会被 launchd 收养 —— getppid 变了就是信号, 自行收摊。
         # 绝不能留一个看不见的后端在后台占着麦克风和本地回环端口。
         parent = os.getppid()
 
         def watch_parent():
-            while not gone.wait(1.0):
+            while not SHUTDOWN_REQUEST.wait(1.0):
                 if os.getppid() != parent:
                     print("父进程(壳)已消失, 后端自行退出")
-                    gone.set()
+                    SHUTDOWN_REQUEST.set()
                     return
         threading.Thread(target=watch_parent, daemon=True).start()
-        gone.wait()
+        SHUTDOWN_REQUEST.wait()
         finish_up("收到退出信号")
         return
 

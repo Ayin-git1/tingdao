@@ -13,45 +13,58 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
-use tauri::{menu::{Menu, MenuItem, PredefinedMenuItem, Submenu}, utils::config::Color, Manager, WebviewUrl, WebviewWindowBuilder};
+#[cfg(target_os = "macos")]
+use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
+use tauri::{utils::config::Color, Manager, WebviewUrl, WebviewWindowBuilder};
 
 const READY_TIMEOUT_SECS: u64 = 60;
 const SERVE_TIMEOUT_SECS: u64 = 10;
 const MICROPHONE_MODES_MENU_ID: &str = "microphone_modes";
+const SHUTDOWN_TIMEOUT_SECS: u64 = 35;
 
 // 只有本进程亲手拉起的那份后端才归我们关; 端口文件也只由本进程创建、退出时清掉。
 static BACKEND: LazyLock<Mutex<Option<Child>>> = LazyLock::new(|| Mutex::new(None));
 static PORTFILE: LazyLock<Mutex<Option<PathBuf>>> = LazyLock::new(|| Mutex::new(None));
+static BACKEND_PORT: LazyLock<Mutex<Option<u16>>> = LazyLock::new(|| Mutex::new(None));
 
 fn env_or(key: &str, fallback: String) -> String {
     std::env::var(key).unwrap_or(fallback)
 }
 
-/// .app 包内的资源根目录 Contents（可执行文件在 Contents/MacOS/tingdao-shell，向上两级）。
-/// 非打包运行(cargo run)时该目录不含 program，候选会自动跳过, 回落到环境变量 / ~/tingdao。
-fn bundle_contents_dir() -> Option<std::path::PathBuf> {
-    let exe = std::env::current_exe().ok()?;      // .../Contents/MacOS/tingdao-shell
-    let contents = exe.parent()?.parent()?;        // .../Contents
-    Some(contents.to_path_buf())
+fn bundled_program_dir(resource_dir: &Path) -> PathBuf {
+    resource_dir.join(if cfg!(windows) {
+        "program-windows"
+    } else {
+        "program"
+    })
 }
 
 fn runtime_program_candidates(
-    bundle_contents: Option<std::path::PathBuf>,
+    resource_dir: Option<std::path::PathBuf>,
     configured_program: Option<std::path::PathBuf>,
-    home: &str,
+    home: &Path,
 ) -> Vec<std::path::PathBuf> {
     let mut candidates = Vec::new();
     #[cfg(feature = "test-source")]
     candidates.push(test_source_dir());
-    if let Some(contents) = bundle_contents {
-        candidates.push(contents.join("Resources").join("program"));
-        candidates.push(contents.join("Resources"));
+    if let Some(resources) = resource_dir {
+        candidates.push(bundled_program_dir(&resources));
     }
     if let Some(program) = configured_program {
         candidates.push(program);
     }
-    candidates.push(std::path::PathBuf::from(format!("{home}/tingdao")));
+    candidates.push(home.join("tingdao"));
     candidates
+}
+
+fn default_python_path(home: &Path, windows: bool) -> PathBuf {
+    let mut path = home.join("tingdao-venv");
+    if windows {
+        path.extend(["Scripts", "python.exe"]);
+    } else {
+        path.extend(["bin", "python"]);
+    }
+    path
 }
 
 /// 热测试版在编译时写入源码目录。正式版不会编入这段路径，保持完全自包含。
@@ -79,24 +92,54 @@ fn port_open(port: u16) -> bool {
 }
 
 fn request_microphone_modes(port: u16) -> Result<(), String> {
-    let mut stream = TcpStream::connect_timeout(&([127, 0, 0, 1], port).into(), Duration::from_secs(2))
-        .map_err(|e| format!("无法连接录音服务：{e}"))?;
+    let mut stream =
+        TcpStream::connect_timeout(&([127, 0, 0, 1], port).into(), Duration::from_secs(2))
+            .map_err(|e| format!("无法连接录音服务：{e}"))?;
     let body = r#"{"mode":"mic"}"#;
     write!(stream, "POST /api/microphone_modes HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body)
         .map_err(|e| format!("无法请求系统麦克风模式：{e}"))?;
     let mut response = String::new();
-    stream.read_to_string(&mut response).map_err(|e| format!("无法读取系统麦克风模式响应：{e}"))?;
-    if response.contains("\"ok\": true") { Ok(()) }
-    else { Err("请先开始“仅麦克风”录制，再从“听道”菜单打开麦克风模式。".to_string()) }
+    stream
+        .read_to_string(&mut response)
+        .map_err(|e| format!("无法读取系统麦克风模式响应：{e}"))?;
+    if response.contains("\"ok\": true") {
+        Ok(())
+    } else {
+        Err("请先开始“仅麦克风”录制，再从“听道”菜单打开麦克风模式。".to_string())
+    }
 }
 
+fn request_shutdown(port: u16) {
+    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    if let Ok(mut stream) = TcpStream::connect_timeout(&addr, Duration::from_secs(2)) {
+        let _ = stream.write_all(
+            b"POST /api/shutdown HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+        );
+    }
+}
+
+#[cfg(target_os = "macos")]
 fn app_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<Menu<R>> {
-    let microphone_modes = MenuItem::with_id(app, MICROPHONE_MODES_MENU_ID, "麦克风模式…", true, None::<&str>)?;
-    Menu::with_items(app, &[&Submenu::with_items(app, "听道", true, &[
-        &microphone_modes,
-        &PredefinedMenuItem::separator(app)?,
-        &PredefinedMenuItem::quit(app, None)?,
-    ])?])
+    let microphone_modes = MenuItem::with_id(
+        app,
+        MICROPHONE_MODES_MENU_ID,
+        "麦克风模式…",
+        true,
+        None::<&str>,
+    )?;
+    Menu::with_items(
+        app,
+        &[&Submenu::with_items(
+            app,
+            "听道",
+            true,
+            &[
+                &microphone_modes,
+                &PredefinedMenuItem::separator(app)?,
+                &PredefinedMenuItem::quit(app, None)?,
+            ],
+        )?],
+    )
 }
 
 /// 读后端回报的端口号; 文件还没写好 / 内容非法就返回 None, 交给上层轮询。
@@ -113,34 +156,70 @@ fn alert(title: &str, msg: &str) {
         let script = format!("display alert {:?} message {:?} as critical", title, msg);
         let _ = Command::new("osascript").args(["-e", &script]).spawn();
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        let title: Vec<u16> = std::ffi::OsStr::new(title)
+            .encode_wide()
+            .chain(Some(0))
+            .collect();
+        let msg: Vec<u16> = std::ffi::OsStr::new(msg)
+            .encode_wide()
+            .chain(Some(0))
+            .collect();
+        #[link(name = "user32")]
+        extern "system" {
+            fn MessageBoxW(
+                hwnd: *mut std::ffi::c_void,
+                text: *const u16,
+                caption: *const u16,
+                kind: u32,
+            ) -> i32;
+        }
+        unsafe {
+            MessageBoxW(std::ptr::null_mut(), msg.as_ptr(), title.as_ptr(), 0x10);
+        }
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         eprintln!("{title}: {msg}");
     }
 }
 
 /// 拉起后端并回报它真正绑定的空闲端口(供开窗用)。
-fn start_backend() -> Result<u16, String> {
-    let home = std::env::var("HOME").unwrap_or_default();
+fn start_backend(resource_dir: Option<PathBuf>) -> Result<u16, String> {
+    let home = if cfg!(windows) {
+        std::env::var_os("USERPROFILE").map(PathBuf::from)
+    } else {
+        std::env::var_os("HOME").map(PathBuf::from)
+    }
+    .unwrap_or_default();
 
     // 程序本体(app.py)所在目录，按优先级取第一个真实含 app.py 的：
     //   ① 热测试版编入的源码目录 ② .app 包内资源 ③ TINGDAO_HOME ④ ~/tingdao
     // 正式 App 始终优先自身 Resources/program，避免意外引用开发机文件。
     let app_dir = runtime_program_candidates(
-        bundle_contents_dir(),
-        std::env::var("TINGDAO_HOME").ok().map(std::path::PathBuf::from),
+        resource_dir.clone(),
+        std::env::var("TINGDAO_HOME")
+            .ok()
+            .map(std::path::PathBuf::from),
         &home,
     )
-        .into_iter()
-        .find(|d| d.join("app.py").is_file())
-        .ok_or_else(|| -> String {
-            "找不到程序本体(app.py)。若从镜像安装，请确认「听道.app」完整拖入「应用程序」后再打开；\
+    .into_iter()
+    .find(|d| d.join("app.py").is_file())
+    .ok_or_else(|| -> String {
+        "找不到程序本体(app.py)。若从镜像安装，请确认「听道.app」完整拖入「应用程序」后再打开；\
              便携运行则用环境变量 TINGDAO_HOME 指向程序目录。"
-                .to_string()
-        })?;
+            .to_string()
+    })?;
     let app_py = app_dir.join("app.py");
 
-    let py = env_or("TINGDAO_PY", format!("{home}/tingdao-venv/bin/python"));
+    let py = env_or(
+        "TINGDAO_PY",
+        default_python_path(&home, cfg!(windows))
+            .to_string_lossy()
+            .into_owned(),
+    );
 
     if !Path::new(&py).is_file() {
         return Err(format!(
@@ -163,13 +242,14 @@ fn start_backend() -> Result<u16, String> {
         .stderr(Stdio::null());
     #[cfg(feature = "test-source")]
     {
-        let helper = bundle_contents_dir()
-            .map(|contents| test_sck_helper_path(&contents))
+        let contents = resource_dir.as_deref().and_then(Path::parent);
+        let helper = contents
+            .map(test_sck_helper_path)
             .filter(|path| path.is_file())
             .ok_or_else(|| "测试版缺少包内音频助手 tingdao-mix".to_string())?;
         command.env("TINGDAO_SCK_HELPER", helper);
-        let mic_app = bundle_contents_dir()
-            .map(|contents| test_mic_app_path(&contents))
+        let mic_app = contents
+            .map(test_mic_app_path)
             .filter(|path| path.is_dir())
             .ok_or_else(|| "测试版缺少包内麦克风助手 TingdaoMic.app".to_string())?;
         command.env("TINGDAO_MIC_APP", mic_app);
@@ -206,6 +286,7 @@ fn start_backend() -> Result<u16, String> {
         }
         std::thread::sleep(Duration::from_millis(100));
     }
+    *BACKEND_PORT.lock().unwrap() = Some(port);
     Ok(port)
 }
 
@@ -215,7 +296,10 @@ mod tests {
 
     #[test]
     fn test_source_build_should_prefer_the_configured_source_directory() {
-        assert_eq!(test_source_dir().to_string_lossy(), env!("TINGDAO_TEST_SOURCE_DIR"));
+        assert_eq!(
+            test_source_dir().to_string_lossy(),
+            env!("TINGDAO_TEST_SOURCE_DIR")
+        );
     }
 
     #[test]
@@ -238,17 +322,30 @@ mod tests {
 #[cfg(test)]
 mod release_tests {
     #[test]
+    fn windows_python_default_uses_venv_scripts_directory() {
+        let path = super::default_python_path(std::path::Path::new("C:/Users/Ayin"), true);
+        assert!(path.ends_with(std::path::Path::new("tingdao-venv/Scripts/python.exe")));
+    }
+
+    #[test]
+    fn bundled_program_directory_is_below_tauri_resource_directory() {
+        assert_eq!(
+            super::bundled_program_dir(std::path::Path::new("C:/Apps/Tingdao/resources")),
+            std::path::Path::new("C:/Apps/Tingdao/resources/program")
+        );
+    }
+
+    #[test]
     fn bundled_program_resources_precede_developer_override() {
         let candidates = super::runtime_program_candidates(
-            Some(std::path::PathBuf::from("/Bundle/Contents")),
+            Some(std::path::PathBuf::from("/Bundle/Contents/Resources")),
             Some(std::path::PathBuf::from("/External/program")),
-            "/User",
+            std::path::Path::new("/User"),
         );
         assert_eq!(
             candidates,
             vec![
                 std::path::PathBuf::from("/Bundle/Contents/Resources/program"),
-                std::path::PathBuf::from("/Bundle/Contents/Resources"),
                 std::path::PathBuf::from("/External/program"),
                 std::path::PathBuf::from("/User/tingdao"),
             ]
@@ -258,10 +355,26 @@ mod release_tests {
 
 fn stop_backend() {
     if let Some(mut c) = BACKEND.lock().unwrap().take() {
-        // kill 发 SIGTERM; 后端 headless 分支收到后走与关窗同一套收尾(录音中会落盘)
-        let _ = c.kill();
+        if let Some(port) = *BACKEND_PORT.lock().unwrap() {
+            request_shutdown(port);
+        }
+        let deadline = Instant::now() + Duration::from_secs(SHUTDOWN_TIMEOUT_SECS);
+        loop {
+            match c.try_wait() {
+                Ok(Some(_)) => break,
+                Err(_) => break,
+                Ok(None) if Instant::now() < deadline => {
+                    std::thread::sleep(Duration::from_millis(100));
+                }
+                Ok(None) => {
+                    let _ = c.kill();
+                    break;
+                }
+            }
+        }
         let _ = c.wait();
     }
+    *BACKEND_PORT.lock().unwrap() = None;
     if let Some(pf) = PORTFILE.lock().unwrap().take() {
         let _ = std::fs::remove_file(pf);
     }
@@ -296,24 +409,23 @@ fn open_main_window(app: &mut tauri::App, port: u16) -> tauri::Result<()> {
 }
 
 fn main() {
-    let port = match start_backend() {
-        Ok(p) => p,
-        Err(e) => {
-            alert("听道启动失败", &e);
-            std::process::exit(1);
-        }
-    };
-
-    let menu_port = port;
-    let app = tauri::Builder::default()
-        .menu(app_menu)
-        .on_menu_event(move |_app, event| {
+    let mut builder = tauri::Builder::default();
+    #[cfg(target_os = "macos")]
+    {
+        builder = builder.menu(app_menu).on_menu_event(move |_app, event| {
             if event.id() == MICROPHONE_MODES_MENU_ID {
-                if let Err(error) = request_microphone_modes(menu_port) {
+                let result = BACKEND_PORT
+                    .lock()
+                    .unwrap()
+                    .ok_or_else(|| "录音服务尚未启动".to_string())
+                    .and_then(request_microphone_modes);
+                if let Err(error) = result {
                     alert("无法打开麦克风模式", &error);
                 }
             }
-        })
+        });
+    }
+    let app = builder
         // macOS 默认"关最后一个窗口不退出", 对这个单窗口工具就是坑: 窗口没了、后端还在悄悄
         // 占着麦克风。这里把"关窗"直接等价于"退出", 退出再触发下面的 stop_backend。
         .on_window_event(|window, event| {
@@ -323,11 +435,20 @@ fn main() {
         })
         // 主窗口在 setup 里建: 需要先有后端回报的动态端口才能定 URL, 而端口在 start_backend 已到手。
         .setup(move |app| {
-            open_main_window(app, port)?;
+            let resource_dir = app.path().resource_dir().ok();
+            let port = start_backend(resource_dir)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+            if let Err(error) = open_main_window(app, port) {
+                stop_backend();
+                return Err(error.into());
+            }
             Ok(())
         })
         .build(tauri::generate_context!())
-        .expect("听道壳启动失败");
+        .unwrap_or_else(|e| {
+            alert("听道启动失败", &e.to_string());
+            std::process::exit(1);
+        });
 
     app.run(|_handle, event| {
         if let tauri::RunEvent::Exit { .. } = event {

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="300" viewBox="0 0 640 300" fill="none">
+  <title>横向随机笔记线条</title>
+  <desc>透明背景，一条可独立编辑的圆头连笔曲线。</desc>
+  <path id="handwritten-note" d="M72 226 C89 178 119 93 158 80 C190 69 198 98 189 131 C178 169 168 201 192 204 C225 209 257 128 286 112 C313 97 333 117 329 145 C324 177 332 194 355 189 C395 181 409 141 446 137 C485 132 516 139 566 117" stroke="#9DF9F2" stroke-width="30" stroke-linecap="round" stroke-linejoin="round" />
+</svg>

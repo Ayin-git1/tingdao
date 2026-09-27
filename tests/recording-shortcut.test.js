@@ -48,3 +48,17 @@ test('Command-Shift-R starts recording when idle', () => {
   assert.equal(global.started, true);
   assert.equal(prevented, true);
 });
+
+test('Ctrl-Shift-R starts recording on Windows when idle', () => {
+  global.started = false;
+  const handler = shortcutHandler();
+  let prevented = false;
+
+  handler({
+    key: 'r', code: 'KeyR', metaKey: false, ctrlKey: true, shiftKey: true,
+    altKey: false, preventDefault: () => { prevented = true; },
+  });
+
+  assert.equal(global.started, true);
+  assert.equal(prevented, true);
+});

@@ -23,6 +23,16 @@
     };
     apply();
     media.addEventListener('change', () => { if (mode === 'system') apply(); });
+    // 平台标记：和外观一样在 <head> 预绘制阶段就打到 <html data-platform>。
+    // 本页 300KB+，边解析边首绘可能早于 body 脚本；不在此定盘，Windows 上会先闪一瞬
+    // mac 版式(顶栏留白)和 ⌘。后端把 __TINGDAO_PLATFORM__ 换成 platform.system()；
+    // 未走后端(file:// 直开)时标记原样保留，回落 mac(与改前默认一致)。
+    const platToken = "__TINGDAO_PLATFORM__";
+    const plat = (platToken === 'Darwin' || platToken === 'Windows' || platToken === 'Linux')
+      ? platToken : 'Darwin';
+    document.documentElement.dataset.platform =
+      plat === 'Windows' ? 'windows' : plat === 'Darwin' ? 'mac' : 'other';
+    window.__TD_PLATFORM__ = plat;
     window.tingdaoAppearance = {
       get: () => mode,
       set: value => {
@@ -144,6 +154,7 @@
   .topbar{position:fixed; top:0; left:0; right:0; z-index:var(--z-topbar);   /* 第一层: 压在抽屉(52)之上, 仍在弹层背板(54)之下 */
           display:flex; align-items:center; gap:10px; padding:14px 18px 0 88px;
           background:transparent; pointer-events:none; transition:opacity .45s ease;}
+  html[data-platform="windows"] .topbar{padding-left:18px;padding-right:150px;}
   /* 录音周期: 顶栏这一排整排渐隐(视觉聚焦在录音本身, 也避免与录音控件抢操作) */
   .topbar.hide{opacity:0; pointer-events:none;}
   .topbar > *{pointer-events:auto;}
@@ -177,6 +188,7 @@
   .hang{position:fixed; top:0; right:68px; z-index:var(--z-topbar); display:flex; flex-direction:column; align-items:center;
         opacity:0; transform:translateY(-100%); pointer-events:none;
         transition:transform .85s cubic-bezier(.16,1,.3,1), opacity .55s ease-out;}
+  html[data-platform="windows"] .hang{right:150px;}
   .hang.drop{opacity:1; transform:none; pointer-events:auto;}
   .hang .rope{width:1px; height:44px; flex:none;
               background:linear-gradient(to bottom, rgba(20,20,20,.30), rgba(20,20,20,.16));}
@@ -1724,7 +1736,7 @@
   <div class="popscrim" id="popscrim"></div>
   <div id="subscrim"></div>
   <div class="setpop" id="setpop">
-   <div class="sethead"><span class="ht">设置</span><span class="hs">全部摊开 · 点外面或 ⌘, 也能关</span>
+   <div class="sethead"><span class="ht">设置</span><span class="hs" id="setShortcutHint">全部摊开 · 点外面或 ⌘, 也能关</span>
     <button class="setclose" id="setClose" title="关闭设置"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
    </div>
    <div class="setrow">
@@ -1888,7 +1900,7 @@
         <button type="button" data-v="dark">深色</button>
         <button type="button" data-v="system" class="on">跟随系统</button>
       </div>
-      <div class="ptinfo" style="max-width:320px;margin:0">跟随系统会在 macOS 外观改变时自动切换。</div>
+      <div class="ptinfo" id="appearanceHint" style="max-width:320px;margin:0">跟随系统外观自动切换。</div>
       <div class="st" style="margin-top:20px;">任务完成提示音</div>
       <div class="seg" id="setCompletionSound" style="max-width:320px" role="group" aria-label="任务完成提示音">
         <i class="segin" aria-hidden="true"></i>
@@ -1899,7 +1911,7 @@
      </div>
 
      <div class="ssec" id="sec-key"><div class="sgh">快捷键</div>
-      <div class="ptinfo" style="max-width:420px;margin:0">按 <b style="font-weight:600;color:var(--txt)">⌘⇧R</b> 开始录音 · <b style="font-weight:600;color:var(--txt)">⌘/</b> 查看全部 · <b style="font-weight:600;color:var(--txt)">⌘,</b> 打开 / 收起设置 · <b style="font-weight:600;color:var(--txt)">Esc</b> 关掉当前弹层</div>
+      <div class="ptinfo" id="shortcutSummary" style="max-width:420px;margin:0">按 ⌘⇧R 开始录音 · ⌘/ 查看全部 · ⌘, 打开 / 收起设置 · Esc 关掉当前弹层</div>
      </div>
 
     </div>
@@ -2208,14 +2220,14 @@
     <div class="keys">
       <kbd>空格</kbd><span>播放 / 暂停<i>（查看稿且有录音时）</i></span>
       <kbd>↑ / ↓</kbd><span>上一句 / 下一句，并跳到那一刻回放</span>
-      <kbd>⌘ F</kbd><span>在文稿里查找内容</span>
-      <kbd>⌘ K</kbd><span>搜索全部转录标题<i>（命令面板）</i></span>
-      <kbd>⌘ N</kbd><span>记一条时间线笔记<i>（非录音时=课后笔记）</i></span>
-      <kbd>⌘ E</kbd><span>复制不带时间戳的纯文本</span>
-      <kbd>⌘ ⇧ R</kbd><span>开始录音<i>（空闲时）</i></span>
-      <kbd>⌘ ,</kbd><span>打开 / 收起设置</span>
+      <kbd data-mac-shortcut="⌘ F" data-windows-shortcut="Ctrl+F">⌘ F</kbd><span>在文稿里查找内容</span>
+      <kbd data-mac-shortcut="⌘ K" data-windows-shortcut="Ctrl+K">⌘ K</kbd><span>搜索全部转录标题<i>（命令面板）</i></span>
+      <kbd data-mac-shortcut="⌘ N" data-windows-shortcut="Ctrl+N">⌘ N</kbd><span>记一条时间线笔记<i>（非录音时=课后笔记）</i></span>
+      <kbd data-mac-shortcut="⌘ E" data-windows-shortcut="Ctrl+E">⌘ E</kbd><span>复制不带时间戳的纯文本</span>
+      <kbd data-mac-shortcut="⌘ ⇧ R" data-windows-shortcut="Ctrl+Shift+R">⌘ ⇧ R</kbd><span>开始录音<i>（空闲时）</i></span>
+      <kbd data-mac-shortcut="⌘ ," data-windows-shortcut="Ctrl+,">⌘ ,</kbd><span>打开 / 收起设置</span>
       <kbd>双击</kbd><span>就地改这一句<i> · Enter 落稿 · Esc 放弃</i></span>
-      <kbd>⌘ /</kbd><span>打开这张卡</span>
+      <kbd data-mac-shortcut="⌘ /" data-windows-shortcut="Ctrl+/">⌘ /</kbd><span>打开这张卡</span>
       <kbd>Esc</kbd><span>关掉当前弹层 / 放弃编辑</span>
     </div>
     <div class="mrow"><button class="mbtn gray" id="keyClose">知道了</button></div>
@@ -2228,6 +2240,7 @@
 
 <script>
 let state = 'idle';
+let hostPlatform = window.__TD_PLATFORM__ || 'Darwin';
 let mode = 'system';
 const RECORD_MODES = ['system', 'mix', 'mic'];
 function syncRecordModeUI(){
@@ -2377,6 +2390,29 @@ $('fold').onclick = ()=> $('toolpanel').classList.toggle('fold');
 /* 主页按钮: 一键退回主页(与点空白退出同一出口) */
 $('btnHome').onclick = ()=>{ if(view !== null) exitView(); };
 
+function syncPlatformUI(platform){
+  if(!platform) return;
+  hostPlatform = platform;
+  const mac = platform === 'Darwin';
+  document.documentElement.dataset.platform = platform === 'Windows' ? 'windows' : mac ? 'mac' : 'other';
+  document.querySelectorAll('[data-mac-shortcut]').forEach(el=>{
+    el.textContent = mac ? el.dataset.macShortcut : el.dataset.windowsShortcut;
+  });
+  const mod = mac ? '⌘' : 'Ctrl';
+  $('btnHistSearch').title = `搜索 (${mod}K)`;
+  $('btnCmdK').textContent = `${mod}K`;
+  $('setShortcutHint').textContent = `全部摊开 · 点外面或 ${mod}, 也能关`;
+  $('appearanceHint').textContent = mac ? '跟随 macOS 外观自动切换。'
+    : platform === 'Windows' ? '跟随 Windows 外观自动切换。' : '跟随系统外观自动切换。';
+  $('shortcutSummary').textContent = mac
+    ? '按 ⌘⇧R 开始录音 · ⌘/ 查看全部 · ⌘, 打开 / 收起设置 · Esc 关掉当前弹层'
+    : '按 Ctrl+Shift+R 开始录音 · Ctrl+/ 查看全部 · Ctrl+, 打开 / 收起设置 · Esc 关掉当前弹层';
+}
+
+/* 首帧同步套用平台版式：body 脚本在解析阶段就执行，趁 status 异步回来之前把 ⌘/Ctrl 落定，
+   配合 <head> 里已打的 data-platform，Windows 从第一帧起就是 Ctrl 提示，不再闪 ⌘。 */
+syncPlatformUI(hostPlatform);
+
 function updateChrome(){
   const inView = view !== null;
   const rec = (state==='recording'||state==='paused'||state==='stopping');
@@ -2425,7 +2461,7 @@ function updateChrome(){
   fab.classList.toggle('rec', rec);
   fab.classList.toggle('stopping', state==='stopping');
   fab.classList.remove('gone');
-  fab.title = rec ? '停止录音' : '开始录音（⌘⇧R）';
+  fab.title = rec ? '停止录音' : `开始录音（${hostPlatform === 'Darwin' ? '⌘⇧R' : 'Ctrl+Shift+R'}）`;
 }
 
 setInterval(async ()=>{
@@ -2731,6 +2767,7 @@ function addNoteDom(t, text){
 }
 
 function applyStatus(d){
+  syncPlatformUI(d.platform);
   state = d.state;
   if(d.session && d.session !== sessionName){
     sessionName = d.session;
@@ -5158,7 +5195,7 @@ function jumpLine(dir){
 }
 document.addEventListener('keydown', e=>{
   if($('keymodal').classList.contains('show')){
-    if(e.key === 'Escape' || (e.metaKey && e.key === '/')){ e.preventDefault(); closeKeyCard(); }
+    if(e.key === 'Escape' || ((e.metaKey || e.ctrlKey) && e.key === '/')){ e.preventDefault(); closeKeyCard(); }
     return;
   }
   const cmd = e.metaKey || e.ctrlKey;
@@ -5726,7 +5763,7 @@ $('fldTpl').onclick = ()=> openTplPop('manage', $('fldTpl'));
    全部重放 —— 上次录音的 cloud_confirm 会在打开瞬间弹上传确认框并压上全屏背板,
    整页点不动(而那颗"云端转写"按钮是会真实上传计费的)。当前界面状态本来就由
    /api/status 补齐, 不需要靠重放历史事件恢复, 所以先取 seq 当起点再开始增量拉。 ---- */
-api('/api/status').then(st=>{ lastSeq = st.seq || 0; seeded = true; }).catch(()=>{ seeded = true; });
+api('/api/status').then(st=>{ applyStatus(st); lastSeq = st.seq || 0; seeded = true; }).catch(()=>{ seeded = true; });
 refreshHistory();
 pollStatus();
 // 启动就同步对话模式/云端流程: 以前只有打开设置面板才会 loadTalkState,

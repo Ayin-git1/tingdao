@@ -25,16 +25,18 @@
       "program/tingdao-mix": "program/tingdao-mix",
       "program/sounds/": "program/sounds/",
       "program/TingdaoMic.app/": "TingdaoMic.app/",
-      "icons/OTO.icon/": "Branding/OTO.icon/",
-      "icons/oto-icon-dark.icns": "Branding/oto-icon-dark.icns"
+      "icons/Tingdao.icon/": "Tingdao.icon/",
+      "icons/Assets.car": "Assets.car",
+      "icons/oto-icon-dark.icns": "Tingdao-dark.icns"
     },
     "icon": [
       "icons/icon.png",
-      "icons/icon.icns"
+      "icons/Tingdao.icns"
     ],
     "macOS": {
       "bundleVersion": "2.7.0",
-      "minimumSystemVersion": "12.3"
+      "minimumSystemVersion": "12.3",
+      "infoPlist": "Info.plist"
     }
   }
 }
