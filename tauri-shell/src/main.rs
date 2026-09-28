@@ -25,11 +25,30 @@ const READY_TIMEOUT_SECS: u64 = 60;
 const SERVE_TIMEOUT_SECS: u64 = 10;
 const MICROPHONE_MODES_MENU_ID: &str = "microphone_modes";
 const SHUTDOWN_TIMEOUT_SECS: u64 = 35;
+const REPOSITORY_URL: &str = "https://github.com/Ayin-git1/tingdao";
 
 // 只有本进程亲手拉起的那份后端才归我们关; 端口文件也只由本进程创建、退出时清掉。
 static BACKEND: LazyLock<Mutex<Option<Child>>> = LazyLock::new(|| Mutex::new(None));
 static PORTFILE: LazyLock<Mutex<Option<PathBuf>>> = LazyLock::new(|| Mutex::new(None));
 static BACKEND_PORT: LazyLock<Mutex<Option<u16>>> = LazyLock::new(|| Mutex::new(None));
+
+fn is_repository_url(url: &str) -> bool {
+    url.trim_end_matches('/') == REPOSITORY_URL
+}
+
+fn open_repository_url(url: &str) {
+    if !is_repository_url(url) {
+        return;
+    }
+    #[cfg(target_os = "macos")]
+    let _ = Command::new("open").arg(url).spawn();
+    #[cfg(target_os = "windows")]
+    let _ = Command::new("rundll32.exe")
+        .args(["url.dll,FileProtocolHandler", url])
+        .spawn();
+    #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
+    let _ = Command::new("xdg-open").arg(url).spawn();
+}
 
 fn bundled_program_dir(resource_dir: &Path) -> PathBuf {
     resource_dir.join(if cfg!(windows) {
@@ -570,6 +589,14 @@ mod tests {
 #[cfg(test)]
 mod release_tests {
     #[test]
+    fn repository_new_window_allows_only_the_official_repository_url() {
+        assert!(super::is_repository_url("https://github.com/Ayin-git1/tingdao"));
+        assert!(super::is_repository_url("https://github.com/Ayin-git1/tingdao/"));
+        assert!(!super::is_repository_url("https://github.com/Ayin-git1/other"));
+        assert!(!super::is_repository_url("https://example.com"));
+    }
+
+    #[test]
     fn windows_python_default_uses_venv_scripts_directory() {
         let path = super::default_python_path(std::path::Path::new("C:/Users/Ayin"), true);
         assert!(path.ends_with(std::path::Path::new("tingdao-venv/Scripts/python.exe")));
@@ -721,7 +748,13 @@ fn open_main_window(app: &mut tauri::App, port: u16) -> tauri::Result<()> {
         .title("听道")
         .inner_size(1000.0, 640.0)
         .min_inner_size(760.0, 520.0)
-        .center();
+        .center()
+        // 后端页面不带 Tauri 前端桥，target=_blank 的请求没人接会静默消失。
+        // 这里只交给系统浏览器打开固定的仓库地址，其他新窗口一律拒绝。
+        .on_new_window(|url, _| {
+            open_repository_url(url.as_str());
+            tauri::webview::NewWindowResponse::Deny
+        });
     // 不透明白底只给 mac 用(压住 WKWebView 首帧白闪)。Windows 下面要走透明窗口,
     // 而 wry 在 transparent 时会忽略 background_color —— 干脆不设, 免得读代码时误判窗口底是白的。
     #[cfg(not(target_os = "windows"))]

@@ -29,6 +29,7 @@ class FrontendBootstrapTests(unittest.TestCase):
             "platform": platform,
             "urlparse": urlparse,
             "INDEX": INDEX,
+            "APP_VERSION": "2.7.10",
             "load_setting": lambda key: {
                 "appearance": "system",
                 "theme_color": {"h": 335.9, "s": 79, "l": 79},
@@ -55,6 +56,8 @@ class FrontendBootstrapTests(unittest.TestCase):
         self.do_GET(response)
         self.assertEqual(response.status, 200)
         html = response.wfile.getvalue().decode("utf-8")
+        self.assertIn("v2.7.10", html)
+        self.assertNotIn("__TINGDAO_VERSION__", html)
         scripts = re.findall(r"<script[^>]*>(.*?)</script>", html, re.S)
         self.assertTrue(scripts)
         for index, script in enumerate(scripts, 1):
@@ -66,6 +69,22 @@ class FrontendBootstrapTests(unittest.TestCase):
                 result.returncode, 0,
                 f"inline script {index} is invalid:\n{result.stderr}",
             )
+
+    def test_app_version_matches_readme_and_tauri_package_metadata(self):
+        app_version = re.search(
+            r'^APP_VERSION = "([^"]+)"$', APP.read_text(encoding="utf-8"), re.M
+        )
+        self.assertIsNotNone(app_version)
+        version = app_version.group(1)
+
+        readme_version = re.search(
+            r"当前版本：\*\*v([^*]+)\*\*", (ROOT / "README.md").read_text(encoding="utf-8")
+        )
+        self.assertEqual(version, readme_version.group(1))
+        self.assertEqual(
+            version,
+            json.loads((ROOT / "tauri-shell" / "tauri.conf.json").read_text(encoding="utf-8"))["version"],
+        )
 
 
 if __name__ == "__main__":

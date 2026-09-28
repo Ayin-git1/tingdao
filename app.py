@@ -35,6 +35,8 @@ from urllib.parse import urlparse, parse_qs, unquote
 import numpy as np
 import sherpa_onnx
 
+APP_VERSION = "2.7.10"
+
 # Finder/Dock 启动的 GUI 进程 PATH 不含 homebrew, 主动补齐(ffmpeg/SwitchAudioSource 所在)
 for _p in ("/opt/homebrew/bin", "/usr/local/bin"):
     if _p not in os.environ.get("PATH", ""):
@@ -4949,7 +4951,8 @@ class Handler(BaseHTTPRequestHandler):
             body = INDEX.read_text(encoding="utf-8").replace(
                 "__TINGDAO_APPEARANCE__", am).replace(
                 "__TINGDAO_PLATFORM__", platform.system()).replace(
-                "__TINGDAO_THEME_COLOR__", theme_color_json).encode("utf-8")
+                "__TINGDAO_THEME_COLOR__", theme_color_json).replace(
+                "__TINGDAO_VERSION__", f"v{APP_VERSION}").encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))

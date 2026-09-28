@@ -45,7 +45,7 @@
 <h2 id="dependencies"><img src="./assets/readme/badges/dependencies.svg" height="40" alt="运行依赖"></h2>
 
 - **系统**：macOS 安装包支持 Apple Silicon 和 macOS 12.3+；Windows 支持 10/11 x64。
-- **Python**：建议 3.10。Windows 安装版默认使用 `%USERPROFILE%\tingdao-venv`；自定义解释器可通过 `TINGDAO_PY` 指定。
+- **Python**：建议 3.10。Windows 安装版会自动索引已安装且具备听道依赖的 Python 虚拟环境；也可在设置中手动选择解释器，或通过 `TINGDAO_PY` 指定。
 - **FFmpeg**：Windows 安装版已包含；macOS 和源码 zip 需要单独安装并加入 `PATH`，用于音视频导入、M4A 编码和音频预处理。macOS 可选安装 `switchaudio-osx` 以在录制中调整输出音量。
 - **模型**：SenseVoiceSmall、Silero VAD 和 Whisper 模型均需自行下载，在设置中填写路径。macOS 的 MLX 模型不能用于 Windows；Windows 需使用 CTranslate2 格式。
 - 系统声音采集：macOS 使用 ScreenCaptureKit，Windows 使用 WASAPI loopback，均无需虚拟声卡或额外驱动。
@@ -95,8 +95,10 @@ Windows 安装版已包含 FFmpeg。安装 Python 后重开 PowerShell，并确�
 ### v2.7.10
 
 - 完善 macOS 与 Windows 双端窗口适配：Windows 11 使用自绘标题栏、窗口控制按钮与边缘缩放；macOS 沿用现有 Tingdao.icns 图标。
-- Windows 启动时自动查找已安装听道依赖的 Python 虚拟环境；也可在设置中手动选择解释器。录音和转码期间不再弹出黑色控制台窗口。
-- 侧栏悬浮预览可一键转为常驻；整理摘要卡与音频条的显示和交互。
+- Windows 启动时自动索引已安装且具备听道依赖的 Python 虚拟环境；也可在设置中手动选择解释器。录音和转码期间不再弹出黑色控制台窗口。
+- 新增左侧项目栏的版本与仓库信息卡；长文稿可按时间分段快速定位，并补全其交互测试。
+- 优化逐字稿复制方式：可设置默认格式，按住 Option / Alt 点击复制按钮可临时选择；命令面板现可搜索项目与分组。
+- 优化设置面板布局与完成提示音控制，补充左右侧栏快捷键及跨平台键位提示。
 
 ### v2.7.1
 

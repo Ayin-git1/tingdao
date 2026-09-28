@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const test = require('node:test');
 
-function shortcutHandler() {
+function shortcutHandler(platform = 'Darwin') {
   const html = fs.readFileSync('index.html', 'utf8');
   const marker = "document.addEventListener('keydown', e=>{";
   const start = html.indexOf(marker, html.indexOf('/* ---- 键盘快捷键 ----'));
@@ -23,9 +23,13 @@ function shortcutHandler() {
   global.$ = id => ({
     keymodal: { classList: { contains: () => false } },
     fab: { click: () => { global.started = true; } },
+    btnSide: { click: () => { global.sidebarToggled = true; } },
+    btnNoteTop: { click: () => { global.drawerToggled = true; } },
   })[id];
   global.state = 'idle';
   global.view = null;
+  global.hostPlatform = platform;
+  global.recordStartShortcut = {key: 'r', shift: true};
   global.player = { src: '', paused: true };
   global.typingHere = () => false;
   global.openKeyCard = () => {};
@@ -51,7 +55,7 @@ test('Command-Shift-R starts recording when idle', () => {
 
 test('Ctrl-Shift-R starts recording on Windows when idle', () => {
   global.started = false;
-  const handler = shortcutHandler();
+  const handler = shortcutHandler('Windows');
   let prevented = false;
 
   handler({
@@ -60,5 +64,33 @@ test('Ctrl-Shift-R starts recording on Windows when idle', () => {
   });
 
   assert.equal(global.started, true);
+  assert.equal(prevented, true);
+});
+
+test('Command-B reuses the left sidebar toggle', () => {
+  global.sidebarToggled = false;
+  const handler = shortcutHandler();
+  let prevented = false;
+
+  handler({
+    key: 'b', code: 'KeyB', metaKey: true, ctrlKey: false, shiftKey: false,
+    altKey: false, preventDefault: () => { prevented = true; },
+  });
+
+  assert.equal(global.sidebarToggled, true);
+  assert.equal(prevented, true);
+});
+
+test('Command-Option-B reuses the right drawer toggle', () => {
+  global.drawerToggled = false;
+  const handler = shortcutHandler();
+  let prevented = false;
+
+  handler({
+    key: 'b', code: 'KeyB', metaKey: true, ctrlKey: false, shiftKey: false,
+    altKey: true, preventDefault: () => { prevented = true; },
+  });
+
+  assert.equal(global.drawerToggled, true);
   assert.equal(prevented, true);
 });

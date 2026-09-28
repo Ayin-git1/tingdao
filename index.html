@@ -366,6 +366,30 @@
   .feedwrap::-webkit-scrollbar{width:0;}   /* 录制态隐藏纵向滚动条(字幕自走) */
   .feedwrap.viewing{overflow-y:auto;}
   .feedwrap.viewing::-webkit-scrollbar{width:8px;}
+  /* 长音频分段锚点: 贴在文稿右缘，不参与正文滚动；当前片段用主题色加深。 */
+  .feedzone.has-transcript-anchors .feedwrap{padding-right:64px;}
+  .transcript-anchors{position:absolute; z-index:var(--z-fog); top:50%; right:14px;
+                      display:flex; flex-direction:column; align-items:flex-end; gap:2px;
+                      transform:translateY(-50%); padding:10px 0;}
+  .transcript-anchors[hidden]{display:none;}
+  .transcript-anchor{position:relative; width:32px; height:9px; padding:0; border:none;
+                     background:none; cursor:pointer; color:var(--sub); font:inherit;}
+  .transcript-anchor::before{content:""; position:absolute; top:5px; right:0; width:8px; height:2px;
+                              border-radius:99px; background:var(--gry-dim); opacity:.68;
+                              transition:width var(--hov), background var(--hov), opacity var(--hov), box-shadow var(--hov);}
+  .transcript-anchor:hover::before,.transcript-anchor:focus-visible::before{width:36px; background:var(--g); opacity:.86;}
+  .transcript-anchor.active::before{width:20px; background:var(--g); opacity:1;
+                                    box-shadow:0 0 0 3px var(--g-tint);}
+  .transcript-anchor.active:hover::before,.transcript-anchor.active:focus-visible::before{width:46px;}
+  .transcript-anchor:focus-visible{outline:none;}
+  .transcript-anchor-preview{position:absolute; right:54px; top:50%; width:220px; padding:9px 11px;
+                             border:1px solid var(--line); border-radius:12px; background:rgba(255,255,255,.88);
+                             backdrop-filter:blur(18px) saturate(1.25); -webkit-backdrop-filter:blur(18px) saturate(1.25);
+                             box-shadow:0 10px 28px rgba(20,24,29,.13); transform:translateY(-50%) translateX(5px);
+                             opacity:0; pointer-events:none; text-align:left; transition:opacity var(--hov), transform var(--hov);}
+  .transcript-anchor:hover .transcript-anchor-preview,.transcript-anchor:focus-visible .transcript-anchor-preview{opacity:1; transform:translateY(-50%);}
+  .transcript-anchor-preview b{display:block; margin-bottom:3px; color:var(--txt); font-size:var(--fs-meta); font-variant-numeric:tabular-nums;}
+  .transcript-anchor-preview span{display:block; overflow:hidden; color:var(--sub); font-size:var(--fs-meta); line-height:1.45; text-overflow:ellipsis; white-space:nowrap;}
   /* 上下渐隐遮罩: 挂在滚动容器外的 feedzone 上, 钉死可视边界不随内容滚走 */
   .fogmask{position:absolute; left:0; right:0; height:26px; z-index:var(--z-fog);
             transition:opacity .3s;
@@ -774,10 +798,14 @@
                        padding:6px 10px;font:inherit;font-size:var(--fs-ctl);cursor:pointer;}
   .personal-key button:hover{background:var(--gry-fill);}
   .personal-key button.recording{border-color:var(--g);color:var(--gd);}
-  .appearance-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;align-items:start;}
+  .appearance-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;align-items:stretch;}
   .appearance-group{position:relative;min-width:0;padding:11px;border:1px solid rgba(60,60,67,.08);border-radius:11px;background:rgba(120,120,128,.025);}
   .appearance-group>.st:first-child{margin:0 0 9px!important;color:var(--txt);font-size:var(--fs-ctl);font-weight:700;}
   .appearance-group .ptinfo{background:transparent;padding:0;margin:5px 0 0;}
+  .appearance-label{margin-top:11px;color:var(--sub);font-size:var(--fs-ctl);font-weight:600;}
+  .appearance-control-row{display:flex;align-items:center;gap:12px;margin-top:6px;max-width:420px;}
+  .appearance-control-row .seg{flex:1;min-width:180px;}
+  .appearance-control-row .personal-range{flex:1;min-width:170px;margin:0;}
   .theme-presets{display:flex;align-items:center;gap:9px;min-height:32px;}
   .theme-swatch{position:relative;width:24px;height:24px;border:2px solid var(--card);border-radius:50%;
     background:var(--swatch);box-shadow:0 0 0 1px var(--line);cursor:pointer;flex:none;}
@@ -808,7 +836,11 @@
   .theme-picker-foot .ptinfo{margin:0!important;}
   .theme-reset{border:0;background:none;color:var(--sub);font:inherit;font-size:var(--fs-meta);cursor:pointer;}
   .theme-reset:hover{color:var(--g);}
-  @media(max-width:760px){.appearance-grid{grid-template-columns:1fr;}}
+  @media(max-width:760px){
+    .appearance-grid{grid-template-columns:1fr;}
+    .appearance-control-row{align-items:stretch;flex-direction:column;gap:7px;}
+    .appearance-control-row .seg,.appearance-control-row .personal-range{max-width:360px;}
+  }
   /* 热词库模板条: 未选中的 hover 出绿底提示"可切它"; 选中的黑条是终态,
      改它只能走右侧铅笔, 所以名字悬停不给反馈(避免误以为还能点) */
   .hw-tpls{display:flex; flex-wrap:wrap; gap:6px; margin-bottom:6px;}
@@ -919,6 +951,20 @@
   .sidehead{padding:52px 16px 12px 20px; font-size:23px; font-weight:800; letter-spacing:-.6px; color:var(--txt);
             display:flex; align-items:center;}
   .sidehead .g{color:var(--g);}
+  .brand-info{position:relative; flex:none; outline:none;}
+  .brand-info:focus-visible .sidehead{outline:2px solid var(--g); outline-offset:3px; border-radius:5px;}
+  .brand-info-card{position:absolute; z-index:var(--z-tip); top:calc(100% - 14px); left:16px; width:232px;
+                   padding:8px; border:1px solid var(--line); border-radius:11px; background:var(--card);
+                   box-shadow:0 10px 25px rgba(20,24,29,.15); font-size:var(--fs-ctl); font-weight:500;
+                   letter-spacing:0; color:var(--sub);}
+  .brand-info-card[hidden]{display:none;}
+  .brand-info-line{min-height:28px; padding:0 6px; display:flex; align-items:center; justify-content:space-between; gap:10px;}
+  .brand-info-line strong{font-weight:700; color:var(--txt);}
+  .brand-info-card a{border-radius:6px; color:var(--sub); text-decoration:none; transition:background var(--hov), color var(--hov);}
+  .brand-info-card a:hover,.brand-info-card a:focus-visible{background:var(--hover); color:var(--txt); outline:none;}
+  .brand-repository>span:first-child{flex:none; white-space:nowrap;}
+  .brand-repository>span:last-child{min-width:0; white-space:nowrap; overflow:hidden;}
+  .brand-info-card .brand-repository::after{content:'↗'; flex:none; color:var(--g); font-size:14px;}
   /* 历史栏工具按钮: 搜索 / 排序 */
   .sbtn{border:none; background:none; width:30px; height:30px; border-radius:8px; color:var(--sub);
         cursor:pointer; display:flex; align-items:center; justify-content:center; flex:none;
@@ -1957,6 +2003,7 @@
   html[data-appearance="dark"] .tn-actions button{border-color:rgba(215,192,134,.32);background:rgba(255,255,255,.06);color:#e0d2aa;}
   html[data-appearance="dark"] .tn-actions .tn-save{border-color:#766747;background:#766747;color:#f4e8c5;}
   html[data-appearance="dark"] .tn-actions .tn-save:hover{background:#887655;}
+  html[data-appearance="dark"] .transcript-anchor-preview{background:rgba(42,43,47,.9); border-color:#55565d; box-shadow:0 10px 28px rgba(0,0,0,.28);}
 </style>
 
 <!-- 重载快捷键。单独成块、放在主脚本之前: pywebview 的默认菜单里没有 Reload,
@@ -2051,12 +2098,12 @@
     <button class="go" id="tplGo"></button>
   </div>
 
-<!-- ⌘K 命令面板：居中搜索浮层（只搜标题） -->
+<!-- ⌘K 命令面板：居中搜索浮层（项目与分组） -->
 <div class="pal-scrim" id="palScrim"></div>
 <div class="palette" id="palette">
   <div class="pal-in">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
-    <input type="text" id="palIn" placeholder="搜索转录标题…" spellcheck="false" autocomplete="off">
+    <input type="text" id="palIn" placeholder="搜索项目或分组…" spellcheck="false" autocomplete="off">
     <span class="esc">esc</span>
   </div>
   <div class="pal-res" id="palRes"></div>
@@ -2067,7 +2114,15 @@
 <div class="cols">
 <div class="side-dock-bg" aria-hidden="true"></div>
 <div class="sidebar">
-  <div class="sidehead brand">听<span class="g">道</span></div>
+  <div class="brand-info" id="brandInfo" tabindex="0" aria-describedby="brandInfoCard" aria-expanded="false">
+    <div class="sidehead brand">听<span class="g">道</span></div>
+    <div class="brand-info-card" id="brandInfoCard" hidden>
+      <div class="brand-info-line"><span>当前版本</span><strong id="brandVersion">__TINGDAO_VERSION__</strong></div>
+      <a class="brand-info-line brand-repository" href="https://github.com/Ayin-git1/tingdao" target="_blank" rel="noreferrer">
+        <span>项目仓库</span><span>github.com/Ayin-git1/tingdao</span>
+      </a>
+    </div>
+  </div>
   <div class="sbsearch">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
     <input type="text" id="sbSearchInput" placeholder="搜索标题…" spellcheck="false">
@@ -2307,14 +2362,10 @@
        <section class="appearance-group">
         <div class="st">逐字稿阅读</div>
         <div class="st">字号</div>
-        <label class="personal-range"><span>小</span><input id="transcriptFontSize" type="range" min="14" max="18" step="1" value="15"><span>大</span><output id="transcriptFontSizeValue">15 px</output></label>
-        <div class="st" style="margin-top:11px;">行距</div>
-        <label class="personal-range"><span>紧</span><input id="transcriptLineHeight" type="range" min="1.5" max="2.2" step="0.05" value="1.75"><span>松</span><output id="transcriptLineHeightValue">1.75</output></label>
-        <div class="ptinfo">即时应用到逐字稿，重启后保留。</div>
-       </section>
-       <section class="appearance-group">
-        <div class="st">开始录音快捷键</div>
-        <div class="personal-key"><button type="button" id="recordShortcutButton">⌘ ⇧ R</button><span class="ptinfo" id="recordShortcutHint" style="margin:0">点击后按下新的组合键</span></div>
+       <label class="personal-range"><span>小</span><input id="transcriptFontSize" type="range" min="14" max="18" step="1" value="15"><span>大</span><output id="transcriptFontSizeValue">15 px</output></label>
+       <div class="st" style="margin-top:11px;">行距</div>
+       <label class="personal-range"><span>紧</span><input id="transcriptLineHeight" type="range" min="1.5" max="2.2" step="0.05" value="1.75"><span>松</span><output id="transcriptLineHeightValue">1.75</output></label>
+       <div class="ptinfo">即时应用到逐字稿，重启后保留。</div>
        </section>
        <section class="appearance-group">
         <div class="st">完成提示音</div>
@@ -2324,11 +2375,25 @@
           <button type="button" data-v="distant">悠远</button>
         </div>
         <div class="ptinfo">转录等任务完成时播放；删除项目提示音独立设置。</div>
-        <div class="st" style="margin-top:11px;">播放与音量</div>
-        <div class="seg" id="setCompletionSoundEnabled" style="max-width:320px" role="group" aria-label="完成提示音开关">
+        <div class="appearance-label">播放与音量</div>
+        <div class="appearance-control-row">
+         <div class="seg" id="setCompletionSoundEnabled" role="group" aria-label="完成提示音开关">
           <i class="segin" aria-hidden="true"></i><button type="button" data-v="on" class="on">开启</button><button type="button" data-v="off">关闭</button>
+         </div>
+         <label class="personal-range"><span>音量</span><input id="completionSoundVolume" type="range" min="0" max="40" step="1" value="14"><output id="completionSoundVolumeValue">14%</output></label>
         </div>
-        <label class="personal-range"><span>音量</span><input id="completionSoundVolume" type="range" min="0" max="40" step="1" value="14"><output id="completionSoundVolumeValue">14%</output></label>
+       </section>
+       <section class="appearance-group">
+        <div class="st">默认复制方式</div>
+        <button class="devfield" id="defaultCopyFormatButton" type="button" aria-expanded="false" aria-controls="copypop">
+          <span class="dv" id="defaultCopyFormatValue">不带时间戳 · 纯文本</span>
+          <svg class="cv" width="10" height="6" viewBox="0 0 10 6" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M1 1l4 4 4-4"/></svg>
+        </button>
+        <div class="ptinfo">普通点击文稿复制按钮会直接使用此格式；按住 Option / Alt 再点击可临时选择。</div>
+       </section>
+       <section class="appearance-group">
+        <div class="st">开始录音快捷键</div>
+       <div class="personal-key"><button type="button" id="recordShortcutButton">⌘ ⇧ R</button><span class="ptinfo" id="recordShortcutHint" style="margin:0">点击后按下新的组合键</span></div>
        </section>
       </div>
      </div>
@@ -2436,6 +2501,7 @@
     </div>
     <div id="feed"></div>
   </div>
+  <nav class="transcript-anchors" id="transcriptAnchors" aria-label="文稿时间分段" hidden></nav>
   <div class="skel" id="skel">
     <div class="sk-home"><div class="c"></div><div class="c"></div><div class="c"></div></div>
     <div class="sk-body">
@@ -2554,10 +2620,8 @@
 <div class="sortpop" id="devpop"><i class="sortind"></i></div>
 
 <div class="sortpop" id="copypop">
-  <div class="st">复制逐字稿</div>
-  <button data-v="ts">带时间戳<span class="ck">Markdown</span></button>
-  <button data-v="plain">不带时间戳<span class="ck">纯文本</span></button>
-  <button data-v="script">分说话人<span class="ck">剧本式</span></button>
+  <div class="st" id="copyPopTitle">复制逐字稿</div>
+  <i class="sortind" id="copyind"></i>
 </div>
 
 <div class="sortpop" id="sortpop">
@@ -2679,9 +2743,12 @@
       <kbd>空格</kbd><span>播放 / 暂停<i>（查看稿且有录音时）</i></span>
       <kbd>↑ / ↓</kbd><span>上一句 / 下一句，并跳到那一刻回放</span>
       <kbd data-mac-shortcut="⌘ F" data-windows-shortcut="Ctrl+F">⌘ F</kbd><span>在文稿里查找内容</span>
-      <kbd data-mac-shortcut="⌘ K" data-windows-shortcut="Ctrl+K">⌘ K</kbd><span>搜索全部转录标题<i>（命令面板）</i></span>
+      <kbd data-mac-shortcut="⌘ K" data-windows-shortcut="Ctrl+K">⌘ K</kbd><span>搜索项目或分组<i>（命令面板）</i></span>
       <kbd data-mac-shortcut="⌘ N" data-windows-shortcut="Ctrl+N">⌘ N</kbd><span>记一条时间线笔记<i>（非录音时=课后笔记）</i></span>
       <kbd data-mac-shortcut="⌘ E" data-windows-shortcut="Ctrl+E">⌘ E</kbd><span>复制不带时间戳的纯文本</span>
+      <kbd data-mac-shortcut="⌥ 点击复制" data-windows-shortcut="Alt+点击复制">⌥ 点击复制</kbd><span>临时选择复制方式</span>
+      <kbd data-mac-shortcut="⌘ B" data-windows-shortcut="Ctrl+B">⌘ B</kbd><span>打开 / 收起左侧项目栏</span>
+      <kbd data-mac-shortcut="⌘ ⌥ B" data-windows-shortcut="Ctrl+Alt+B">⌘ ⌥ B</kbd><span>打开 / 收起右侧课后笔记</span>
       <kbd id="recordShortcutKey" data-mac-shortcut="⌘ ⇧ R" data-windows-shortcut="Ctrl+Shift+R">⌘ ⇧ R</kbd><span>开始录音<i>（空闲时）</i></span>
       <kbd data-mac-shortcut="⌘ ," data-windows-shortcut="Ctrl+,">⌘ ,</kbd><span>打开 / 收起设置</span>
       <kbd>双击</kbd><span>就地改这一句<i> · Enter 落稿 · Esc 放弃</i></span>
@@ -2836,6 +2903,31 @@ function defaultName(){
   const d = new Date(), p = n=>String(n).padStart(2,'0');
   return `新录音 ${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}.${p(d.getMinutes())}`;
 }
+
+/* 左上品牌信息卡：悬停意图明确后才出现；离开文字与卡片整体区域立即收起。 */
+const brandInfo = $('brandInfo'), brandInfoCard = $('brandInfoCard');
+let brandInfoTimer = 0;
+function openBrandInfo(){
+  clearTimeout(brandInfoTimer);
+  brandInfoTimer = 0;
+  brandInfoCard.hidden = false;
+  brandInfo.setAttribute('aria-expanded', 'true');
+}
+function scheduleBrandInfo(){
+  clearTimeout(brandInfoTimer);
+  if(!brandInfoCard.hidden) return;
+  brandInfoTimer = setTimeout(openBrandInfo, 1200);
+}
+function closeBrandInfo(){
+  clearTimeout(brandInfoTimer);
+  brandInfoTimer = 0;
+  brandInfoCard.hidden = true;
+  brandInfo.setAttribute('aria-expanded', 'false');
+}
+brandInfo.addEventListener('pointerenter', scheduleBrandInfo);
+brandInfo.addEventListener('pointerleave', closeBrandInfo);
+brandInfo.addEventListener('focusin', openBrandInfo);
+brandInfo.addEventListener('focusout', e=>{if(!brandInfo.contains(e.relatedTarget)) closeBrandInfo();});
 
 /* 顶栏中段点击: 输入框默认放行给拖拽, 改名靠这里手动聚焦(聚焦后 CSS 收回 pointer-events) */
 document.querySelector('.namebox').addEventListener('click', ()=>{
@@ -3479,6 +3571,9 @@ function closePops(){
   $('btnCloud').classList.remove('lift');
   $('btnSet').classList.remove('lift');
   $('btnSort').classList.remove('lift');
+  $('btnCopy').classList.remove('lift');
+  $('defaultCopyFormatButton').classList.remove('open');
+  copyMenuTrigger = null;
   $('popscrim').classList.remove('show');
   pickClose();
 }
@@ -4347,6 +4442,15 @@ $('setAppearance').addEventListener('click', e=>{
   syncAppearanceUI();
 });
 const COMPLETION_SOUNDS = ['warm', 'distant'];
+const COPY_FORMATS = [
+  {value:'ts', label:'带时间戳', detail:'Markdown'},
+  {value:'plain', label:'不带时间戳', detail:'纯文本'},
+  {value:'script', label:'分说话人', detail:'剧本式'},
+];
+function copyFormatFor(value){
+  return COPY_FORMATS.find(format=>format.value===value) || COPY_FORMATS.find(format=>format.value==='plain');
+}
+let defaultCopyFormat = 'plain';
 let completionSound = 'warm';
 let completionSoundEnabled = true;
 let completionSoundVolume = 14;
@@ -4455,6 +4559,7 @@ async function loadCompletionSoundState(){
     savedThemeColor=window.tingdaoThemeColor.get();
     if(st.record_start_shortcut && /^[a-z0-9]$/i.test(st.record_start_shortcut.key || ''))
       recordStartShortcut = {key:st.record_start_shortcut.key.toLowerCase(), shift:!!st.record_start_shortcut.shift};
+    defaultCopyFormat = copyFormatFor(st.default_copy_format).value;
     applyTranscriptReading(fs, lh);
   }catch(e){
     completionSound = 'warm';
@@ -4464,6 +4569,7 @@ async function loadCompletionSoundState(){
   syncThemeColorUI();
   syncPersonalRanges();
   syncRecordShortcutUI();
+  syncDefaultCopyFormatUI();
 }
 $('setCompletionSound').addEventListener('click', async e=>{
   const b = e.target.closest('button[data-v]');
@@ -4927,13 +5033,49 @@ $('transcriptNoteSave').onclick=async()=>{
   toast(wasEditing?'笔记已修改':'便签已写入逐字稿');
 };
 
-$('btnCopy').onclick = (e)=>{
+let copyMenuPurpose = 'copy';
+let copyMenuTrigger = null;
+function renderCopyFormatMenu(){
+  const selected = copyFormatFor(defaultCopyFormat).value;
+  $('copypop').innerHTML = `<div class="st" id="copyPopTitle">${copyMenuPurpose==='setting'?'默认复制方式':'复制逐字稿'}</div>`
+    + '<i class="sortind" id="copyind"></i>'
+    + COPY_FORMATS.map(format=>`<button data-v="${format.value}" class="${format.value===selected?'on':''}">${format.label}<span class="ck">${format.detail}</span></button>`).join('');
+}
+function syncDefaultCopyFormatUI(){
+  const format = copyFormatFor(defaultCopyFormat);
+  $('defaultCopyFormatValue').textContent = `${format.label} · ${format.detail}`;
+  $('defaultCopyFormatButton').setAttribute('aria-label', `默认复制方式：${format.label}，${format.detail}`);
+}
+function closeCopyFormatMenu(){
+  const wasCopyMenu = copyMenuPurpose === 'copy';
+  $('copypop').classList.remove('show');
+  if(copyMenuTrigger) copyMenuTrigger.classList.remove('lift', 'open');
+  copyMenuTrigger = null;
+  if(wasCopyMenu) closePops();
+}
+function openCopyFormatMenu(trigger, purpose){
+  const pop = $('copypop');
+  if(pop.classList.contains('show')){
+    if(copyMenuTrigger === trigger){ closeCopyFormatMenu(); return; }
+    closeCopyFormatMenu();
+  }
+  if(purpose === 'copy') openPop(pop, trigger);
+  else { pop.classList.add('show'); trigger.classList.add('open'); }
+  copyMenuPurpose = purpose;
+  copyMenuTrigger = trigger;
+  renderCopyFormatMenu();
+  placeUnder(pop, trigger, 6);
+  slideInd(pop, pop.querySelector('button.on'), false, true);
+}
+$('btnCopy').onclick = e=>{
   e.stopPropagation();
   if(!view){ toast('请先选择一个项目'); return; }
-  const pop = $('copypop');
-  if(pop.classList.contains('show')){ closePops(); return; }
-  openPop(pop, $('btnCopy'));          // 与排序/说话人浮层同一条路：垫背板 + 抬起触发钮
-  placeUnder(pop, $('btnCopy'), 6);
+  if(e.altKey){ openCopyFormatMenu($('btnCopy'), 'copy'); return; }
+  copyAs(defaultCopyFormat);
+};
+$('defaultCopyFormatButton').onclick = e=>{
+  e.stopPropagation();
+  openCopyFormatMenu($('defaultCopyFormatButton'), 'setting');
 };
 async function copyAs(kind, sid){
   const target = sid || (view && view.id);
@@ -4965,9 +5107,28 @@ $('copypop').addEventListener('click', e=>{
   const b = e.target.closest('button[data-v]');
   if(!b) return;
   e.stopPropagation();
-  $('copypop').classList.remove('show');
-  copyAs(b.dataset.v);
+  const format = copyFormatFor(b.dataset.v).value;
+  if(copyMenuPurpose === 'setting'){
+    const previous = defaultCopyFormat;
+    defaultCopyFormat = format;
+    syncDefaultCopyFormatUI();
+    closeCopyFormatMenu();
+    savePersonalSetting('default_copy_format', format).catch(()=>{
+      defaultCopyFormat = previous;
+      syncDefaultCopyFormatUI();
+      toast('默认复制方式保存失败，已恢复上次选择');
+    });
+    return;
+  }
+  closePops();
+  copyAs(format);
 });
+$('copypop').addEventListener('mouseover', e=>{
+  const b = e.target.closest('button[data-v]');
+  if(b) slideInd($('copypop'), b, b.dataset.v !== defaultCopyFormat);
+});
+$('copypop').addEventListener('mouseleave', ()=>
+  slideInd($('copypop'), $('copypop').querySelector('button.on'), false));
 function copyPlain(){ copyAs('plain'); }
 $('btnReveal').onclick = ()=>{
   if(!view){ toast('请先选择一个项目'); return; }
@@ -5671,6 +5832,44 @@ $('mvQuery').addEventListener('keydown', e=>{
   if(e.key === 'Escape') closeItemMenu();
 });
 
+function transcriptAnchorSlices(duration){
+  const total=Math.max(0,Number(duration)||0);
+  return total>300?Array.from({length:Math.ceil(total/300)},(_,index)=>({start:index*300,end:Math.min(total,(index+1)*300)})):[];
+}
+function transcriptAnchorIndex(time,slices){
+  const index=slices.findIndex(slice=>time>=slice.start&&time<slice.end), last=slices.length-1;
+  return index>=0?index:(last>=0&&time>=slices[last].end?last:-1);
+}
+let transcriptAnchorState=[];
+function updateTranscriptAnchorActive(time){
+  const active=transcriptAnchorIndex(Math.max(0,Number(time)||0),transcriptAnchorState);
+  document.querySelectorAll('#transcriptAnchors .transcript-anchor').forEach((anchor,index)=>{
+    const current=index===active;
+    anchor.classList.toggle('active',current);
+    anchor.setAttribute('aria-current',current?'true':'false');
+  });
+}
+function renderTranscriptAnchors(duration,segments){
+  const rail=$('transcriptAnchors');
+  transcriptAnchorState=transcriptAnchorSlices(duration);
+  rail.replaceChildren();
+  rail.hidden=!transcriptAnchorState.length;
+  $('feedzone').classList.toggle('has-transcript-anchors',!!transcriptAnchorState.length);
+  for(const slice of transcriptAnchorState){
+    const anchor=document.createElement('button');
+    const first=(segments||[]).find(segment=>segment.t>=slice.start&&segment.t<slice.end&&segment.text);
+    const label=`${fmt(slice.start)} – ${fmt(slice.end)}`;
+    anchor.type='button'; anchor.className='transcript-anchor';
+    anchor.setAttribute('aria-label',`跳转到 ${label}`);
+    anchor.innerHTML=`<span class="transcript-anchor-preview"><b>${label}</b><span>${esc(first?first.text:'跳转到这一段')}</span></span>`;
+    anchor.addEventListener('click',()=>{
+      player.currentTime=slice.start; posDirty=true; hideResume(); player.play(); updateTranscriptAnchorActive(slice.start);
+    });
+    rail.appendChild(anchor);
+  }
+  updateTranscriptAnchorActive(player.currentTime||0);
+}
+
 let player = $('player');
 async function loadSession(sid, keepList){
   // 离开上一个项目：若刚才真播过/拖过，先把播放位置存回上一个项目
@@ -5739,6 +5938,7 @@ async function loadSession(sid, keepList){
     $('atime').textContent = '00:00 / 00:00'; $('seek').value = 0;
     resumePending = 0; hideResume();
   }
+  renderTranscriptAnchors(d.audioUrl ? d.duration : 0,d.segments);
   if(d.stopped){
     // 已停止的空壳: 文稿顶挂黄横幅(与云端失败横幅同一语言), 给重跑/删除两个出口
     $('empty').style.display='none'; $('feed').style.display='block';
@@ -5852,6 +6052,7 @@ function refreshTimeUI(){
 function onMeta(){
   applyRate();          // 换源后浏览器把倍速重置回 1，按当前档重新落
   refreshTimeUI();
+  if(view && player.getAttribute('src')) renderTranscriptAnchors(player.duration,view.segments);
   maybeShowResume();    // 拿到时长才能判断上次位置是否有效
 }
 player.addEventListener('loadedmetadata', onMeta);
@@ -5889,6 +6090,7 @@ $('resumeHead').onclick = ()=>{
 let lastCurHit = -1;
 player.ontimeupdate = ()=>{
   refreshTimeUI();
+  updateTranscriptAnchorActive(player.currentTime);
   const hit = curHit();
   segEls.forEach((el,i)=>el.classList.toggle('cur', i===hit));
   savePos(false);   // 播放中节流记录位置
@@ -5903,7 +6105,7 @@ player.onpause = ()=>{ savePos(true); $('playIcon').innerHTML = '<path d="M8 5.5
 $('seek').addEventListener('input', ()=>{ seeking = true; });
 $('seek').addEventListener('change', ()=>{
   const v = $('seek').value/100 * (player.duration||0);
-  player.currentTime = v; seeking = false; posDirty = true; hideResume(); savePos(true);
+  player.currentTime = v; seeking = false; posDirty = true; hideResume(); updateTranscriptAnchorActive(v); savePos(true);
 });
 // 关窗 / 切后台时尽力存一次位置（播放中已每 4 秒存过，这里补最后一程）
 window.addEventListener('pagehide', ()=>{ if(posDirty) savePos(true); });
@@ -6193,6 +6395,12 @@ document.addEventListener('keydown', e=>{
     e.preventDefault(); $('fab').click(); return;
   }
   if(cmd && e.key === '/'){ e.preventDefault(); openKeyCard(); return; }
+  if(cmd && !e.shiftKey && k === 'b'){
+    if(typingHere(e)) return;
+    e.preventDefault();
+    (e.altKey ? $('btnNoteTop') : $('btnSide')).click();
+    return;
+  }
   if(cmd && !e.shiftKey && !e.altKey){
     if(k === 'f' && view){ e.preventDefault(); $('btnFind').click(); return; }
     if(k === 'n'){ e.preventDefault();
@@ -6422,7 +6630,7 @@ $('sbSearchInput').addEventListener('keydown', e=>{
   if(e.key==='Escape'){ e.target.value=''; histQuery=''; refreshHistory(); e.target.blur(); }
 });
 
-/* ---- ⌘K 命令面板：居中搜索浮层（只搜标题） ---- */
+/* ---- ⌘K 命令面板：居中搜索项目与分组 ---- */
 let palSel = 0;
 function palHl(name, q){
   const raw = name||'', e = esc(raw);
@@ -6433,28 +6641,77 @@ function palHl(name, q){
 }
 function palMatches(q){
   q = (q||'').trim().toLowerCase();
-  let its = (lastHistRaw||[]).filter(it=>!it.pending);
-  if(q) its = its.filter(it=>(it.name||'').toLowerCase().includes(q));
-  its.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
-  return its.slice(0,12);
+  const allProjects = (lastHistRaw||[]).filter(it=>!it.pending);
+  const matchingGroups = q ? groupNamesWithCounts()
+    .filter(group=>group.count && group.name.toLowerCase().includes(q)) : [];
+  const matchingGroupNames = new Set(matchingGroups.map(group=>group.name));
+  let projects = allProjects;
+  if(q) projects = projects.filter(it=>(it.name||'').toLowerCase().includes(q));
+  if(matchingGroupNames.size){
+    projects = [...projects, ...allProjects.filter(it=>matchingGroupNames.has(it.group))];
+    projects = [...new Map(projects.map(it=>[it.id, it])).values()];
+  }
+  projects.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  projects = projects.slice(0,12).map(it=>({type:'project', ...it}));
+  const groups = matchingGroups.map(group=>({type:'group', ...group}));
+  return [...projects, ...groups];
 }
 function palRender(){
   const q = $('palIn').value, its = palMatches(q), R = $('palRes');
   if(palSel >= its.length) palSel = Math.max(0, its.length-1);
-  if(!its.length){ R.innerHTML = `<div style="padding:28px;text-align:center;color:var(--gry-icon);font-size:13px">${q.trim()?'没有匹配「'+esc(q.trim())+'」的转录':'还没有可搜索的转录'}</div>`; return; }
-  R.innerHTML = `<div class="pal-h">转录 · ${its.length}</div>` + its.map((it,i)=>{
+  if(!its.length){ R.innerHTML = `<div style="padding:28px;text-align:center;color:var(--gry-icon);font-size:13px">${q.trim()?'没有匹配「'+esc(q.trim())+'」的项目或分组':'还没有可搜索的项目'}</div>`; return; }
+  const projects = its.filter(it=>it.type==='project');
+  const groups = its.filter(it=>it.type==='group');
+  const projectRows = projects.map(it=>{
+    const i = its.indexOf(it);
     const sub = `${esc(it.group||'未分组')} · ${esc((it.date||'').slice(5,16))}${it.duration? ' · '+fmt(it.duration):''}`;
-    return `<div class="pal-item${i===palSel?' cur':''}" data-id="${esc(it.id)}">
+    return `<div class="pal-item${i===palSel?' cur':''}" data-type="project" data-id="${esc(it.id)}">
       <div class="pi-ic">${hic('audio')}</div>
       <div class="pi-body"><div class="pi-tt">${palHl(it.name, q.trim())}</div><div class="pi-sub">${sub}</div></div>
       <span class="pi-go">↵</span></div>`;
   }).join('');
+  const groupRows = groups.map(it=>{
+    const i = its.indexOf(it);
+    return `<div class="pal-item${i===palSel?' cur':''}" data-type="group" data-name="${esc(it.name)}">
+      <div class="pi-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 7.5h6l1.8 2h9.2v7.7a2.3 2.3 0 0 1-2.3 2.3H5.8a2.3 2.3 0 0 1-2.3-2.3z"/><path d="M3.5 7.5V6.8a2.3 2.3 0 0 1 2.3-2.3h3.4l1.8 2h7.2a2.3 2.3 0 0 1 2.3 2.3v.7"/></svg></div>
+      <div class="pi-body"><div class="pi-tt">${palHl(it.name, q.trim())}</div><div class="pi-sub">${it.count} 个项目</div></div>
+      <span class="pi-go">↵</span></div>`;
+  }).join('');
+  R.innerHTML = (projectRows ? `<div class="pal-h">项目 · ${projects.length}</div>${projectRows}` : '')
+              + (groupRows ? `<div class="pal-h">分组 · ${groups.length}</div>${groupRows}` : '');
   R.querySelectorAll('.pal-item').forEach((el,i)=>{
-    el.onmouseenter = ()=>{ palSel = i; palRender(); };
-    el.onclick = ()=> palOpen(el.dataset.id);
+    el.onmouseenter = ()=>{
+      palSel = i;
+      R.querySelectorAll('.pal-item').forEach((item,index)=>item.classList.toggle('cur', index===i));
+    };
+    el.onclick = ()=> el.dataset.type==='group' ? palOpenGroup(el.dataset.name) : palOpenProject(el.dataset.id);
   });
 }
-function palOpen(id){ closePalette(); if(state!=='idle'){ toast('请先结束当前录音'); return; } loadSession(id, true); }
+async function palOpenProject(id){
+  closePalette();
+  if(state!=='idle'){ toast('请先结束当前录音'); return; }
+  const row = [...document.querySelectorAll('#histlist .hitem')].find(el=>el.dataset.id===id);
+  if(row){
+    document.querySelectorAll('#histlist .hitem.on').forEach(el=>el.classList.remove('on'));
+    row.classList.add('on');
+    const body = row.closest && row.closest('.gbody');
+    if(body && body.classList.contains('collapsed')) toggleGroupCollapse(body.previousElementSibling.dataset.g, body.previousElementSibling, body);
+    row.scrollIntoView({block:'nearest'});
+  }
+  await loadSession(id, true);
+}
+async function palOpenGroup(name){
+  closePalette();
+  histQuery = ''; $('sbSearchInput').value = '';
+  await refreshHistory();
+  const header = [...document.querySelectorAll('#histlist .grp')].find(el=>el.dataset.g===name);
+  if(!header) return;
+  const body = header.nextElementSibling;
+  if(body.classList.contains('collapsed')) toggleGroupCollapse(name, header, body);
+  const list = $('histlist');
+  list.scrollTop = Math.max(0, list.scrollTop + header.getBoundingClientRect().top
+    - list.getBoundingClientRect().top - 18);
+}
 function openPalette(){ $('palScrim').classList.add('show'); $('palette').classList.add('show'); palSel=0; $('palIn').value=''; palRender(); setTimeout(()=>$('palIn').focus(),30); }
 function closePalette(){ $('palScrim').classList.remove('show'); $('palette').classList.remove('show'); }
 $('btnCmdK').onclick = openPalette;
@@ -6466,7 +6723,11 @@ $('palIn').addEventListener('keydown', e=>{
   if(e.key==='Escape'){ closePalette(); }
   else if(e.key==='ArrowDown'){ e.preventDefault(); palSel=Math.min(its.length-1,palSel+1); palRender(); }
   else if(e.key==='ArrowUp'){ e.preventDefault(); palSel=Math.max(0,palSel-1); palRender(); }
-  else if(e.key==='Enter'){ e.preventDefault(); if(its[palSel]) palOpen(its[palSel].id); }
+  else if(e.key==='Enter'){
+    e.preventDefault();
+    const selected = its[palSel];
+    if(selected) selected.type==='group' ? palOpenGroup(selected.name) : palOpenProject(selected.id);
+  }
 });
 document.addEventListener('keydown', e=>{
   if((e.metaKey||e.ctrlKey) && (e.key==='k'||e.key==='K')){ e.preventDefault();
