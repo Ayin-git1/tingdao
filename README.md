@@ -94,7 +94,7 @@ Windows 安装版已包含 FFmpeg。安装 Python 后重开 PowerShell，并确�
 
 ### v2.7.10
 
-- 完善 macOS 与 Windows 双端窗口适配：Windows 11 使用自绘标题栏、窗口控制按钮与边缘缩放；macOS 自适应图标资源已接入。
+- 完善 macOS 与 Windows 双端窗口适配：Windows 11 使用自绘标题栏、窗口控制按钮与边缘缩放；macOS 沿用现有 Tingdao.icns 图标。
 - Windows 启动时自动查找已安装听道依赖的 Python 虚拟环境；也可在设置中手动选择解释器。录音和转码期间不再弹出黑色控制台窗口。
 - 侧栏悬浮预览可一键转为常驻；整理摘要卡与音频条的显示和交互。
 
