@@ -8,7 +8,7 @@
 
 听道适用于 macOS 与 Windows，可录制系统声音与麦克风声音。支持本地模型转写和远端api转写两套通路。支持生成笔记与文稿摘要。深度集成从听→学的知识掌握链路。听道服务于：咨询服务、会议记录、私密会话、网课学习等场景。
 
-当前版本：**v2.7.1**　·　[下载页面](https://github.com/Ayin-git1/tingdao/releases)　·　[PolyForm Noncommercial License](./LICENSE)
+当前版本：**v2.7.10**　·　[下载页面](https://github.com/Ayin-git1/tingdao/releases)　·　[PolyForm Noncommercial License](./LICENSE)
 
 <h2 id="download"><img src="./assets/readme/badges/download.svg" height="40" alt="下载与安装"></h2>
 
@@ -90,7 +90,15 @@ Windows 安装版已包含 FFmpeg。安装 Python 后重开 PowerShell，并确�
 
 源码采用 [PolyForm Noncommercial License 1.0.0](./LICENSE)，仅限个人非商业使用；应表述为“源码公开”，不属于允许商业使用的 OSI 开源许可。第三方库、工具和模型各自遵循其上游许可，详见 [`THIRD-PARTY-NOTICES.md`](./THIRD-PARTY-NOTICES.md)。macOS 提供 DMG，Windows 提供 NSIS 安装包，源码 zip 作为备用方式。
 
-<h2 id="updates"><img src="./assets/readme/badges/updates.svg" height="40" alt="v2.7.1 更新"></h2>
+<h2 id="updates"><img src="./assets/readme/badges/updates.svg" height="40" alt="v2.7.10 更新"></h2>
+
+### v2.7.10
+
+- 完善 macOS 与 Windows 双端窗口适配：Windows 11 使用自绘标题栏、窗口控制按钮与边缘缩放；macOS 自适应图标资源已接入。
+- Windows 启动时自动查找已安装听道依赖的 Python 虚拟环境；也可在设置中手动选择解释器。录音和转码期间不再弹出黑色控制台窗口。
+- 侧栏悬浮预览可一键转为常驻；整理摘要卡与音频条的显示和交互。
+
+### v2.7.1
 
 - Windows 新增本地 Whisper 识别与精修，支持 faster-whisper / CTranslate2 模型。
 - Windows 安装包现包含 FFmpeg，首次配置只需另备 Python 依赖和模型。

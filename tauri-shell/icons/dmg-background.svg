@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="992" height="620" viewBox="0 0 992 620">
+  <defs>
+    <linearGradient id="surface" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f7faf6"/>
+      <stop offset="1" stop-color="#edf4ed"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#a5d9a2"/>
+      <stop offset="1" stop-color="#7fc97e"/>
+    </linearGradient>
+  </defs>
+  <rect width="992" height="620" fill="url(#surface)"/>
+  <circle cx="900" cy="90" r="170" fill="#e2eee1" opacity="0.42"/>
+  <circle cx="75" cy="560" r="145" fill="#e3eee2" opacity="0.5"/>
+  <path d="M48 70h7" stroke="#75bd71" stroke-width="5" stroke-linecap="round"/>
+  <text x="70" y="77" fill="#26372a" font-family="-apple-system,BlinkMacSystemFont,'PingFang SC',sans-serif" font-size="27" font-weight="650">听道</text>
+  <text x="70" y="105" fill="#768579" font-family="-apple-system,BlinkMacSystemFont,'PingFang SC',sans-serif" font-size="13" letter-spacing="1.1">让声音成稿，默认留在本机</text>
+  <rect x="825" y="56" width="112" height="32" rx="16" fill="#e3eee2"/>
+  <text x="881" y="77" text-anchor="middle" fill="#547457" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-size="12" font-weight="600" letter-spacing="0.6">MACOS</text>
+  <text x="496" y="158" text-anchor="middle" fill="#26372a" font-family="-apple-system,BlinkMacSystemFont,'PingFang SC',sans-serif" font-size="25" font-weight="600">把听道拖到应用程序</text>
+  <text x="496" y="188" text-anchor="middle" fill="#738075" font-family="-apple-system,BlinkMacSystemFont,'PingFang SC',sans-serif" font-size="14">拖放完成后，即可开始使用</text>
+  <path d="M370 330h241" fill="none" stroke="url(#accent)" stroke-width="3" stroke-linecap="round"/>
+  <path d="m600 320 12 10-12 10" fill="none" stroke="#79c378" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="370" cy="330" r="4" fill="#a3d59f"/>
+  <rect x="450" y="305" width="82" height="27" rx="13.5" fill="#f1f7f0" stroke="#dce9db"/>
+  <text x="491" y="323" text-anchor="middle" fill="#68836b" font-family="-apple-system,BlinkMacSystemFont,'PingFang SC',sans-serif" font-size="12">拖到这里</text>
+  <text x="496" y="577" text-anchor="middle" fill="#8a968b" font-family="-apple-system,BlinkMacSystemFont,'PingFang SC',sans-serif" font-size="12">安装后可从「应用程序」或 Launchpad 打开</text>
+</svg>
