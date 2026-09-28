@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" viewBox="0 0 1254 1254" width="1254" height="1254">
+  <defs>
+    <linearGradient id="ink" x1="0" y1="0" x2="0.75" y2="1">
+      <stop offset="0" stop-color="#30363B" />
+      <stop offset="1" stop-color="#262C30" />
+    </linearGradient>
+    <linearGradient id="green" x1="0" y1="0" x2="0.75" y2="1">
+      <stop offset="0" stop-color="#42DE77" />
+      <stop offset="1" stop-color="#3AD76E" />
+    </linearGradient>
+    <linearGradient id="blue" x1="0" y1="0" x2="0.75" y2="1">
+      <stop offset="0" stop-color="#98DBFC" />
+      <stop offset="1" stop-color="#90D6F8" />
+    </linearGradient>
+    <linearGradient id="overlap-green" x1="0" y1="0" x2="0.75" y2="1">
+      <stop offset="0" stop-color="#009C4C" />
+      <stop offset="1" stop-color="#00974B" />
+    </linearGradient>
+    <linearGradient id="overlap-teal" x1="0" y1="0" x2="0.75" y2="1">
+      <stop offset="0" stop-color="#1BCBA6" />
+      <stop offset="1" stop-color="#17BBA1" />
+    </linearGradient>
+    <linearGradient id="yellow" x1="0" y1="0" x2="0.75" y2="1">
+      <stop offset="0" stop-color="#FFE91C" />
+      <stop offset="1" stop-color="#FFDD09" />
+    </linearGradient>
+    <clipPath id="ring-clip" clipPathUnits="userSpaceOnUse">
+      <path d="M118 548 C112 459 179 400 291 392 C411 381 483 410 545 459 C600 504 619 603 619 685 C621 762 595 814 528 852 C464 888 368 905 293 896 C233 890 207 868 185 814 C153 737 127 628 118 548 Z M223 564 C213 509 248 496 301 495 C369 492 409 502 432 535 C455 568 464 616 463 665 C463 718 443 751 411 772 C385 790 343 796 315 790 C291 786 281 771 270 744 C246 686 230 612 223 564 Z" clip-rule="evenodd" />
+    </clipPath>
+    <clipPath id="blue-clip" clipPathUnits="userSpaceOnUse">
+      <path d="M653 706 C659 581 694 484 775 432 C850 388 940 377 1015 390 C1094 402 1135 444 1138 520 C1141 575 1112 658 1094 717 C1075 783 1056 832 1027 853 C990 881 918 886 839 886 C765 886 717 879 687 850 C657 819 648 770 653 706 Z" clip-rule="evenodd" />
+    </clipPath>
+  </defs>
+  <g id="03-green-capsule" inkscape:groupmode="layer" inkscape:label="03 绿色胶囊">
+    <path d="M479 438 C479 355 544 289 627 289 C709 289 775 354 775 438 L775 796 C775 885 710 957 627 957 C544 957 479 888 479 797 Z" fill="url(#green)" />
+  </g>
+</svg>

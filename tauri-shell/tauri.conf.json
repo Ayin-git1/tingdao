@@ -25,12 +25,10 @@
       "program/tingdao-mix": "program/tingdao-mix",
       "program/sounds/": "program/sounds/",
       "program/TingdaoMic.app/": "TingdaoMic.app/",
-      "icons/Tingdao.icon/": "Tingdao.icon/",
-      "icons/Assets.car": "Assets.car",
       "icons/oto-icon-dark.icns": "Tingdao-dark.icns"
     },
     "icon": [
-      "icons/icon.png",
+      "icons/Untitled.icon",
       "icons/Tingdao.icns"
     ],
     "macOS": {
