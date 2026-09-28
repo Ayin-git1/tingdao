@@ -41,6 +41,23 @@ for _p in ("/opt/homebrew/bin", "/usr/local/bin"):
         os.environ["PATH"] = _p + ":" + os.environ.get("PATH", "")
 
 
+if platform.system() == "Windows":
+    # 本进程被壳用 CREATE_NO_WINDOW 拉起, 自己已经没有控制台了。连带后果: 此后任何
+    # subprocess 再拉起控制台程序(ffmpeg/ffprobe/powershell/whisper worker), Windows 都会
+    # 给它新开一个黑窗口 —— 只修壳会换来「录音/转码时满屏终端闪烁」。
+    # 所以在本进程范围内给所有子进程统一挂上 CREATE_NO_WINDOW: 一处生效, 三十来个调用点
+    # 不必各写一遍, 新代码也不会漏。对 GUI 子系统目标(录音机、explorer.exe)该标志无副作用,
+    # 系统直接忽略。想显式改回有控制台的调用照常生效(这里是按位或, 不覆盖别的标志)。
+    _ORIG_POPEN_INIT = subprocess.Popen.__init__
+
+    def _popened_without_console(self, *args, **kwargs):
+        flags = kwargs.get("creationflags", 0) | getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        kwargs["creationflags"] = flags
+        _ORIG_POPEN_INIT(self, *args, **kwargs)
+
+    subprocess.Popen.__init__ = _popened_without_console
+
+
 def ffmpeg_path(name="ffmpeg"):
     """Windows 优先用随包分发的工具；POSIX 仍沿 PATH 找到系统安装版本。"""
     executable = name + (".exe" if platform.system() == "Windows" else "")
@@ -3533,9 +3550,9 @@ class App:
 
     # ---------- 原生路径选择器 ----------
     def pick_model_path(self, kind):
-        """选择本地模型目录或 VAD 的 ONNX 文件; 取消返回空串。"""
-        if kind not in ("directory", "onnx"):
-            raise ValueError("无效的模型路径类型")
+        """选择本地模型目录、VAD 的 ONNX 文件或 Windows 端的 Python 解释器; 取消返回空串。"""
+        if kind not in ("directory", "onnx", "python_exe"):
+            raise ValueError("无效的路径类型")
         if platform.system() == "Windows":
             if kind == "directory":
                 script = ("[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false);"
@@ -3544,10 +3561,13 @@ class App:
                           "$d.Description = '选择模型目录';"
                           "if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { $d.SelectedPath }")
             else:
+                # onnx = VAD 断句模型文件; python_exe = Windows 端设置里手动指解释器(下一轮壳启动时用)
+                title, filt = (("选择 VAD 模型文件", "ONNX 模型|*.onnx") if kind == "onnx"
+                               else ("选择 Python 解释器", "Python 解释器|python.exe"))
                 script = ("[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false);"
                           "Add-Type -AssemblyName System.Windows.Forms;"
                           "$d = New-Object System.Windows.Forms.OpenFileDialog;"
-                          "$d.Title = '选择 VAD 模型文件'; $d.Filter = 'ONNX 模型|*.onnx';"
+                          f"$d.Title = '{title}'; $d.Filter = '{filt}';"
                           "if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { $d.FileName }")
             try:
                 result = subprocess.run(
@@ -3561,8 +3581,10 @@ class App:
             return (result.stdout or "").strip()
         if kind == "directory":
             script = 'POSIX path of (choose folder with prompt "选择模型目录")'
-        else:
+        elif kind == "onnx":
             script = 'POSIX path of (choose file with prompt "选择 VAD 模型文件")'
+        else:
+            script = 'POSIX path of (choose file with prompt "选择 Python 解释器")'
         result = subprocess.run(["osascript", "-e", script],
                                 capture_output=True, text=True, timeout=900)
         return (result.stdout or "").strip() if result.returncode == 0 else ""

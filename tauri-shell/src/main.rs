@@ -15,7 +15,11 @@ use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
 #[cfg(target_os = "macos")]
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
-use tauri::{utils::config::Color, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
+// 不透明白底只给 mac 用(见 open_main_window 的 cfg 分支), Windows 构建里没人引用它 ——
+// 跟着 cfg 走, 免得白留一条 unused import 警告。
+#[cfg(not(target_os = "windows"))]
+use tauri::utils::config::Color;
 
 const READY_TIMEOUT_SECS: u64 = 60;
 const SERVE_TIMEOUT_SECS: u64 = 10;
@@ -26,10 +30,6 @@ const SHUTDOWN_TIMEOUT_SECS: u64 = 35;
 static BACKEND: LazyLock<Mutex<Option<Child>>> = LazyLock::new(|| Mutex::new(None));
 static PORTFILE: LazyLock<Mutex<Option<PathBuf>>> = LazyLock::new(|| Mutex::new(None));
 static BACKEND_PORT: LazyLock<Mutex<Option<u16>>> = LazyLock::new(|| Mutex::new(None));
-
-fn env_or(key: &str, fallback: String) -> String {
-    std::env::var(key).unwrap_or(fallback)
-}
 
 fn bundled_program_dir(resource_dir: &Path) -> PathBuf {
     resource_dir.join(if cfg!(windows) {
@@ -65,6 +65,246 @@ fn default_python_path(home: &Path, windows: bool) -> PathBuf {
         path.extend(["bin", "python"]);
     }
     path
+}
+
+/// 从 venv 根取解释器路径。与 default_python_path 同一套约定, 只是拆开好复用。
+fn python_bin(venv: &Path, windows: bool) -> PathBuf {
+    if windows {
+        venv.join("Scripts").join("python.exe")
+    } else {
+        venv.join("bin").join("python")
+    }
+}
+
+/// 听道特征依赖: 命中任意一条就认为"像是给听道装过的环境"。
+/// 只看 site-packages 里的目录名, 绝不启动解释器 —— import torch 要十几秒, 挂在启动路径上不可接受。
+const PROBE_PACKAGES: [&str; 5] = ["sherpa_onnx", "faster_whisper", "modelscope", "funasr", "torch"];
+
+/// 遍历目录时会跳开的名字: 大而无用(下载、回收站、依赖树), 扫了只会白烧时间。
+const SCAN_SKIP_DIRS: [&str; 6] = [
+    "AppData",
+    "Downloads",
+    "node_modules",
+    "$RECYCLE.BIN",
+    "OneDrive",
+    "WPSDrive",
+];
+
+fn site_packages_of(venv: &Path, windows: bool) -> Option<PathBuf> {
+    if windows {
+        let sp = venv.join("Lib").join("site-packages");
+        return sp.is_dir().then_some(sp);
+    }
+    // unix 下中间夹着 python3.x 一层, 版本号不固定, 只能枚举
+    let lib = venv.join("lib");
+    std::fs::read_dir(lib).ok()?.flatten().find_map(|e| {
+        let sp = e.path().join("site-packages");
+        sp.is_dir().then_some(sp)
+    })
+}
+
+/// 轻量校验: 这个 venv 里装没装听道要用的包。
+fn has_tingdao_deps(venv: &Path, windows: bool) -> bool {
+    let Some(sp) = site_packages_of(venv, windows) else {
+        return false;
+    };
+    let Ok(entries) = std::fs::read_dir(&sp) else {
+        return false;
+    };
+    entries.flatten().any(|e| {
+        let name = e.file_name().to_string_lossy().to_lowercase();
+        // 包目录(sherpa_onnx)与发行元数据(sherpa_onnx-1.10.0.dist-info / sherpa-onnx-…)都算
+        PROBE_PACKAGES.iter().any(|pkg| {
+            name.starts_with(pkg) || name.starts_with(&pkg.replace('_', "-"))
+        })
+    })
+}
+
+/// 按给定顺序校验候选 venv: 第一个「解释器在、依赖齐」的直接采纳并返回。
+///
+/// 做成独立函数是为了「逐档就地校验」这个契约能被单测钉住 —— 它是惰性探测的心脏:
+/// 早档命中就不再往下看, 家目录浅扫那种贵活才有机会被跳过。
+/// seen 负责跨批次去重(①–④ 查过的, ⑤ 浅扫再撞见就不必重复校验);
+/// trail 累积「看过但不合格」的解释器, 供全部落空时一次性摊给用户。
+fn pick_ready(
+    venvs: impl IntoIterator<Item = PathBuf>,
+    windows: bool,
+    seen: &mut Vec<PathBuf>,
+    trail: &mut Vec<String>,
+) -> Option<PathBuf> {
+    for venv in venvs {
+        if seen.contains(&venv) {
+            continue;
+        }
+        seen.push(venv.clone());
+        let py = python_bin(&venv, windows);
+        // 约定路径在本机根本不存在 = 不算一次尝试, 别拿去污染失败清单(那会淹没真正的线索)
+        if !py.is_file() {
+            continue;
+        }
+        if has_tingdao_deps(&venv, windows) {
+            return Some(py);
+        }
+        trail.push(format!("  · {} —— 缺听道依赖", py.display()));
+    }
+    None
+}
+
+/// 浅扫 venv: 深度 ≤2、访问目录数 ≤400、限时 700ms。
+/// 预算是硬约束 —— 这活儿发生在双击到开窗之间, 不能退化成一次家目录遍历。
+fn scan_for_venvs(base: &Path, started: Instant, out: &mut Vec<PathBuf>) {
+    let mut queue = vec![(base.to_path_buf(), 0usize)];
+    let mut visited = 0usize;
+    while let Some((dir, depth)) = queue.pop() {
+        if started.elapsed() > Duration::from_millis(700) || visited > 400 {
+            return;
+        }
+        visited += 1;
+        if dir.join("pyvenv.cfg").is_file() {
+            out.push(dir);
+            continue; // venv 内部不必再钻
+        }
+        if depth >= 2 {
+            continue;
+        }
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with('.') || SCAN_SKIP_DIRS.iter().any(|s| name.eq_ignore_ascii_case(s)) {
+                continue;
+            }
+            if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                queue.push((entry.path(), depth + 1));
+            }
+        }
+    }
+}
+
+/// 设置文件的落点。必须与 app.py 的推导完全同源(那里是 DATA_DIR/.settings.json):
+/// TINGDAO_DATA 整体搬家优先, 否则系统「文档」/transcripts —— 注意要拿 Known Folder
+/// 的真实位置(本机「文档」常被重定向到别的盘), tauri 的 document_dir 正是走这条路。
+fn settings_file_path(app: &tauri::App) -> Option<PathBuf> {
+    if let Some(data) = std::env::var_os("TINGDAO_DATA") {
+        return Some(PathBuf::from(data).join(".settings.json"));
+    }
+    let documents = app
+        .path()
+        .document_dir()
+        .ok()
+        .or_else(|| {
+            std::env::var_os("USERPROFILE")
+                .map(|h| PathBuf::from(h).join("Documents"))
+        })?;
+    Some(documents.join("transcripts").join(".settings.json"))
+}
+
+/// 定位后端解释器。
+///
+/// 难点不是「找一个 python.exe」而是「找到装齐听道依赖的那一个」: 一台机器上常年并存
+/// 系统 Python、py 启动器、uv/conda 托管环境, 挑中一个没装依赖的, 后端照样能起来,
+/// 直到点录音才报「设置→本地模型」—— 比启动就报错更难排查。所以除 TINGDAO_PY(用户明示,
+/// 原样尊重)之外, 每个候选都要过一遍 has_tingdao_deps 才敢采纳。
+/// 全程把试过的位置与判定记进 trail, 供失败时一次性摊给用户看。
+fn find_python(
+    resource_dir: Option<&Path>,
+    settings_file: Option<&Path>,
+    home: &Path,
+    windows: bool,
+) -> Result<PathBuf, String> {
+    // ⓪ 设置面板里填的解释器(最高优先): UI 是产品的正式入口, 用户在面板上填的应当最权威;
+    //    TINGDAO_PY 退一位, 留给开发机临时覆盖探测结果。填了但文件不存在就明确报错 ——
+    //    静默忽略回落探测, 用户会以为改了没生效。
+    if let Some(sf) = settings_file {
+        if let Ok(text) = std::fs::read_to_string(sf) {
+            let pick = serde_json::from_str::<serde_json::Value>(&text)
+                .ok()
+                .and_then(|v| {
+                    v.get("python_path")
+                        .and_then(|s| s.as_str())
+                        .map(|s| s.trim().to_string())
+                })
+                .filter(|p| !p.is_empty());
+            if let Some(p) = pick {
+                let py = PathBuf::from(&p);
+                if py.is_file() {
+                    return Ok(py);
+                }
+                return Err(format!(
+                    "设置里指定的 Python 解释器不存在：{p}\n可到「设置 → 本地模型目录 → Python 解释器」改回。"
+                ));
+            }
+        }
+    }
+
+    if let Some(explicit) = std::env::var_os("TINGDAO_PY") {
+        let py = PathBuf::from(explicit);
+        if py.is_file() {
+            return Ok(py);
+        }
+        return Err(format!(
+            "环境变量 TINGDAO_PY 指向的解释器不存在：{}",
+            py.display()
+        ));
+    }
+
+    // ① 包内自带(为「装上就能用」的自包含包预留) → ② exe 同级 → ③ 约定路径 → ④ 源码目录旁。
+    //    这四档都是 O(1) 的确定性路径, 逐档就地校验、命中即返回。
+    let mut explicit: Vec<PathBuf> = Vec::new();
+    if let Some(resources) = resource_dir {
+        explicit.push(resources.join("python"));
+        explicit.push(resources.join("tingdao-venv"));
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            explicit.push(dir.join("tingdao-venv"));
+        }
+    }
+    explicit.push(home.join("tingdao-venv"));
+    if let Ok(source) = std::env::var("TINGDAO_HOME") {
+        let source = PathBuf::from(source);
+        explicit.push(source.join(".venv"));
+        explicit.push(source.join("tingdao-venv"));
+        if let Some(parent) = source.parent() {
+            explicit.push(parent.join("tingdao-venv"));
+        }
+    }
+
+    let mut seen: Vec<PathBuf> = Vec::new();
+    let mut trail: Vec<String> = Vec::new();
+    if let Some(py) = pick_ready(explicit, windows, &mut seen, &mut trail) {
+        return Ok(py);
+    }
+
+    // ⑤ 前四档全落空, 才动用浅扫(找 pyvenv.cfg; 深度 ≤2、400 目录、700ms 预算)。
+    //    惰性是重点: 上一版先攒齐所有候选(含浅扫)再统一校验, 等于机器上明明有 ~/tingdao-venv、
+    //    第一档就该命中, 却每次启动都先把家目录的 700ms 预算烧完才开始判断。
+    let mut scanned = Vec::new();
+    let started = Instant::now();
+    scan_for_venvs(home, started, &mut scanned);
+    for base in ["LOCALAPPDATA", "APPDATA"] {
+        if let Some(dir) = std::env::var_os(base) {
+            scan_for_venvs(Path::new(&dir), started, &mut scanned);
+        }
+    }
+    if let Some(py) = pick_ready(scanned, windows, &mut seen, &mut trail) {
+        return Ok(py);
+    }
+
+    if trail.is_empty() {
+        trail.push(format!(
+            "  · 未找到任何虚拟环境（查过 {}、包内资源、exe 同级与源码目录，并浅扫了家目录）",
+            default_python_path(home, windows).display()
+        ));
+    }
+    Err(format!(
+        "找不到可用的 Python 环境。已试过：\n{}\n\
+         请二选一：① 设环境变量 TINGDAO_PY 指向装好依赖的解释器；\n\
+         ② 在 {} 建虚拟环境并 pip install -r requirements.txt。",
+        trail.join("\n"),
+        home.join("tingdao-venv").display()
+    ))
 }
 
 /// 热测试版在编译时写入源码目录。正式版不会编入这段路径，保持完全自包含。
@@ -187,7 +427,7 @@ fn alert(title: &str, msg: &str) {
 }
 
 /// 拉起后端并回报它真正绑定的空闲端口(供开窗用)。
-fn start_backend(resource_dir: Option<PathBuf>) -> Result<u16, String> {
+fn start_backend(resource_dir: Option<PathBuf>, settings_file: Option<PathBuf>) -> Result<u16, String> {
     let home = if cfg!(windows) {
         std::env::var_os("USERPROFILE").map(PathBuf::from)
     } else {
@@ -198,6 +438,10 @@ fn start_backend(resource_dir: Option<PathBuf>) -> Result<u16, String> {
     // 程序本体(app.py)所在目录，按优先级取第一个真实含 app.py 的：
     //   ① 热测试版编入的源码目录 ② .app 包内资源 ③ TINGDAO_HOME ④ ~/tingdao
     // 正式 App 始终优先自身 Resources/program，避免意外引用开发机文件。
+    //
+    // 坑(改前端时必踩): dev 下 ② 命中的是 target/debug/program(-windows)/ —— 那是 tauri-build
+    // 在编译那一刻拷进去的快照, 优先级又压着 ③ TINGDAO_HOME。所以改完根目录的 index.html 只
+    // `cp` 到 program-windows/ 是不够的, 必须再 cargo build 一次, 否则窗口里永远是旧页面。
     let app_dir = runtime_program_candidates(
         resource_dir.clone(),
         std::env::var("TINGDAO_HOME")
@@ -214,18 +458,12 @@ fn start_backend(resource_dir: Option<PathBuf>) -> Result<u16, String> {
     })?;
     let app_py = app_dir.join("app.py");
 
-    let py = env_or(
-        "TINGDAO_PY",
-        default_python_path(&home, cfg!(windows))
-            .to_string_lossy()
-            .into_owned(),
-    );
-
-    if !Path::new(&py).is_file() {
-        return Err(format!(
-            "找不到 Python 环境：{py}\n请先按引导创建虚拟环境并装好依赖，或用环境变量 TINGDAO_PY 指向你的解释器。"
-        ));
-    }
+    let py = find_python(
+        resource_dir.as_deref(),
+        settings_file.as_deref(),
+        &home,
+        cfg!(windows),
+    )?;
 
     // 端口文件按壳的进程号命名, 多实例互不干扰; 起后端前先清同名残留, 免得读到上一轮的旧端口。
     let portfile = std::env::temp_dir().join(format!("tingdao.{}.port", std::process::id()));
@@ -240,6 +478,16 @@ fn start_backend(resource_dir: Option<PathBuf>) -> Result<u16, String> {
         .current_dir(&app_dir)
         .stdout(Stdio::null())
         .stderr(Stdio::null());
+    // Windows: python.exe 是「控制台子系统」的可执行文件, 而本壳是 GUI 子系统(见文件头
+    // windows_subsystem = "windows")。GUI 进程去 spawn 控制台程序时, 系统会给孩子另开一个
+    // 控制台窗口 —— 这就是「安装版每次启动都带一个黑终端」的成因, 跟没打包好无关。
+    // CREATE_NO_WINDOW(0x08000000) 才是正解: 压根不给它分配控制台。
+    // 别指望已有的 Stdio::null(): 它只接管管道, 窗口照样弹。
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x0800_0000);
+    }
     #[cfg(feature = "test-source")]
     {
         let contents = resource_dir.as_deref().and_then(Path::parent);
@@ -329,14 +577,18 @@ mod release_tests {
 
     #[test]
     fn bundled_program_directory_is_below_tauri_resource_directory() {
+        // 包内程序目录名按平台分叉(mac 是 program/, Windows 是 stage_windows.js 生成的 program-windows/),
+        // 断言得跟着 cfg 走 —— 写死 mac 值会让 Windows 上跑测试的人看到两条必红的假失败。
+        let bundled = if cfg!(windows) { "program-windows" } else { "program" };
         assert_eq!(
             super::bundled_program_dir(std::path::Path::new("C:/Apps/Tingdao/resources")),
-            std::path::Path::new("C:/Apps/Tingdao/resources/program")
+            std::path::PathBuf::from(format!("C:/Apps/Tingdao/resources/{bundled}"))
         );
     }
 
     #[test]
     fn bundled_program_resources_precede_developer_override() {
+        let bundled = if cfg!(windows) { "program-windows" } else { "program" };
         let candidates = super::runtime_program_candidates(
             Some(std::path::PathBuf::from("/Bundle/Contents/Resources")),
             Some(std::path::PathBuf::from("/External/program")),
@@ -345,11 +597,61 @@ mod release_tests {
         assert_eq!(
             candidates,
             vec![
-                std::path::PathBuf::from("/Bundle/Contents/Resources/program"),
+                std::path::PathBuf::from(format!("/Bundle/Contents/Resources/{bundled}")),
                 std::path::PathBuf::from("/External/program"),
                 std::path::PathBuf::from("/User/tingdao"),
             ]
         );
+    }
+
+    #[test]
+    fn pick_ready_returns_the_first_ready_venv_and_reports_only_real_attempts() {
+        // 三种落点: 压根没装(约定路径不存在) / 装了但缺依赖 / 齐活。
+        // 断言的不只是「选中第三个」, 还有失败清单的口径 —— 只有真去过的第二个能进清单。
+        let root = std::env::temp_dir().join("tingdao-shell-pickready");
+        let missing = root.join("missing");
+        let bare = root.join("bare");
+        let ready = root.join("ready");
+        std::fs::create_dir_all(&missing).unwrap();
+        std::fs::create_dir_all(bare.join("Lib").join("site-packages")).unwrap();
+        std::fs::create_dir_all(bare.join("Scripts")).unwrap();
+        std::fs::write(bare.join("Scripts").join("python.exe"), b"").unwrap();
+        std::fs::create_dir_all(ready.join("Lib").join("site-packages").join("torch")).unwrap();
+        std::fs::create_dir_all(ready.join("Scripts")).unwrap();
+        std::fs::write(ready.join("Scripts").join("python.exe"), b"").unwrap();
+
+        let mut seen = Vec::new();
+        let mut trail = Vec::new();
+        let picked = super::pick_ready(
+            vec![missing.clone(), bare.clone(), ready.clone()],
+            true,
+            &mut seen,
+            &mut trail,
+        );
+        assert_eq!(picked, Some(ready.join("Scripts").join("python.exe")));
+        assert_eq!(trail, vec![format!("  · {} —— 缺听道依赖", bare.join("Scripts").join("python.exe").display())]);
+
+        // 去重: 同一批 venv 再来一遍(浅扫会重复撞见约定路径), 不该再产出第二条线索
+        let before = trail.len();
+        assert_eq!(
+            super::pick_ready(vec![bare.clone(), ready.clone()], true, &mut seen, &mut trail),
+            None
+        );
+        assert_eq!(trail.len(), before);
+    }
+
+    /// 依赖探测是「找到一个 python」与「找到一个能跑的 python」之间唯一的屏障, 拿真目录验。
+    /// 两个用例都显式传 windows: true, 让 site-packages 的走法在非 Windows 机器上也稳定。
+    #[test]
+    fn dependency_probe_reads_site_packages_without_running_python() {
+        let hit = std::env::temp_dir().join("tingdao-shell-pyprobe-hit");
+        std::fs::create_dir_all(hit.join("Lib").join("site-packages").join("faster_whisper-1.1.0.dist-info"))
+            .unwrap();
+        assert!(super::has_tingdao_deps(&hit, true));
+
+        let empty = std::env::temp_dir().join("tingdao-shell-pyprobe-empty");
+        std::fs::create_dir_all(empty.join("Lib").join("site-packages")).unwrap();
+        assert!(!super::has_tingdao_deps(&empty, true));
     }
 }
 
@@ -380,6 +682,33 @@ fn stop_backend() {
     }
 }
 
+/// 明确告诉 DWM「边框外观我自己画」—— 见 open_main_window 的 Windows 分支。两件事一起办:
+///   33 CORNER_PREFERENCE = DONOTROUND(1): Win11 的自动圆角半径与 CSS 的不重合, 两层弧叠加会在
+///     角上露出深浅边; 更要紧的是它并不可靠 —— WebView2 的合成层被提升为硬件覆盖层(游戏画面、
+///     动态壁纸前面)时掩码直接失效, 那正是「背景溢出窗口圆角」的老成因。掩码不可信, 就彻底不依赖。
+///   34 BORDER_COLOR = COLOR_NONE(0): 去掉 Win11 给窗口描的那圈 1px 浅灰描边。窗口现在是透明的,
+///     这条描边会按方角画, 正好盖在我们自绘的圆弧外面。
+/// DWM 会在窗口被移动/贴靠/改 DPI 后重置这些属性(此前实测: 拖一下窗口, 系统又自作主张),
+/// 所以除了建窗时设一次, 还得在 Moved/Resized 事件里反复摁回去(两次调用, 微秒级)。
+#[cfg(target_os = "windows")]
+fn apply_selfdrawn_frame(hwnd_raw: isize) {
+    #[link(name = "dwmapi")]
+    extern "system" {
+        fn DwmSetWindowAttribute(
+            hwnd: isize,
+            attribute: u32,
+            value: *const i32,
+            size: u32,
+        ) -> i32;
+    }
+    let no_round: i32 = 1; // DWMWCP_DONOTROUND
+    let no_border: i32 = 0; // DWMWA_COLOR_NONE
+    unsafe {
+        DwmSetWindowAttribute(hwnd_raw, 33, &no_round, 4);
+        DwmSetWindowAttribute(hwnd_raw, 34, &no_border, 4);
+    }
+}
+
 /// 用后端回报的端口, 在运行时把主窗口开起来。
 /// 窗口的尺寸/居中等写在这里而非 tauri.conf.json —— 因为 URL 现在带的是动态端口, 只能建窗时注入。
 fn open_main_window(app: &mut tauri::App, port: u16) -> tauri::Result<()> {
@@ -392,8 +721,13 @@ fn open_main_window(app: &mut tauri::App, port: u16) -> tauri::Result<()> {
         .title("听道")
         .inner_size(1000.0, 640.0)
         .min_inner_size(760.0, 520.0)
-        .center()
-        .background_color(Color(255, 255, 255, 255));
+        .center();
+    // 不透明白底只给 mac 用(压住 WKWebView 首帧白闪)。Windows 下面要走透明窗口,
+    // 而 wry 在 transparent 时会忽略 background_color —— 干脆不设, 免得读代码时误判窗口底是白的。
+    #[cfg(not(target_os = "windows"))]
+    {
+        builder = builder.background_color(Color(255, 255, 255, 255));
+    }
 
     // 标题栏方案与旧配置一致: Overlay + 隐藏标题 + 红绿灯移到 (20,30), 只 macOS 有这几个 setter。
     #[cfg(target_os = "macos")]
@@ -404,7 +738,44 @@ fn open_main_window(app: &mut tauri::App, port: u16) -> tauri::Result<()> {
             .traffic_light_position(tauri::LogicalPosition::new(20.0, 30.0));
     }
 
-    builder.build()?;
+    // Windows 没有上面这套 setter(标题栏既不能透明也不能只藏图标), 要把网页拉到顶、
+    // 去掉左上的图标与「听道」字样, 只能整条摘掉原生标题栏。窗口底子转由网页自绘:
+    // 顶部拖拽 = .dragbar[data-tauri-drag-region], 右上角最小化/最大化/关闭 = index.html
+    // 里的 .winctl(见其中 data-platform="windows" 那段)。
+    //
+    // 圆角同样由网页自绘(见 index.html 里 html[data-platform="windows"] 的 clip-path), 这里
+    // 只负责把它需要的地基打好:
+    //   transparent(true) —— 窗口必须有 alpha 通道, 否则 CSS 裁出来的四角会被不透明窗口底顶死。
+    //     tao 建窗用的是 NULL 画刷(不自带底色), wry 会把 WebView2 的 DefaultBackgroundColor
+    //     设成 (0,0,0,0), 两者合起来才让"四角外透出桌面"成立。
+    //   shadow(false) —— 关键一步。shadow(true) 会留着 WS_THICKFRAME, tao 便在 WM_NCCALCSIZE 里
+    //     按边框宽度内缩客户区(window.rs 的 MARKER_UNDECORATED_SHADOW 分支), 于是窗口矩形与客户区
+    //     之间留下一条非客户区带: 它归 NULL 画刷管, 平时靠 DWM 的圆角掩码裁掉, 掩码一失效就露出
+    //     一条黑边 —— 等于还是把外观押在掩码上。关掉 shadow, tao 走 WM_NCCALCSIZE 的 return 0
+    //     分支, 客户区 == 窗口矩形, 那条带子从根上不存在, 圆角与边缘就只由 CSS 说了算。
+    //     代价: 原生边缘缩放与 Win11 贴边吸附没了, 缩放改由网页边缘的 .wresize 条调
+    //     plugin:window|start_resize_dragging 承担(见 index.html)。
+    //   DWM 的圆角与描边显式关掉(apply_selfdrawn_frame): 既然窗口带 alpha, 让系统再自作主张
+    //     画一层弧/一圈 1px 浅灰描边, 只会在角上叠出深浅边。
+    //
+    // 三键走 tauri 内建的 plugin:window|* 命令(capabilities/default.json 里已放行)。别改成壳里
+    // 自注册的 #[tauri::command]: 主窗口加载的是后端直出的 http://127.0.0.1:<动态端口>, 属 remote
+    // 页面, 自定义命令在这条路上会被 ACL 判 "not allowed. Plugin not found"。也别指望
+    // withGlobalTauri —— 它靠 @tauri-apps/api 这个 npm 包产出全局脚本, 本仓库只装了 cli, 开了是静默无效。
+    #[cfg(target_os = "windows")]
+    {
+        builder = builder.decorations(false).transparent(true).shadow(false);
+    }
+
+    let window = builder.build()?;
+
+    // 关掉 DWM 圆角, 让 CSS 成为唯一的圆角来源(理由见上)。拖动/贴靠后会被重置, 故
+    // on_window_event 里还会再摁。
+    #[cfg(target_os = "windows")]
+    if let Ok(hwnd) = window.hwnd() {
+        apply_selfdrawn_frame(hwnd.0 as isize);
+    }
+
     Ok(())
 }
 
@@ -429,18 +800,38 @@ fn main() {
         // macOS 默认"关最后一个窗口不退出", 对这个单窗口工具就是坑: 窗口没了、后端还在悄悄
         // 占着麦克风。这里把"关窗"直接等价于"退出", 退出再触发下面的 stop_backend。
         .on_window_event(|window, event| {
-            if let tauri::WindowEvent::CloseRequested { .. } = event {
-                window.app_handle().exit(0);
+            match event {
+                tauri::WindowEvent::CloseRequested { .. } => {
+                    window.app_handle().exit(0);
+                }
+                // 拖动/贴靠/改尺寸后 DWM 会重置圆角属性, 再摁一次(见 apply_selfdrawn_frame)
+                #[cfg(target_os = "windows")]
+                tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_) => {
+                    if let Ok(hwnd) = window.hwnd() {
+                        apply_selfdrawn_frame(hwnd.0 as isize);
+                    }
+                }
+                _ => {}
             }
         })
         // 主窗口在 setup 里建: 需要先有后端回报的动态端口才能定 URL, 而端口在 start_backend 已到手。
         .setup(move |app| {
             let resource_dir = app.path().resource_dir().ok();
-            let port = start_backend(resource_dir)
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+            let settings_file = settings_file_path(app);
+            let port = match start_backend(resource_dir, settings_file) {
+                Ok(p) => p,
+                Err(e) => {
+                    // 坑: tauri 的 setup hook 返回 Err 时, 会在 run() 内部直接 panic(GUI 进程
+                    // 无声无息退出 101, 用户什么都看不到), 下面 unwrap_or_else 的 alert 兜不到它。
+                    // 所以启动失败必须在这里自己弹窗 + 退出, 让用户看到具体原因。
+                    alert("听道启动失败", &e);
+                    std::process::exit(1);
+                }
+            };
             if let Err(error) = open_main_window(app, port) {
                 stop_backend();
-                return Err(error.into());
+                alert("听道启动失败", &error.to_string());
+                std::process::exit(1);
             }
             Ok(())
         })

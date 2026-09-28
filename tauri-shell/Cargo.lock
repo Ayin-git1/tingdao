@@ -3346,6 +3346,7 @@ dependencies = [
 name = "tingdao-shell"
 version = "2.7.1"
 dependencies = [
+ "serde_json",
  "tauri",
  "tauri-build",
 ]

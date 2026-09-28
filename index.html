@@ -180,6 +180,7 @@
     --z-cloudpop:61;    /* 云端接口配置（浮在设置弹层之上） */
     --z-devpop:62;      /* 来源菜单内再开的设备选择器 */
     --z-mvpop:63;       /* 侧栏「移到项目」二级浮层(压在条目菜单之上) */
+    --z-winctl:64;      /* Windows 自绘窗口三键(永远压过面板, 等同原生标题栏控件的手感) */
     --z-tip:80;         /* 提示气泡 */
     --z-toast:99;       /* toast（最顶，谁都不压它） */
 
@@ -199,6 +200,25 @@
        font-family:-apple-system,"PingFang SC","Helvetica Neue",sans-serif;
        display:flex; flex-direction:column;
        -webkit-user-select:none; user-select:none;}
+  /* Windows 自绘圆角: 壳已把窗口开成带 alpha 通道的透明窗口(见 main.rs 的 transparent(true)),
+     圆角由这一行裁出来, 不再依赖 DWM 的窗口掩码 —— 那个掩码在 WebView2 被提升为硬件覆盖层时
+     (游戏画面、动态壁纸前面)会失效, 表现就是"背景溢出圆角"; 自己裁则与背景无关。
+     为什么是 clip-path 而不是给 body 加 border-radius+overflow:hidden: 顶栏/三键/抽屉全是
+     position:fixed, 祖先的 overflow 裁不到 fixed 后代, 只有作用在根元素上的 clip-path 能把
+     整页绘制内容(含 fixed)一起裁。半径 10px 对齐 Win11 原生窗口的观感。 */
+  html[data-platform="windows"]{clip-path:inset(0 round 10px);}
+  /* 但 clip-path 裁不到「画布」。CSS 规定: 根元素背景透明时, body 的背景会被提升到画布去铺满
+     整个视口 —— 那一层不归任何元素管, 于是四角外仍是一圈方方的白(实测: 圆角画对了, 角外还多一块
+     白)。所以 Windows 下把 html/body 都清成透明, 底色改由下面的 #panelBg 这一层来铺。 */
+  html[data-platform="windows"], html[data-platform="windows"] body{background:transparent;}
+  /* 页面底色层: 铺满视口、自己带同样的 10px 圆角, 于是四角外是真的透明。
+     z-index:-1 压在正文之下、画布之上; 正文里所有"透出 body 底色"的地方观感不变。 */
+  #panelBg{position:fixed; inset:0; z-index:-1; background:var(--bg); border-radius:10px;}
+  html:not([data-platform="windows"]) #panelBg{display:none;}
+  /* 最大化时四边贴住屏幕, 留圆弧会露出桌面、看着像没铺满 —— 取消裁剪。
+     data-wimax 由 bindWindowControls 跟着窗口真实状态翻, mac 上这两个属性都不存在, 不受影响。 */
+  html[data-platform="windows"][data-wimax="1"]{clip-path:none;}
+  html[data-platform="windows"][data-wimax="1"] #panelBg{border-radius:0;}
   /* 文字选取: 全站默认禁选(顶栏/侧栏/按钮/标签点了不该糊出一片蓝),
      只放开"真正要读要抄"的正文与可编辑控件; 正文里的时间码与说话人徽标再单独收回不可选 */
   .seg{-webkit-user-select:text; user-select:text;}
@@ -216,12 +236,18 @@
      注意: 只留 position:relative, 绝不能加 z-index —— 一旦加了, topbar 自成一个层叠
      上下文, 里面 .gearbtn.lift 的 z-index 再高也被关在里面, 弹层背板(54)永远压着它,
      聚光灯效果失效。不设 z-index 则不建上下文, 子级可直接抬到背板之上。 */
-  /* 顶部留白只要 14px: 原生标题栏自己占掉 32pt(红绿灯在里面), 网页不用再让一遍位;
-     拖拽由系统标题栏负责, 不需要(也从来没有) -webkit-app-region —— 那是 Electron 的属性, WKWebView 不认 */
+  /* mac 顶部只留 14px: Overlay 标题栏本就透明, 红绿灯悬浮在这一排里(20,30), 网页不用再让一遍位。
+     Windows 现在也贴到窗口顶 —— 32px 原生标题栏整个摘掉了(见 main.rs), 左侧不再需要红绿灯位(18px 起),
+     右侧那 150px 正好留给自绘三键(3×46=138 + 余量)。拖窗统一走下面 .dragbar 的
+     data-tauri-drag-region, 不用 -webkit-app-region —— 那是 Electron 的属性, 这里的 webview 不认 */
   .topbar{position:fixed; top:0; left:0; right:0; z-index:var(--z-topbar);   /* 第一层: 压在抽屉(52)之上, 仍在弹层背板(54)之下 */
           display:flex; align-items:center; gap:10px; padding:14px 18px 0 88px;
           background:transparent; pointer-events:none; transition:opacity .45s ease;}
-  html[data-platform="windows"] .topbar{padding-left:18px;padding-right:150px;}
+  /* Windows 单独适配(不动 mac): 原生标题栏已摘, 顶栏不再需要 14px 让位, 且要与自绘三键同处一排。
+     把整条 topbar 钉成与 .winctl 同高的 34px caption 带(top:0、padding-top:0), 靠上面已有的
+     align-items:center 让 30px 的 .sbtn 居中于 17px —— 正好对上三键 34px 带的中心线, 同一水平、垂直居中。
+     右侧仍留 150px 给三键(3×46=138 + 余量), 左侧从 18px 起(无红绿灯位)。mac 走上面的默认 14px 版式, 不回归。 */
+  html[data-platform="windows"] .topbar{padding:0 150px 0 18px; height:34px;}
   /* 录音周期: 顶栏这一排整排渐隐(视觉聚焦在录音本身, 也避免与录音控件抢操作) */
   .topbar.hide{opacity:0; pointer-events:none;}
   .topbar > *{pointer-events:auto;}
@@ -229,6 +255,51 @@
      单独一层而不是塞进 .topbar —— 录音态顶栏整排渐隐时, 拖窗能力不能跟着消失。
      按钮在 .topbar(z6) 里, 压在它上面, 点击照常落在按钮。改让位区高度记得同步这个 55px。 */
   .dragbar{position:fixed; top:0; left:0; right:0; height:55px; z-index:var(--z-drag); pointer-events:auto;}
+  /* Windows 自绘窗口三键: 壳在 Windows 上摘掉了原生标题栏(main.rs 的 decorations(false)),
+     最小化/最大化/关闭这些常规出口就得由网页补齐, 否则只剩 Alt+F4 能用。
+     独立一层而不塞进 .topbar —— 录音态顶栏整排渐隐时窗口控件必须留着, 同上面 .dragbar 的道理。
+     层级压在二级浮层之上(--z-winctl), 复刻原生 caption 按钮「谁盖不住我」的手感。
+     尺寸按 Windows 惯例 46×34、10px 细线图标; 三键 hover 走全局 --hover, 唯独关闭转 --warn。 */
+  /* Python 解释器栏仅 Windows 可见: 壳找解释器这整套是 Windows 特供(mac 端解释器路径由
+     系统/引导负责), 用 :not 让它在 mac/未知平台整块消失, 且首帧起就不渲染 —— 与
+     html[data-platform] 同一个打法, 不靠 JS 二次隐藏。 */
+  html:not([data-platform="windows"]) #pyPathBlock{display:none;}
+  .winctl{position:fixed; top:0; right:0; z-index:var(--z-winctl); display:none; pointer-events:auto;}
+  html[data-platform="windows"] .winctl{display:flex;}
+  .winctl button{-webkit-appearance:none; appearance:none; flex:none; width:46px; height:34px; padding:0;
+                 border:none; border-radius:0; background:none; color:var(--sub); cursor:pointer;
+                 display:flex; align-items:center; justify-content:center;
+                 transition:color var(--hov), background var(--hov);}
+  .winctl button:hover{color:var(--txt); background:var(--hover);}
+  .winctl button.wc-close:hover{color:#fff; background:var(--warn);}
+  .winctl svg{width:10px; height:10px; display:block;}
+  /* 最大化态把「方框」换成「错位双框」的还原图标: 只靠 <html data-wimax> 翻, 不另建图标状态机 */
+  .winctl .wc-r{display:none;}
+  html[data-wimax="1"] .winctl .wc-m{display:none;}
+  html[data-wimax="1"] .winctl .wc-r{display:block;}
+  /* Windows 边缘缩放热区: 原生 WS_THICKFRAME 随 shadow(false) 一起摘掉了(理由见 main.rs),
+     系统不再给八向拉伸的热区, 由这 8 条补回 —— 按下即请壳跑系统原生缩放循环, 手感与原边框一致。
+     厚度 5px、角上 9px, 正好压在自绘圆角外沿那一圈, 不侵入正文可点区域; 层级同三键, 跟原生边框
+     一样「谁盖不住我」。最大化时整排隐去: 四边贴住屏幕, 本就没有可拉的边。 */
+  .wres{position:fixed; z-index:var(--z-winctl); display:none;}
+  html[data-platform="windows"] .wres{display:block;}
+  html[data-platform="windows"][data-wimax="1"] .wres{display:none;}
+  .wres-n{top:0; left:9px; right:9px; height:5px; cursor:ns-resize;}
+  .wres-s{bottom:0; left:9px; right:9px; height:5px; cursor:ns-resize;}
+  .wres-w{left:0; top:9px; bottom:9px; width:5px; cursor:ew-resize;}
+  .wres-e{right:0; top:9px; bottom:9px; width:5px; cursor:ew-resize;}
+  .wres-nw{left:0; top:0; width:9px; height:9px; cursor:nwse-resize;}
+  .wres-ne{right:0; top:0; width:9px; height:9px; cursor:nesw-resize;}
+  .wres-sw{left:0; bottom:0; width:9px; height:9px; cursor:nesw-resize;}
+  .wres-se{right:0; bottom:0; width:9px; height:9px; cursor:nwse-resize;}
+  /* 窗口轮廓线: shadow(false) 之后系统不再画投影, 压在浅色桌面/白底网页上时窗口边界会"糊"没。
+     补一条 1px 内描边把轮廓立起来。为什么单开一层而不是给 body 加 box-shadow —— body 是 flex
+     容器, 侧栏/主区自己的背景会把这条边盖掉; 单独一层压在最上(z 同三键)、pointer-events:none
+     不参与任何点击。border-radius 与 clip-path 同一个 10px, 描边才会顺着圆角走。 */
+  .wedge{position:fixed; inset:0; z-index:var(--z-winctl); pointer-events:none; display:none;
+         border-radius:10px; box-shadow:inset 0 0 0 1px rgba(0,0,0,.16);}
+  html[data-platform="windows"] .wedge{display:block;}
+  html[data-platform="windows"][data-wimax="1"] .wedge{display:none;}
   .sbtn.home{margin-left:auto;}
   /* 主页态没有"返回主页"可做, 不放一颗点了没反应的钮; 笔记是查看态的东西, 主页也不给 */
   body.home #btnHome, body.home #btnNoteTop{display:none;}
@@ -576,6 +647,13 @@
   .cloudpop .cst{flex:1; font-size:var(--fs-meta); color:var(--sub); line-height:1.5;}
   .cloudpop .cst.ok{color:var(--gd);}
   .cloudpop .cst.bad{color:var(--warn);}
+  /* 回执行与它下面那块灰底说明的间距: .ptinfo 的 margin-top:-4px 本来是贴着输入框用的
+     (吃掉 .pathrow 那 6px, 让说明紧跟字段)。可路径行下面还夹着一个 .cst —— 保存/清空后
+     才有字, 平时是空 div 不占高。一旦有了字, 这 -4px 就把灰底说明顶到回执的下沿上,
+     三行字糊成一坨(Windows 的 Python 解释器栏最先撞上, 因为它是唯一「回执 + 说明」连排的)。
+     所以: 有回执时由回执自己撑下间距、说明取消上提; 回执为空时 :not(:empty) 不命中, 原样紧贴。 */
+  .cloudpop div.cst:not(:empty){margin:0 0 6px;}
+  .cloudpop div.cst:not(:empty) + .ptinfo{margin-top:0;}
   .cloudpop .pathrow{display:flex; gap:6px; align-items:center; margin-bottom:6px;}
   .cloudpop .pathrow input{flex:1; min-width:0; margin-bottom:0;}
   .cloudpop .pathpick{flex:none; width:34px; height:34px; border:1px solid var(--line);
@@ -1896,8 +1974,20 @@
 </script>
 </head>
 <body>
+<!-- Windows 页面底色层(只有 Windows 显示, 见 #panelBg 注释): html/body 在 Windows 下被清成透明,
+     底色改由这一层铺, 才能被圆角裁掉 —— 靠 body 背景做不到, 它会被提升到画布、不受裁剪 -->
+<div id="panelBg"></div>
 <!-- 常驻拖拽层: 整条顶部空白区可拖窗(tauri 靠这个属性识别拖拽区) -->
 <div class="dragbar" data-tauri-drag-region></div>
+<!-- Windows 自绘窗口三键: 原生标题栏摘掉后由这排补上最小化/最大化/关闭。
+     mac 端红绿灯由系统画, 这排靠 html[data-platform] 不显形; 绑定见下方 bindWindowControls -->
+<div class="winctl" id="winctl">
+  <button id="winMin" title="最小化" aria-label="最小化"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1"><path d="M.5 5h9"/></svg></button>
+  <button id="winMax" title="最大化" aria-label="最大化"><svg class="wc-m" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1"><rect x=".5" y=".5" width="9" height="9"/></svg><svg class="wc-r" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round"><rect x=".5" y="2.5" width="7" height="7"/><path d="M2.5 2.5V.5h7v7h-2"/></svg></button>
+  <button class="wc-close" id="winClose" title="关闭" aria-label="关闭"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1"><path d="M.5.5l9 9M9.5.5l-9 9"/></svg></button>
+</div>
+<!-- Windows 窗口轮廓线(无边框无投影时把边界立起来), 纯装饰层, 见 .wedge 注释 -->
+<div class="wedge" id="wedge"></div>
 <div class="topbar">
     <button class="sbtn" id="btnSide" title="显示 / 隐藏项目栏">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9 4v16"/></svg>
@@ -2081,6 +2171,15 @@
           <button class="pathpick" type="button" data-pick="onnx" data-model="vad" aria-label="选择 VAD 模型文件" title="选择 ONNX 文件">…</button></div>
         <div class="cst" id="vadPathSt"></div>
         <div class="ptinfo" id="localModelHint">三款模型都需自行下载并配置路径（留空=功能不可用）：SenseVoice 负责实时字幕，Whisper 负责精修与导入转写，VAD 负责断句。改 SenseVoice / VAD 需重启听道生效，Whisper 下个任务起生效。</div>
+        <!-- Python 解释器(Windows 特供, mac 端由上方 CSS 整块隐藏): 壳启动后端前要找一个装好
+             依赖的解释器, 这栏是手动指路的正式入口。存 .settings.json 的 python_path, 壳读它 -->
+        <div id="pyPathBlock">
+          <div class="st">Python 解释器 <span style="font-weight:400;color:var(--sub);">（留空 = 自动探测 · 改后重启听道生效）</span></div>
+          <div class="pathrow"><input type="text" id="pyPath" spellcheck="false" placeholder="选填：python.exe 的完整路径">
+            <button class="pathpick" type="button" data-pick="python_exe" data-model="py" aria-label="选择 Python 解释器" title="选择 Python 解释器">…</button></div>
+          <div class="cst" id="pyPathSt"></div>
+          <div class="ptinfo" id="pyPathHint">Windows 专用。留空时听道自动寻找装好依赖的解释器（包内 → 安装目录 → 用户目录约定 → 浅扫虚拟环境）；这里填了就优先用它，机器上装了几个 Python 都不影响。</div>
+        </div>
       </div>
      </div>
 
@@ -2774,6 +2873,63 @@ function syncPlatformUI(platform){
 /* 首帧同步套用平台版式：body 脚本在解析阶段就执行，趁 status 异步回来之前把 ⌘/Ctrl 落定，
    配合 <head> 里已打的 data-platform，Windows 从第一帧起就是 Ctrl 提示，不再闪 ⌘。 */
 syncPlatformUI(hostPlatform);
+
+/* Windows 无边框壳的自绘三键。壳在 Windows 上摘掉了原生标题栏(main.rs 的 decorations(false)),
+   最小化/最大化/关闭改由 #winctl 这一排承担(mac 端走系统红绿灯, 这排靠 data-platform 本就不显形)。
+   动作经 tauri 无条件注入的 __TAURI_INTERNALS__.invoke 送达, 走的是内建 plugin:window 命令
+   (capabilities/default.json 里已为这几颗钮放行)。两条弯路都留字为证:
+     · @tauri-apps/api 用不上 —— 本页由后端直出、没有打包器, withGlobalTauri 又依赖该 npm 包才生效;
+     · 壳里自注册的 #[tauri::command] 更不行 —— 主窗口是 remote 页面(http://127.0.0.1:动态端口),
+       自定义命令会被 ACL 判 "not allowed. Plugin not found"。
+   拿不到 invoke(比如用浏览器直开后端端口)时, 三颗钮既拖不动窗也关不掉进程, 直接摘掉节点。 */
+function bindWindowControls(){
+  if(hostPlatform !== 'Windows') return;
+  const internals = window.__TAURI_INTERNALS__;
+  if(!internals || typeof internals.invoke !== 'function'){ $('winctl').remove(); return; }
+  // 每次调用都现取 __TAURI_INTERNALS__, 不缓存进闭包: 早期对象与通道就绪后的那份不保证是同一个,
+  // 少一次现取就多一分"点了不报错、也什么都不做"的排查成本。
+  const ctl = action => window.__TAURI_INTERNALS__.invoke(`plugin:window|${action}`, { label: 'main' });
+  $('winMin').onclick = () => ctl('minimize');
+  $('winClose').onclick = () => ctl('close');
+  $('winMax').onclick = () => ctl('toggle_maximize');
+  // 图标跟着窗口真实状态走。不去订 tauri 事件, 借网页自身的 resize: 点按钮、Win+↑、
+  // 贴边快照、拖边缘改尺寸都会让 webview 换尺寸, 一条监听把「最大化/还原」全部兜住。
+  const paint = () => ctl('is_maximized').then(max => {
+    document.documentElement.dataset.wimax = max ? '1' : '0';
+    $('winMax').title = max ? '还原' : '最大化';
+  }).catch(() => {});
+  // 首帧那次询问压到 load 之后: 解析阶段 IPC 通道未必已就绪, 问早了会石沉大海, 图标就停在默认值。
+  addEventListener('resize', paint);
+  if(document.readyState === 'complete') paint();
+  else addEventListener('load', paint, { once: true });
+}
+bindWindowControls();
+
+/* Windows 边缘缩放热区。与三键同一套打法: 走 tauri 内建的 plugin:window|*, 自定义命令在这条
+   remote 页面会被 ACL 判 not allowed(原因见 bindWindowControls 上方那段)。命令参数名是 value
+   (壳里 setter! 宏把入参统一叫 value), 取值为 ResizeDirection 的变体名、首字母大写。
+   节点由 JS 造: 八条纯热区, 写进 HTML 只会让结构更难读; 拿不到 invoke(浏览器直开后端端口)时
+   索性不造 —— 那时三键也已被摘掉, 造了也没用。 */
+function bindResizeEdges(){
+  if(hostPlatform !== 'Windows') return;
+  const internals = window.__TAURI_INTERNALS__;
+  if(!internals || typeof internals.invoke !== 'function') return;
+  const edges = {n:'North', s:'South', w:'West', e:'East',
+                 nw:'NorthWest', ne:'NorthEast', sw:'SouthWest', se:'SouthEast'};
+  for(const [cls, dir] of Object.entries(edges)){
+    const strip = document.createElement('div');
+    strip.className = 'wres wres-' + cls;
+    strip.dataset.dir = dir;                       // 排查用: 出问题时能立刻看出是哪一条热区
+    strip.addEventListener('mousedown', ev => {
+      if(ev.button !== 0) return;                  // 右键/中键不接管, 别抢正文的上下文菜单
+      ev.preventDefault();
+      window.__TAURI_INTERNALS__.invoke('plugin:window|start_resize_dragging',
+                                        {label:'main', value:dir});
+    });
+    document.body.appendChild(strip);
+  }
+}
+bindResizeEdges();
 
 function updateChrome(){
   const inView = view !== null;
@@ -3731,6 +3887,10 @@ function syncLocalModelFields(st){
   e1.value = sv; e1.dataset.saved = sv;
   e2.value = wh; e2.dataset.saved = wh;
   e3.value = vd; e3.dataset.saved = vd;
+  // Python 解释器(Windows 特供): 与模型路径同一套「值 + dataset.saved」的落法
+  const e4 = $('pyPath');
+  const py = st.python_path || '';
+  e4.value = py; e4.dataset.saved = py;
 }
 async function modelSave(kind, input, stId, key){
   const v = input.value.trim();
@@ -3757,19 +3917,36 @@ async function modelSave(kind, input, stId, key){
                  + ((kind === 'sensevoice' || kind === 'vad') ? ' · 重启听道后生效' : ' · 下个任务起生效');
   paintLocal();
 }
+/* Python 解释器路径(Windows 特供, mac 端整栏隐藏): 存 .settings.json 的 python_path,
+   壳下次启动读它当首选解释器(优先级最高, 见 main.rs 的 find_python)。留空 = 清掉, 回落自动探测。
+   不在前端硬校验"是否 python.exe" —— 壳那边有存在性检查, 填错时弹窗会带着具体路径。 */
+async function pySave(){
+  const v = $('pyPath').value.trim();
+  const st = $('pyPathSt');
+  const d = await api('/api/setting', {key:'python_path', value: v});
+  if(d.error){ st.className = 'cst bad'; st.textContent = d.error; return; }
+  $('pyPath').dataset.saved = v;
+  st.className = 'cst ok';
+  st.textContent = v ? '已保存 · 重启听道后生效' : '已清空 · 重启后回到自动探测';
+}
+$('pyPath').addEventListener('change', pySave);
 $('svPath').addEventListener('change', ()=> modelSave('sensevoice', $('svPath'), 'svPathSt', 'sv_model_dir'));
 $('whPath').addEventListener('change', ()=> modelSave('whisper', $('whPath'), 'whPathSt', 'whisper_model'));
 $('vadPath').addEventListener('change', ()=> modelSave('vad', $('vadPath'), 'vadPathSt', 'vad_model'));
 document.querySelectorAll('.pathpick').forEach(button=>button.addEventListener('click', async ()=>{
   const model = button.dataset.model;
-  const input = $({sensevoice:'svPath', whisper:'whPath', vad:'vadPath'}[model]);
-  const status = {sensevoice:'svPathSt', whisper:'whPathSt', vad:'vadPathSt'}[model];
-  const key = {sensevoice:'sv_model_dir', whisper:'whisper_model', vad:'vad_model'}[model];
+  const input = $({sensevoice:'svPath', whisper:'whPath', vad:'vadPath', py:'pyPath'}[model]);
+  const status = {sensevoice:'svPathSt', whisper:'whPathSt', vad:'vadPathSt', py:'pyPathSt'}[model];
+  const key = {sensevoice:'sv_model_dir', whisper:'whisper_model', vad:'vad_model', py:'python_path'}[model];
   button.disabled = true;
   try{
     const picked = await api('/api/pick_model_path', {kind:button.dataset.pick});
     if(picked.error) throw new Error(picked.error);
-    if(picked.path){ input.value = picked.path; await modelSave(model, input, status, key); }
+    if(picked.path){
+      input.value = picked.path;
+      // py 不走 modelSave: 那条路带 /api/model_check(校验模型目录内容), 解释器路径过不了那关
+      if(model === 'py'){ await pySave(); } else { await modelSave(model, input, status, key); }
+    }
   }catch(e){
     $(status).className = 'cst bad';
     $(status).textContent = '无法打开路径选择器：' + e.message;
