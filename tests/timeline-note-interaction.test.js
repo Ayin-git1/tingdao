@@ -88,17 +88,21 @@ test('drop and move indicators fall back to the editor end and clear outside it'
   includes(/!state\.free&&!state\.range\)hideTranscriptNoteDropIndicator\(\)/);
 });
 
-test('saved timeline notes render text rows while images use the independent canvas', () => {
+test('saved timeline notes render text rows and image cards through the flow renderer', () => {
   includes(/function renderTimelineNoteText\(/);
-  includes(/addNoteDom\(m\.t,\s*m\.text,\s*null,\s*m\.noteIndex,\s*m\.content\)/);
-  includes(/renderTranscriptCanvasImages\(\)/);
+  includes(/function createTranscriptNoteCard\(/);
+  includes(/function createTranscriptNoteImage\(/);
+  includes(/renderTimelineNotes\(\)/);
 });
 
-test('saved note images render as independent canvas objects instead of timestamp rows', () => {
-  includes(/id="transcriptImageCanvas"/);
-  includes(/function createTranscriptCanvasImage\(/);
-  includes(/transcript-canvas-image/);
-  includes(/type:\s*['"]note-image['"]/);
+test('saved note images render in a dedicated two-column container instead of a canvas', () => {
+  assert.doesNotMatch(html, /id="transcriptImageCanvas"/);
+  assert.doesNotMatch(html, /function createTranscriptCanvasImage\(/);
+  assert.doesNotMatch(html, /transcript-canvas-image/);
+  includes(/transcript-note-card/);
+  includes(/transcript-note-media/);
+  includes(/border-radius:13px/);
+  includes(/grid-template-columns:minmax\(0,1fr\) minmax\(180px/);
   assert.doesNotMatch(html, /div\.className\s*=\s*['"]seg note-image['"]/);
   assert.doesNotMatch(html, /querySelectorAll\(['"]\.seg\.note,\.seg\.note-image['"]\)/);
 });

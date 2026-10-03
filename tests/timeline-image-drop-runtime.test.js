@@ -62,6 +62,9 @@ test('direct transcript insertion saves image assets and updates session notes',
   assert.equal(requests[0].body.id,'test-project');
   assert.equal(requests[0].body.t,12);
   assert.equal(requests[0].body.content[0].asset,'asset-1');
+  assert.equal(requests[0].body.content[0].position.mode,'flow');
+  assert.equal(requests[0].body.content[0].position.x,null);
+  assert.equal(requests[0].body.content[0].position.y,null);
   assert.equal(requests[0].body.assets[0].data,'AA==');
   assert.equal(context.view.notes.length,1);
   assert.ok(shown.includes('render'));
@@ -91,6 +94,7 @@ test('actual transcript hit test selects the gap after the preceding timestamp',
   vm.runInContext(source('transcriptImageDropTarget'),context);
   const target = context.transcriptImageDropTarget(500,280);
   assert.equal(target.time,12); assert.equal(target.before,rows[2]);
+  assert.equal(target.x,undefined); assert.equal(target.y,undefined);
   assert.equal(context.transcriptImageDropTarget(50,280),null);
   elements.transcriptNoteLayer.hidden=false;
   assert.equal(context.transcriptImageDropTarget(500,280),null);
@@ -183,33 +187,34 @@ test('file-picker image reader decodes dimensions and supplies actual image data
 test('saved manuscript images expose their content index and direct interaction seam', () => {
   assert.match(html, /dataset\.noteContentIndex/);
   assert.match(html, /function transcriptMainImageTarget\(/);
-  assert.match(html, /note-image.*contextmenu|contextmenu.*note-image/s);
-  assert.match(html, /note-image.*pointerdown|pointerdown.*note-image/s);
+  assert.match(html, /transcript-note-image.*contextmenu|contextmenu.*transcript-note-image/s);
+  assert.match(html, /transcript-note-image.*pointerdown|pointerdown.*transcript-note-image/s);
 });
 
-test('manuscript images render as independent canvas objects instead of timestamp rows', () => {
-  assert.match(html, /id="transcriptImageCanvas"/);
-  assert.match(html, /function createTranscriptCanvasImage\(/);
+test('manuscript images render in a dedicated two-column flow container', () => {
+  assert.doesNotMatch(html, /id="transcriptImageCanvas"/);
+  assert.match(html, /function createTranscriptNoteCard\(/);
+  assert.match(html, /function createTranscriptNoteImage\(/);
+  assert.match(html, /transcript-note-media/);
+  assert.match(html, /grid-template-columns:minmax\(0,1fr\) minmax\(180px/);
+  assert.match(html, /border-radius:13px/);
   assert.doesNotMatch(html, /div\.className='seg note-image'/);
   assert.doesNotMatch(html, /createNoteImageDom\(/);
 });
 
-test('independent manuscript images expose resize and persisted canvas geometry', () => {
-  assert.match(html, /transcript-canvas-image-resize/);
+test('flow manuscript images expose resize and persist flow geometry', () => {
+  assert.match(html, /transcript-note-image-resize/);
   assert.match(html, /function startTranscriptMainImageResize\(/);
   assert.match(html, /displayWidth/);
-  assert.match(html, /position:\{mode:'free',x:/);
+  assert.match(html, /function persistTranscriptMainImageResize\(/);
+  assert.match(html, /position:\{mode:'flow',x:null,y:null\}/);
   assert.match(html, /data-action="delete"/);
   assert.match(html, /function deleteTranscriptMainImage\(/);
+  assert.doesNotMatch(html, /transcriptMainImageMoveState/);
+  assert.doesNotMatch(html, /timeline_note_image_move/);
 });
 
-test('manuscript image movement has a dedicated persisted API path', () => {
-  assert.match(html, /function persistTranscriptMainImageMove\(/);
-  assert.match(html, /api\('\/api\/timeline_note_image_move'/);
-  assert.match(html, /function persistTranscriptMainImagePosition\(/);
-});
-
-test('main image layout and movement call the real persistence paths with the selected node', async () => {
+test('main image resizing calls the note update path with the selected node', async () => {
   const requests=[],messages=[];
   const context=vm.createContext({
     view:{id:'project',notes:[{t:10,text:'文字',content:[{type:'text',text:'文字'},
@@ -219,21 +224,16 @@ test('main image layout and movement call the real persistence paths with the se
     transcriptNoteUsesFreePosition:layout=>layout==='behind'||layout==='front',
   });
   const start=html.indexOf('function transcriptMainImageTarget(');
-  const end=html.indexOf('function startTranscriptMainImageResize(',start);
+  const end=html.indexOf('function setTranscriptNoteImagePosition(',start);
   vm.runInContext(html.slice(start,end),context);
   const row={dataset:{noteIndex:'0',noteContentIndex:'1'},classList:{add(){},remove(){}}};
   const target=context.transcriptMainImageTarget(row);
   assert.equal(target.contentIndex,1);
-  await context.setTranscriptMainImageLayout(target,'front');
+  await context.persistTranscriptMainImageResize(target,320);
   assert.equal(requests[0].path,'/api/timeline_note_update');
-  assert.equal(requests[0].body.content[1].layout,'front');
-  assert.equal(requests[0].body.content[1].position.mode,'free');
-  await context.persistTranscriptMainImageMove(target,140,260,320);
-  assert.equal(requests[1].path,'/api/timeline_note_image_move');
-  assert.equal(requests[1].body.note_index,0);
-  assert.equal(requests[1].body.content_index,1);
-  assert.equal(requests[1].body.x,140);
-  assert.equal(requests[1].body.y,260);
-  assert.equal(requests[1].body.display_width,320);
-  assert.deepEqual(messages,['图片排版已保存','图片位置已保存']);
+  assert.equal(requests[0].body.content[1].displayWidth,320);
+  assert.equal(requests[0].body.content[1].position.mode,'flow');
+  assert.equal(requests[0].body.content[1].position.x,null);
+  assert.equal(requests[0].body.content[1].position.y,null);
+  assert.deepEqual(messages,['图片大小已保存']);
 });

@@ -4955,65 +4955,6 @@ class App:
             self._cleanup_note_assets(d, notes)
         return {"ok": True, "note": item, "notes": notes}
 
-    def move_transcript_note_image(self, sid, note_index, content_index,
-                                   expected_t, expected_text, x, y,
-                                   display_width=None):
-        """保存正文图片的独立画布位置与显示宽度，不改变其时间线归属。"""
-        if not sid or ".." in sid or "/" in sid or "\\" in sid:
-            raise RuntimeError("非法路径")
-        if self.state in ("recording", "paused", "stopping"):
-            raise RuntimeError("录制中不能移动课后图片")
-        if sid in self.progs:
-            raise RuntimeError("该项目正在跑后台任务，等它结束再移动图片")
-        try:
-            idx = int(note_index)
-            content_idx = int(content_index)
-            x = float(x)
-            y = float(y)
-            expected_timestamp = float(expected_t)
-        except (TypeError, ValueError):
-            raise RuntimeError("图片位置信息无效") from None
-        if not math.isfinite(x) or not math.isfinite(y) or x < 0 or y < 0:
-            raise RuntimeError("图片位置信息无效")
-        if display_width is not None:
-            try:
-                display_width = max(48, int(float(display_width)))
-            except (TypeError, ValueError):
-                raise RuntimeError("图片尺寸无效") from None
-
-        with self.lock:
-            d = SESSIONS_DIR / sid
-            sj = d / "session.json"
-            if not sj.is_file():
-                raise RuntimeError("项目不存在或没有可写文稿")
-            meta = json.loads(sj.read_text(encoding="utf-8"))
-            notes = meta.setdefault("notes", [])
-            if idx < 0 or idx >= len(notes):
-                raise RuntimeError("笔记已变化，请重新打开后再试")
-            current = notes[idx]
-            try:
-                current_t = float(current.get("t") or 0)
-            except (TypeError, ValueError):
-                current_t = -1
-            if current_t != expected_timestamp or current.get("text", "") != expected_text:
-                raise RuntimeError("笔记已变化，请重新打开后再试")
-            content = current.get("content")
-            if not isinstance(content, list) or content_idx < 0 or content_idx >= len(content):
-                raise RuntimeError("图片已变化，请重新打开后再试")
-            node = content[content_idx]
-            if not isinstance(node, dict) or node.get("type") != "image":
-                raise RuntimeError("图片已变化，请重新打开后再试")
-            updated_node = {**node, "position": {"mode": "free", "x": x, "y": y}}
-            if display_width is not None:
-                updated_node["displayWidth"] = display_width
-            updated_content = content[:content_idx] + [updated_node] + content[content_idx + 1:]
-            updated = {**current, "content": updated_content}
-            notes[idx] = updated
-            sj.write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
-            self._write_md(d, meta, meta.get("refinished", "") or "本地")
-            self._cleanup_note_assets(d, notes)
-        return {"ok": True, "note": updated, "notes": notes}
-
     def delete_transcript_note(self, sid, note_index, expected_t, expected_text):
         """删除指定课后笔记；校验原值快照以避免列表变化时误删。"""
         if not sid or ".." in sid or "/" in sid or "\\" in sid:
@@ -5841,12 +5782,6 @@ class Handler(BaseHTTPRequestHandler):
                                                           body.get("text", ""),
                                                           body.get("content"),
                                                           body.get("assets") or []))
-            if u.path == "/api/timeline_note_image_move":
-                return self._json(APP.move_transcript_note_image(
-                    body.get("id", ""), body.get("note_index"),
-                    body.get("content_index"), body.get("expected_t"),
-                    body.get("expected_text", ""), body.get("x"), body.get("y"),
-                    body.get("display_width")))
             if u.path == "/api/timeline_note_update":
                 return self._json(APP.update_transcript_note(
                     body.get("id", ""), body.get("index"), body.get("expected_t"),

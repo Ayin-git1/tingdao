@@ -541,23 +541,30 @@
   .seg.note .ts{color:var(--note-ts);}
   .seg.note::before{content:"✎"; color:var(--noted);}
   .tn-note-body{min-width:0;white-space:pre-wrap;word-break:break-word;}
-  /* 文稿图片是独立画布对象，不再占用时间戳行；画布本身不拦截正文拖入。 */
-  #feed{position:relative;}
-  .transcript-image-canvas{position:absolute;left:0;right:0;top:0;min-height:100%;height:0;
-                           z-index:2;pointer-events:none;}
-  .transcript-canvas-image{position:absolute;min-width:48px;margin:0;padding:5px;
-                           border:1px solid rgba(163,136,75,.32);border-radius:5px;
-                           background:rgba(255,253,240,.72);box-shadow:0 2px 8px rgba(71,52,30,.10);
-                           cursor:grab;pointer-events:auto;user-select:none;touch-action:none;}
-  .transcript-canvas-image:active,.transcript-canvas-image.tn-main-image-moving{cursor:grabbing;}
-  .transcript-canvas-image.tn-main-image-selected{outline:2px solid rgba(185,138,81,.55);outline-offset:2px;}
-  .transcript-canvas-image[data-layout="behind"]{opacity:.72;}
-  .transcript-canvas-image[data-layout="front"]{z-index:3;}
-  .transcript-canvas-image img{display:block;max-width:none;height:auto;border-radius:3px;pointer-events:none;}
-  .transcript-canvas-image-resize{position:absolute;right:-5px;bottom:-5px;width:10px;height:10px;
-                                 border:1px solid #a77e48;border-radius:2px;background:#fff4c9;
-                                 cursor:nwse-resize;display:none;}
-  .transcript-canvas-image.tn-main-image-selected .transcript-canvas-image-resize{display:block;}
+  /* 文稿图片是便签自己的媒体列，不进入时间戳行，也不再使用浮层坐标。 */
+  .transcript-note-card{width:100%;box-sizing:border-box;margin:8px 0;padding:10px 12px;display:grid;
+                        grid-template-columns:minmax(0,1fr) minmax(180px,min(34%,300px));gap:14px;
+                        align-items:start;background:var(--note-wash);border-left:2.5px solid var(--noted);
+                        border-radius:6px;font-size:var(--fs-body);color:var(--noteink);}
+  .transcript-note-copy{min-width:0;display:grid;grid-template-columns:56px minmax(0,1fr);
+                        column-gap:10px;align-items:start;}
+  .transcript-note-copy .ts{color:var(--note-ts);padding-top:3px;}
+  .transcript-note-body{min-width:0;white-space:pre-wrap;word-break:break-word;}
+  .transcript-note-media{min-width:0;display:flex;flex-direction:column;gap:8px;padding-left:12px;
+                         border-left:1px solid rgba(163,136,75,.24);}
+  .transcript-note-image{position:relative;min-width:48px;width:min(100%,260px);max-width:100%;margin:0;padding:0;
+                         box-sizing:border-box;overflow:hidden;border:1px solid rgba(163,136,75,.45);
+                         border-radius:13px;background:rgba(255,253,240,.72);user-select:none;}
+  .transcript-note-image img{display:block;width:100%;max-width:100%;height:auto;border-radius:12px;pointer-events:none;}
+  .transcript-note-image.tn-main-image-selected{outline:2px solid rgba(185,138,81,.55);outline-offset:2px;}
+  .transcript-note-image-resize{position:absolute;right:6px;bottom:6px;width:10px;height:10px;
+                                border:1px solid #a77e48;border-radius:2px;background:#fff4c9;
+                                cursor:nwse-resize;display:none;}
+  .transcript-note-image.tn-main-image-selected .transcript-note-image-resize{display:block;}
+  @media(max-width:720px){
+    .transcript-note-card{grid-template-columns:minmax(0,1fr);}
+    .transcript-note-media{padding-left:0;border-left:0;}
+  }
   /* 就地改字: 双击一句进编辑态。底色用现成的 --soft, 描边用 --line —— 不新增颜色 */
   .seg[data-edit]{background:var(--soft); cursor:text; outline:none;
                   box-shadow:inset 0 0 0 1px var(--line);}
@@ -2784,7 +2791,6 @@
       <span id="emptyText">点击右下角「开始录音」</span>
     </div>
     <div id="feed"></div>
-    <div class="transcript-image-canvas" id="transcriptImageCanvas" aria-label="文稿图片层"></div>
   </div>
   <nav class="transcript-anchors" id="transcriptAnchors" aria-label="文稿时间分段" hidden></nav>
   <div class="skel" id="skel">
@@ -3850,49 +3856,14 @@ function createNoteDom(t, text, noteIndex=null, content=null){
   const body=document.createElement('span'); body.className='tn-note-body'; renderTimelineNoteText(body,content,text); div.appendChild(body);
   return div;
 }
-function addNoteDom(t, text, before=null, noteIndex=null, content=null){
-  $('feed').insertBefore(createNoteDom(t,text,noteIndex,content),before);
-  anchorLive();
-}
-
-function transcriptCanvasDefaultPosition(t){
-  const rows=[...$('feed').querySelectorAll('.seg:not(.sum)')]
-    .filter(row=>Number.isFinite(Number(row.dataset.t)))
-    .sort((a,b)=>Number(a.dataset.t)-Number(b.dataset.t));
-  const row=rows.find(item=>Number(item.dataset.t)>=Number(t))||rows[rows.length-1];
-  return {x:0,y:Math.max(0,row?row.offsetTop:$('feed').scrollHeight)};
-}
-function transcriptCanvasImagePosition(node,t){
-  const position=node&&node.position&&typeof node.position==='object'?node.position:{};
-  const x=Number(position.x), y=Number(position.y);
-  return position.mode==='free'&&Number.isFinite(x)&&Number.isFinite(y)
-    ? {x:Math.max(0,x),y:Math.max(0,y)} : transcriptCanvasDefaultPosition(t);
-}
-function syncTranscriptImageCanvasSize(){
-  const canvas=$('transcriptImageCanvas'),feed=$('feed'),wrap=$('feedwrap');
-  if(!canvas||!feed||!wrap)return;
-  const wrapRect=wrap.getBoundingClientRect(), feedRect=feed.getBoundingClientRect();
-  // 画布坐标与 feed 内容坐标一致，抵消 feedwrap 的 padding；滚动时两者作为同一滚动内容移动。
-  canvas.style.left=`${Math.max(0,feedRect.left-wrapRect.left+wrap.scrollLeft)}px`;
-  canvas.style.top=`${Math.max(0,feedRect.top-wrapRect.top+wrap.scrollTop)}px`;
-  canvas.style.right='auto'; canvas.style.width=`${Math.max(0,feed.clientWidth)}px`;
-  const bottom=[...canvas.children].reduce((max,item)=>Math.max(max,item.offsetTop+item.offsetHeight),0);
-  canvas.style.height=`${Math.max(wrap.clientHeight,feed.scrollHeight,bottom)}px`;
-}
-window.addEventListener('resize',syncTranscriptImageCanvasSize);
-function createTranscriptCanvasImage(t,node,noteIndex=null,contentIndex=null){
+function createTranscriptNoteImage(t,node,noteIndex=null,contentIndex=null){
   const figure=document.createElement('figure');
-  figure.className='transcript-canvas-image';
+  figure.className='transcript-note-image';
   figure.dataset.t=t;
   if(Number.isInteger(noteIndex))figure.dataset.noteIndex=noteIndex;
   if(Number.isInteger(contentIndex))figure.dataset.noteContentIndex=contentIndex;
-  figure.dataset.noteLayout=String(node&&node.layout||'inline');
-  const storedPosition=node&&node.position&&typeof node.position==='object'
-    ? node.position : {mode:'flow',x:null,y:null};
-  const position=transcriptCanvasImagePosition(node,t);
-  figure.dataset.notePosition=JSON.stringify(storedPosition);
-  figure.dataset.canvasX=String(position.x); figure.dataset.canvasY=String(position.y);
-  figure.style.left=`${position.x}px`; figure.style.top=`${position.y}px`;
+  figure.dataset.noteLayout='inline';
+  figure.dataset.notePosition=JSON.stringify({mode:'flow',x:null,y:null});
   const image=document.createElement('img');
   image.alt=String(node&&node.name||'图片'); image.draggable=false;
   image.addEventListener('dragstart',event=>event.preventDefault());
@@ -3900,43 +3871,48 @@ function createTranscriptCanvasImage(t,node,noteIndex=null,contentIndex=null){
   if(filename&&view&&view.id)image.src=`/note-image/${encodeURIComponent(view.id)}/${encodeURIComponent(filename)}`;
   const displayWidth=Number(node&&node.displayWidth);
   const width=Number.isFinite(displayWidth)&&displayWidth>0?displayWidth:Math.min(Number(node&&node.width)||260,260);
-  figure.dataset.noteDisplayWidth=String(width); image.style.width=`${Math.max(48,width)}px`;
+  const safeWidth=Math.max(48,width);
+  figure.dataset.noteDisplayWidth=String(safeWidth); figure.style.width=`${safeWidth}px`; image.style.width='100%';
   figure.appendChild(image);
-  const handle=document.createElement('span'); handle.className='transcript-canvas-image-resize';
+  const handle=document.createElement('span'); handle.className='transcript-note-image-resize';
   handle.setAttribute('aria-label','调整图片大小'); figure.appendChild(handle);
   return figure;
 }
-function renderTranscriptCanvasImages(){
-  const canvas=$('transcriptImageCanvas'); if(!canvas)return;
-  canvas.replaceChildren();
-  for(const [noteIndex,note] of (view&&Array.isArray(view.notes)?view.notes:[]).entries())
-    for(const [contentIndex,node] of (Array.isArray(note&&note.content)?note.content:[]).entries())
-      if(node&&node.type==='image')canvas.appendChild(createTranscriptCanvasImage(note.t,node,noteIndex,contentIndex));
-  syncTranscriptImageCanvasSize();
+function createTranscriptNoteCard(t,note,noteIndex){
+  const card=document.createElement('div'); card.className='transcript-note-card'; card.dataset.t=t;
+  card.dataset.noteIndex=noteIndex;
+  const copy=document.createElement('div'); copy.className='transcript-note-copy';
+  const stamp=document.createElement('span'); stamp.className='ts'; stamp.textContent=fmt(t);
+  const body=document.createElement('div'); body.className='transcript-note-body';
+  renderTimelineNoteText(body,note.content,note.text); copy.append(stamp,body);
+  const media=document.createElement('div'); media.className='transcript-note-media';
+  for(const [contentIndex,node] of (Array.isArray(note.content)?note.content:[]).entries())
+    if(node&&node.type==='image')media.appendChild(createTranscriptNoteImage(t,node,noteIndex,contentIndex));
+  card.append(copy,media); return card;
 }
 
 function renderTimelineNotes(){
-  $('feed').querySelectorAll('.seg.note').forEach(row=>row.remove());
+  $('feed').querySelectorAll('.seg.note,.transcript-note-card').forEach(row=>row.remove());
   const ordered=(view.notes||[]).map((note,index)=>({note,index}))
     .sort((a,b)=>Number(a.note.t)-Number(b.note.t));
   for(const {note,index} of ordered){
     const next=[...$('feed').children].find(row=>row.classList.contains('seg')&&
-      !row.classList.contains('note')&&!row.classList.contains('sum')&&
+      !row.classList.contains('note')&&!row.classList.contains('transcript-note-card')&&!row.classList.contains('sum')&&
       Number.isFinite(Number(row.dataset.t))&&Number(row.dataset.t)>Number(note.t));
     const fragment=document.createDocumentFragment();
-    if(String(note.text||'').trim())fragment.appendChild(createNoteDom(note.t,note.text,index,note.content));
+    const hasImages=Array.isArray(note.content)&&note.content.some(node=>node&&node.type==='image');
+    if(hasImages)fragment.appendChild(createTranscriptNoteCard(note.t,note,index));
+    else if(String(note.text||'').trim())fragment.appendChild(createNoteDom(note.t,note.text,index,note.content));
     $('feed').insertBefore(fragment,next);
     anchorLive();
   }
-  renderTranscriptCanvasImages();
-  const hasTimeline=$('feed').querySelector('.seg:not(.sum)')||$('transcriptImageCanvas').children.length;
+  const hasTimeline=$('feed').querySelector('.seg:not(.sum),.transcript-note-card');
   if(!hasTimeline){
     $('emptyText').textContent='（该项目无语音内容）';
     $('empty').style.display='flex'; $('feed').style.display='none';
   }else{
     $('empty').style.display='none'; $('feed').style.display='block';
   }
-  syncTranscriptImageCanvasSize();
 }
 
 function applyStatus(d){
@@ -5570,7 +5546,6 @@ let transcriptNoteImageMenuTarget=null;
 let transcriptMainImageMenuTarget=null;
 let transcriptNoteImageMoveState=null;
 let transcriptNoteImageResizeState=null;
-let transcriptMainImageMoveState=null;
 let transcriptMainImageResizeState=null;
 function transcriptNoteImageFiles(dataTransfer){
   const files=[...(dataTransfer&&dataTransfer.files||[])].filter(transcriptNoteImageFileIsSupported);
@@ -5696,17 +5671,13 @@ function transcriptImageDropTarget(x,y,ignoreRow=null){
   if(!view||!view.id||!$('transcriptNoteLayer').hidden)return null;
   const wrap=$('feedwrap'), bounds=wrap.getBoundingClientRect();
   if(!wrap.getClientRects().length||x<bounds.left||x>bounds.right||y<bounds.top||y>bounds.bottom)return null;
-  const feedRect=$('feed').getBoundingClientRect?$('feed').getBoundingClientRect():bounds;
-  const rows=[...$('feed').querySelectorAll('.seg:not(.sum)')]
+  const rows=[...$('feed').querySelectorAll('.seg:not(.sum),.transcript-note-card')]
     .filter(row=>row!==ignoreRow&&Number.isFinite(Number(row.dataset.t)));
   const before=rows.find(row=>{const rect=row.getBoundingClientRect();return y<rect.top+rect.height/2;})||null;
   const previous=before?rows[rows.indexOf(before)-1]:rows[rows.length-1];
   // Notes render after segments at the same timestamp and before the next timestamp.
   const time=previous?Number(previous.dataset.t):0;
-  const targetRow=before||previous;
-  const targetY=targetRow?targetRow.offsetTop:Math.max(0,$('feed').scrollHeight);
-  const targetX=feedRect.width?Math.max(0,Math.round(x-feedRect.left)):0;
-  return {time,before:rows.find(row=>Number(row.dataset.t)>time)||null,x:targetX,y:Math.max(0,targetY)};
+  return {time,before:rows.find(row=>Number(row.dataset.t)>time)||null};
 }
 function showTranscriptImageDropIndicator(target){
   const indicator=$('transcriptImageDropIndicator'), wrap=$('feedwrap').getBoundingClientRect();
@@ -5728,7 +5699,7 @@ async function insertTranscriptImageFiles(files,target,native=false){
     if(!records.length)return;
     const content=records.map(record=>({type:'image',asset:record.id,name:record.name,mime:record.mime,
       width:record.width,height:record.height,displayWidth:Math.min(record.width,260),
-      layout:'inline',position:{mode:'free',x:Math.max(0,Number(target.x)||0),y:Math.max(0,Number(target.y)||0)}}));
+      layout:'inline',position:{mode:'flow',x:null,y:null}}));
     const result=await api('/api/timeline_note',{id:sid,t:target.time,text:'',content,assets:records});
     if(result.error)throw new Error(result.error);
     if(view&&view.id===sid){view.notes=result.notes;renderTimelineNotes();}
@@ -5800,7 +5771,7 @@ function closeTranscriptNoteImageMenu(){
 }
 function openTranscriptNoteImageMenu(figure,event){
   const menu=$('transcriptNoteImageMenu'); transcriptNoteImageMenuTarget=figure; transcriptMainImageMenuTarget=null;
-  menu.querySelectorAll('button[data-layout]').forEach(button=>button.classList.toggle('on',button.dataset.layout===figure.dataset.noteLayout));
+  menu.querySelectorAll('button[data-layout]').forEach(button=>{button.hidden=false;button.classList.toggle('on',button.dataset.layout===figure.dataset.noteLayout);});
   menu.hidden=false;menu.classList.add('show');
   const bounds=menu.getBoundingClientRect();
   menu.style.left=Math.max(8,Math.min(event.clientX,innerWidth-bounds.width-8))+'px';
@@ -5815,7 +5786,7 @@ function transcriptMainImageTarget(row){
   return {row,noteIndex,contentIndex,note,node};
 }
 function selectTranscriptMainImage(row){
-  $('transcriptImageCanvas').querySelectorAll('.transcript-canvas-image.tn-main-image-selected')
+  $('feed').querySelectorAll('.transcript-note-image.tn-main-image-selected')
     .forEach(node=>node.classList.remove('tn-main-image-selected'));
   if(row)row.classList.add('tn-main-image-selected');
 }
@@ -5823,7 +5794,8 @@ function openTranscriptMainImageMenu(target,event){
   if(!target)return;
   const menu=$('transcriptNoteImageMenu'); transcriptMainImageMenuTarget=target; transcriptNoteImageMenuTarget=null;
   selectTranscriptMainImage(target.row);
-  menu.querySelectorAll('button[data-layout]').forEach(button=>button.classList.toggle('on',button.dataset.layout===target.node.layout));
+  menu.querySelectorAll('button[data-layout]').forEach(button=>{button.hidden=true;button.classList.remove('on');});
+  const remove=menu.querySelector('button[data-action="delete"]'); if(remove)remove.hidden=false;
   menu.hidden=false;menu.classList.add('show');
   const bounds=menu.getBoundingClientRect();
   menu.style.left=Math.max(8,Math.min(event.clientX,innerWidth-bounds.width-8))+'px';
@@ -5843,28 +5815,10 @@ async function persistTranscriptMainImageNode(target,node,message){
     refreshHistory();if(message)toast(message);return true;
   }catch(error){toast(error.message||'图片保存失败');return false;}
 }
-async function persistTranscriptMainImagePosition(target,x,y){
-  const width=Number(target.row.dataset.noteDisplayWidth)||Number(target.node.displayWidth)||null;
-  return persistTranscriptMainImageMove(target,x,y,width);
-}
-async function setTranscriptMainImageLayout(target,layout){
-  if(!target||!['inline','square','top-bottom','behind','front'].includes(layout))return false;
-  const current=transcriptMainImageCoordinates(target.row);
-  const position={mode:'free',x:current.x,y:current.y};
-  const node={...target.node,layout,position};
-  return persistTranscriptMainImageNode(target,node,'图片排版已保存');
-}
-async function persistTranscriptMainImageMove(target,x,y,width=null){
-  const sid=view&&view.id;if(!sid||!target)return false;
-  try{
-    const result=await api('/api/timeline_note_image_move',{id:sid,note_index:target.noteIndex,
-      content_index:target.contentIndex,expected_t:target.note.t,expected_text:target.note.text||'',
-      x:Math.max(0,Math.round(Number(x)||0)),y:Math.max(0,Math.round(Number(y)||0)),
-      display_width:Number.isFinite(Number(width))?Math.max(48,Math.round(Number(width))):null});
-    if(result.error)throw new Error(result.error);
-    if(view&&view.id===sid){view.notes=result.notes||[];renderTimelineNotes();}
-    refreshHistory();toast('图片位置已保存');return true;
-  }catch(error){toast(error.message||'图片保存失败');return false;}
+async function persistTranscriptMainImageResize(target,width){
+  const safeWidth=Math.max(48,Math.round(Number(width)||48));
+  const node={...target.node,displayWidth:safeWidth,layout:'inline',position:{mode:'flow',x:null,y:null}};
+  return persistTranscriptMainImageNode(target,node,'图片大小已保存');
 }
 async function deleteTranscriptMainImage(target){
   const sid=view&&view.id;if(!sid||!target)return false;
@@ -5918,48 +5872,26 @@ function startTranscriptNoteResize(event,figure){
   transcriptNoteImageResizeState={figure,image,startX:event.clientX,startWidth:rect.width,pointerId:event.pointerId};
   captureTranscriptNotePointer(figure,event);
 }
-function transcriptMainImageCoordinates(row){
-  const x=Number(row&&row.dataset.canvasX), y=Number(row&&row.dataset.canvasY);
-  if(Number.isFinite(x)&&Number.isFinite(y))return {x:Math.max(0,x),y:Math.max(0,y)};
-  let position={};try{position=JSON.parse(row?.dataset.notePosition||'{}');}catch(e){}
-  return {x:Math.max(0,Number(position.x)||0),y:Math.max(0,Number(position.y)||0)};
-}
-function setTranscriptMainImagePosition(row,x,y){
-  const position={mode:'free',x:Math.max(0,Math.round(x)),y:Math.max(0,Math.round(y))};
-  row.dataset.notePosition=JSON.stringify(position);
-  row.dataset.canvasX=String(position.x); row.dataset.canvasY=String(position.y);
-  row.style.left=`${position.x}px`; row.style.top=`${position.y}px`;
-}
 function setTranscriptMainImageWidth(row,width){
   const safe=Math.max(48,Math.round(Number(width)||48));
-  const image=row.querySelector('img'); if(image)image.style.width=`${safe}px`;
-  row.dataset.noteDisplayWidth=String(safe);
+  row.style.width=`${safe}px`; row.dataset.noteDisplayWidth=String(safe);
+  const image=row.querySelector('img'); if(image)image.style.width='100%';
 }
 function startTranscriptMainImageResize(event,target){
   if(!target||event.button!==0)return;
   event.preventDefault();event.stopPropagation();closeTranscriptNoteImageMenu();selectTranscriptMainImage(target.row);
-  const image=target.row.querySelector('img'), rect=image.getBoundingClientRect();
+  const image=target.row.querySelector('img'), rect=target.row.getBoundingClientRect();
   transcriptMainImageResizeState={target,image,startX:event.clientX,startWidth:rect.width,pointerId:event.pointerId};
   transcriptMainImageResizeState.figure=target.row;
   captureTranscriptNotePointer(target.row,event);
 }
-function startTranscriptMainImageMove(event,target){
-  if(!target||event.button!==0)return;
-  event.preventDefault();closeTranscriptNoteImageMenu();selectTranscriptMainImage(target.row);
-  const position=transcriptMainImageCoordinates(target.row);
-  target.row.classList.add('tn-main-image-moving');
-  transcriptMainImageMoveState={target,startX:event.clientX,startY:event.clientY,
-    baseX:position.x,baseY:position.y,moved:false,pointerId:event.pointerId,
-    figure:target.row};
-  captureTranscriptNotePointer(target.row,event);
-}
-$('transcriptImageCanvas').addEventListener('pointerdown',event=>{
-  const row=event.target.closest('.transcript-canvas-image');
+$('feed').addEventListener('pointerdown',event=>{
+  const row=event.target.closest('.transcript-note-image');
   if(!row)return;
   const target=transcriptMainImageTarget(row);
   if(!target)return;
-  if(event.target.closest('.transcript-canvas-image-resize'))startTranscriptMainImageResize(event,target);
-  else startTranscriptMainImageMove(event,target);
+  if(event.target.closest('.transcript-note-image-resize'))startTranscriptMainImageResize(event,target);
+  else selectTranscriptMainImage(row);
 });
 document.addEventListener('pointermove',event=>{
   if(transcriptNoteImageMoveState){
@@ -5974,11 +5906,6 @@ document.addEventListener('pointermove',event=>{
     const state=transcriptNoteImageResizeState, width=Math.max(48,state.startWidth+event.clientX-state.startX);
     state.image.style.width=`${Math.round(width)}px`;state.figure.dataset.noteDisplayWidth=String(Math.round(width));
   }
-  if(transcriptMainImageMoveState){
-    const state=transcriptMainImageMoveState;
-    if(Math.abs(event.clientX-state.startX)+Math.abs(event.clientY-state.startY)>2)state.moved=true;
-    setTranscriptMainImagePosition(state.target.row,state.baseX+event.clientX-state.startX,state.baseY+event.clientY-state.startY);
-  }
   if(transcriptMainImageResizeState){
     const state=transcriptMainImageResizeState;
     const width=Math.max(48,state.startWidth+event.clientX-state.startX);
@@ -5992,29 +5919,15 @@ document.addEventListener('pointerup',()=>{
   if(move&&!move.free&&move.moved&&move.range){moveTranscriptNoteFlowImage(move.figure,move.range);hideTranscriptNoteDropIndicator();}
   releaseTranscriptNotePointer(move); releaseTranscriptNotePointer(resize);
   transcriptNoteImageMoveState=null;transcriptNoteImageResizeState=null;
-  const main=transcriptMainImageMoveState;
   const mainResize=transcriptMainImageResizeState;
-  if(main){
-    main.target.row.classList.remove('tn-main-image-moving');hideTranscriptImageDropIndicator();
-    if(main.moved){
-      const position=transcriptMainImageCoordinates(main.target.row);
-      persistTranscriptMainImagePosition(main.target,position.x,position.y);
-    }
-  }
   if(mainResize&&mainResize.moved){
-    const position=transcriptMainImageCoordinates(mainResize.target.row);
-    persistTranscriptMainImageMove(mainResize.target,position.x,position.y,mainResize.target.row.dataset.noteDisplayWidth);
+    persistTranscriptMainImageResize(mainResize.target,mainResize.target.row.dataset.noteDisplayWidth);
   }
-  releaseTranscriptNotePointer(main);releaseTranscriptNotePointer(mainResize);
-  transcriptMainImageMoveState=null;transcriptMainImageResizeState=null;
+  releaseTranscriptNotePointer(mainResize); transcriptMainImageResizeState=null;
 });
 document.addEventListener('pointercancel',()=>{
   releaseTranscriptNotePointer(transcriptNoteImageMoveState); releaseTranscriptNotePointer(transcriptNoteImageResizeState);
   transcriptNoteImageMoveState=null; transcriptNoteImageResizeState=null; hideTranscriptNoteDropIndicator();
-  if(transcriptMainImageMoveState){
-    transcriptMainImageMoveState.target.row.classList.remove('tn-main-image-moving');
-    releaseTranscriptNotePointer(transcriptMainImageMoveState);transcriptMainImageMoveState=null;hideTranscriptImageDropIndicator();
-  }
   if(transcriptMainImageResizeState){
     const state=transcriptMainImageResizeState;
     setTranscriptMainImageWidth(state.target.row,state.startWidth);
@@ -6043,7 +5956,6 @@ $('transcriptNoteImageMenu').addEventListener('click',event=>{
   }
   const button=event.target.closest('button[data-layout]');if(!button)return;
   if(transcriptMainImageMenuTarget){
-    setTranscriptMainImageLayout(transcriptMainImageMenuTarget,button.dataset.layout);
     closeTranscriptNoteImageMenu();return;
   }
   if(transcriptNoteImageMenuTarget){
@@ -6053,7 +5965,7 @@ $('transcriptNoteImageMenu').addEventListener('click',event=>{
 document.addEventListener('pointerdown',event=>{
   const menu=$('transcriptNoteImageMenu');
   if(!menu.hidden&&!menu.contains(event.target)&&!event.target.closest('.tn-image-node')&&
-     !event.target.closest('.transcript-canvas-image'))closeTranscriptNoteImageMenu();
+     !event.target.closest('.transcript-note-image'))closeTranscriptNoteImageMenu();
 });
 function parseTranscriptNoteTime(value){
   const match=String(value).trim().match(/^(\d{1,4}):(\d{2})$/);
@@ -6132,19 +6044,19 @@ function closeTranscriptNote(){
   transcriptNoteCloseEnd=finish;
   card.addEventListener('animationend',finish);
 }
-$('transcriptImageCanvas').addEventListener('contextmenu',e=>{
-  const row=e.target.closest('.transcript-canvas-image');
-  if(!row)return;
-  const target=transcriptMainImageTarget(row);
-  if(target){e.preventDefault();e.stopPropagation();openTranscriptMainImageMenu(target,e);}
-});
 $('feed').addEventListener('contextmenu', e=>{
-  const row=e.target.closest('.seg:not(.sum)');
+  const image=e.target.closest('.transcript-note-image');
+  if(image){
+    const target=transcriptMainImageTarget(image);
+    if(target){e.preventDefault();e.stopPropagation();openTranscriptMainImageMenu(target,e);}
+    return;
+  }
+  const row=e.target.closest('.seg:not(.sum),.transcript-note-card');
   if(!view || !view.id || !row || row.hasAttribute('data-edit') || !Number.isFinite(Number(row.dataset.t))) return;
   e.preventDefault();
   closeTranscriptNote();
   transcriptNoteTargetTime=Math.max(0,Number(row.dataset.t)||0);
-  const isNoteRow=row.classList.contains('note');
+  const isNoteRow=row.classList.contains('note')||row.classList.contains('transcript-note-card');
   transcriptNoteTargetIndex=isNoteRow?Number(row.dataset.noteIndex):null;
   if(isNoteRow&&!Number.isInteger(transcriptNoteTargetIndex))return;
   $('transcriptNoteAdd').hidden=transcriptNoteTargetIndex!==null;
@@ -7238,11 +7150,10 @@ function transcriptContentItems(segments,notes,outline){
   }
   for(const segment of segments||[]) items.push({type:'seg',...segment});
   for(const [noteIndex,note] of (notes||[]).entries()){
-    if(String(note&&note.text||'').trim()) items.push({type:'note',noteIndex,...note});
-    for(const [contentIndex,node] of (Array.isArray(note&&note.content)?note.content:[]).entries())
-      if(node&&node.type==='image') items.push({type:'note-image',noteIndex,contentIndex,...note,image:node});
+    const hasImages=Array.isArray(note&&note.content)&&note.content.some(node=>node&&node.type==='image');
+    if(String(note&&note.text||'').trim()||hasImages) items.push({type:'note',noteIndex,...note});
   }
-  const priority={heading:0,seg:1,note:2,'note-image':3};
+  const priority={heading:0,seg:1,note:2};
   return items.sort((a,b)=>Number(a.t)-Number(b.t)||priority[a.type]-priority[b.type]);
 }
 function transcriptAnchorIndex(time,slices){
@@ -7472,9 +7383,8 @@ async function loadSession(sid, keepList){
     for(const m of merged){
       if(m.type==='heading') addTranscriptHeading(m);
       else if(m.type==='seg') addSeg(m, false);
-      else if(m.type==='note') addNoteDom(m.t, m.text, null, m.noteIndex, m.content);
     }
-    renderTranscriptCanvasImages();
+    renderTimelineNotes();
     $('feedwrap').scrollTop = 0;
   }
   $('nameInput').value = d.name;
