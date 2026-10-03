@@ -85,6 +85,8 @@ test('setSessionFlags posts state changes and refreshes the collection', async (
 test('the drawer toolbar is an inset glass pill and the rail stays independent', () => {
   const cols = html.slice(html.indexOf('<div class="cols">'), html.indexOf('</div><!-- /cols -->') + 21);
   assert.match(cols, /<nav class="app-rail"[\s\S]*?<div class="sidebar"/);
+  assert.match(html, /--rail-width:56px/);
+  assert.doesNotMatch(html, /\.app-rail\{[^}]*border-right:/);
   const sidefoot = html.match(/\.sidefoot\{[^}]+\}/)?.[0] || '';
   assert.match(sidefoot, /left:10px/);
   assert.match(sidefoot, /right:10px/);
