@@ -1003,13 +1003,17 @@
   .app-rail .rail-btn{width:38px; height:38px; padding:0; border:0; border-radius:11px;
                        display:grid; place-items:center; color:var(--gry-icon); background:transparent;
                        cursor:pointer; transition:color var(--hov), background var(--hov), transform var(--hov);}
-  .app-rail .rail-btn:hover{color:var(--g-ink); background:var(--g-tint);}
+  .app-rail .rail-btn:hover{color:var(--g-ink); background:var(--g-tint); transform:translateY(-1px);}
   .app-rail .rail-btn.active{color:var(--g-ink); background:rgba(255,255,255,.58);}
   html[data-appearance="dark"] .app-rail .rail-btn.active{background:rgba(255,255,255,.10);}
   .app-rail .rail-btn:active{transform:scale(.94);}
   .app-rail .rail-btn:focus-visible{outline:2px solid var(--g); outline-offset:2px;}
   .app-rail .rail-btn svg{width:19px; height:19px; display:block;}
   .app-rail .rail-gap{flex:1; min-height:12px;}
+  @media (prefers-reduced-motion:reduce){
+    .app-rail .rail-btn{transition:none;}
+    .app-rail .rail-btn:hover,.app-rail .rail-btn:active{transform:none;}
+  }
   body.section-favorites .sidebar,
   body.section-archive .sidebar{display:none;}
   body.section-favorites .side-dock-bg,
