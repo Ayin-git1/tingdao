@@ -539,8 +539,9 @@
   .seg.note .ts{color:var(--note-ts);}
   .seg.note::before{content:"✎"; color:var(--noted);}
   .tn-note-body{min-width:0;white-space:pre-wrap;word-break:break-word;}
-  .seg.note .tn-image-node{max-width:min(420px,100%);margin:8px 0;}
-  .seg.note .tn-image-node img{max-width:100%;}
+  .seg.note-image{margin:4px 0;cursor:default;}
+  .tn-note-image-body{min-width:0;display:block;}
+  .tn-note-image-body img{display:block;max-width:min(720px,100%);height:auto;border-radius:4px;}
   /* 就地改字: 双击一句进编辑态。底色用现成的 --soft, 描边用 --line —— 不新增颜色 */
   .seg[data-edit]{background:var(--soft); cursor:text; outline:none;
                   box-shadow:inset 0 0 0 1px var(--line);}
@@ -3610,34 +3611,58 @@ function addTranscriptHeading(heading){
   $('feed').appendChild(div);
 }
 
-function renderTranscriptNoteNodes(container,content,legacyText){
+function renderTimelineNoteText(container,content,legacyText){
   const nodes=Array.isArray(content)&&content.length?content:[{type:'text',text:legacyText||''}];
   nodes.forEach(node=>{
     if(!node||typeof node!=='object')return;
     if(node.type==='text')container.appendChild(document.createTextNode(String(node.text||'')));
-    if(node.type==='image')container.appendChild(transcriptNoteImageNode(node));
   });
 }
-function addNoteDom(t, text, before=null, noteIndex=null, content=null){
+function createNoteDom(t, text, noteIndex=null, content=null){
   const div = document.createElement('div');
   div.className = 'seg note';
   div.dataset.t = t;
   if(Number.isInteger(noteIndex)) div.dataset.noteIndex=noteIndex;
   const stamp=document.createElement('span'); stamp.className='ts'; stamp.textContent=fmt(t); div.appendChild(stamp);
-  const body=document.createElement('span'); body.className='tn-note-body'; renderTranscriptNoteNodes(body,content,text); div.appendChild(body);
-  $('feed').insertBefore(div, before);
+  const body=document.createElement('span'); body.className='tn-note-body'; renderTimelineNoteText(body,content,text); div.appendChild(body);
+  return div;
+}
+function createNoteImageDom(t,node,noteIndex=null){
+  const div=document.createElement('div'); div.className='seg note-image'; div.dataset.t=t;
+  if(Number.isInteger(noteIndex))div.dataset.noteIndex=noteIndex;
+  const stamp=document.createElement('span'); stamp.className='ts'; stamp.textContent=fmt(t); div.appendChild(stamp);
+  const body=document.createElement('span'); body.className='tn-note-image-body';
+  const image=document.createElement('img'); image.alt=String(node&&node.name||'图片');
+  const filename=String(node&&node.file||'').split('/').pop();
+  if(filename&&view&&view.id)image.src=`/note-image/${encodeURIComponent(view.id)}/${encodeURIComponent(filename)}`;
+  const displayWidth=Number(node&&node.displayWidth);
+  if(Number.isFinite(displayWidth)&&displayWidth>0)image.style.width=`${displayWidth}px`;
+  body.appendChild(image); div.appendChild(body);
+  return div;
+}
+function addNoteDom(t, text, before=null, noteIndex=null, content=null){
+  $('feed').insertBefore(createNoteDom(t,text,noteIndex,content),before);
+  anchorLive();
+}
+function addNoteImageDom(t,node,before=null,noteIndex=null){
+  $('feed').insertBefore(createNoteImageDom(t,node,noteIndex),before);
   anchorLive();
 }
 
 function renderTimelineNotes(){
-  $('feed').querySelectorAll('.seg.note').forEach(row=>row.remove());
+  $('feed').querySelectorAll('.seg.note,.seg.note-image').forEach(row=>row.remove());
   const ordered=(view.notes||[]).map((note,index)=>({note,index}))
     .sort((a,b)=>Number(a.note.t)-Number(b.note.t));
   for(const {note,index} of ordered){
     const next=[...$('feed').children].find(row=>row.classList.contains('seg')&&
       !row.classList.contains('note')&&!row.classList.contains('sum')&&
       Number.isFinite(Number(row.dataset.t))&&Number(row.dataset.t)>Number(note.t));
-    addNoteDom(note.t,note.text,next,index,note.content);
+    const fragment=document.createDocumentFragment();
+    if(String(note.text||'').trim())fragment.appendChild(createNoteDom(note.t,note.text,index,note.content));
+    for(const node of Array.isArray(note.content)?note.content:[])
+      if(node&&node.type==='image')fragment.appendChild(createNoteImageDom(note.t,node,index));
+    $('feed').insertBefore(fragment,next);
+    anchorLive();
   }
   const hasTimeline=$('feed').querySelector('.seg:not(.sum)');
   if(!hasTimeline){
@@ -5481,8 +5506,9 @@ $('feed').addEventListener('contextmenu', e=>{
   e.preventDefault();
   closeTranscriptNote();
   transcriptNoteTargetTime=Math.max(0,Number(row.dataset.t)||0);
-  transcriptNoteTargetIndex=row.classList.contains('note')?Number(row.dataset.noteIndex):null;
-  if(row.classList.contains('note')&&!Number.isInteger(transcriptNoteTargetIndex))return;
+  const isNoteRow=row.classList.contains('note')||row.classList.contains('note-image');
+  transcriptNoteTargetIndex=isNoteRow?Number(row.dataset.noteIndex):null;
+  if(isNoteRow&&!Number.isInteger(transcriptNoteTargetIndex))return;
   $('transcriptNoteAdd').hidden=transcriptNoteTargetIndex!==null;
   $('transcriptNoteEdit').hidden=transcriptNoteTargetIndex===null;
   $('transcriptNoteDelete').hidden=transcriptNoteTargetIndex===null;
@@ -6493,8 +6519,12 @@ function transcriptContentItems(segments,notes,outline){
     if([1,2].includes(level)) items.push({type:'heading',...heading,level});
   }
   for(const segment of segments||[]) items.push({type:'seg',...segment});
-  for(const [noteIndex,note] of (notes||[]).entries()) items.push({type:'note',noteIndex,...note});
-  const priority={heading:0,seg:1,note:2};
+  for(const [noteIndex,note] of (notes||[]).entries()){
+    if(String(note&&note.text||'').trim()) items.push({type:'note',noteIndex,...note});
+    for(const node of Array.isArray(note&&note.content)?note.content:[])
+      if(node&&node.type==='image') items.push({type:'note-image',noteIndex,...note,image:node});
+  }
+  const priority={heading:0,seg:1,note:2,'note-image':3};
   return items.sort((a,b)=>Number(a.t)-Number(b.t)||priority[a.type]-priority[b.type]);
 }
 function transcriptAnchorIndex(time,slices){
@@ -6723,7 +6753,8 @@ async function loadSession(sid, keepList){
     for(const m of merged){
       if(m.type==='heading') addTranscriptHeading(m);
       else if(m.type==='seg') addSeg(m, false);
-      else addNoteDom(m.t, m.text, null, m.noteIndex, m.content);
+      else if(m.type==='note') addNoteDom(m.t, m.text, null, m.noteIndex, m.content);
+      else addNoteImageDom(m.t, m.image, null, m.noteIndex);
     }
     $('feedwrap').scrollTop = 0;
   }
