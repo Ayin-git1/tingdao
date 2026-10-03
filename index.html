@@ -1882,6 +1882,9 @@
   .tn-resize-handle{position:absolute;right:-5px;bottom:-5px;width:10px;height:10px;border:1px solid #a77e48;
                     border-radius:2px;background:#fff4c9;cursor:nwse-resize;display:none;}
   .tn-image-node.tn-selected .tn-resize-handle{display:block;}
+  .tn-delete-image{position:absolute;right:4px;top:4px;width:22px;height:22px;border:0;border-radius:50%;
+                   background:rgba(255,253,240,.9);color:#786b4e;font-size:17px;line-height:20px;cursor:pointer;display:none;}
+  .tn-image-node.tn-selected .tn-delete-image{display:block;}
   .tn-drop-indicator{position:absolute;z-index:4;width:2px;height:24px;border-radius:2px;background:#b98a51;
                      pointer-events:none;display:none;box-shadow:0 0 0 1px rgba(255,255,255,.45);}
   .tn-drop-indicator.show{display:block;}
@@ -2130,6 +2133,7 @@
   html[data-appearance="dark"] .tn-image-menu button:hover,
   html[data-appearance="dark"] .tn-image-menu button.on{background:#3c3e43;}
   html[data-appearance="dark"] .tn-resize-handle{background:#766747;border-color:#dec27c;}
+  html[data-appearance="dark"] .tn-delete-image{background:rgba(42,43,47,.9);color:#e0d2aa;}
   html[data-appearance="dark"] .tn-actions button{border-color:rgba(215,192,134,.32);background:rgba(255,255,255,.06);color:#e0d2aa;}
   html[data-appearance="dark"] .tn-actions .tn-save{border-color:#766747;background:#766747;color:#f4e8c5;}
   html[data-appearance="dark"] .tn-actions .tn-save:hover{background:#887655;}
@@ -5104,6 +5108,7 @@ function transcriptNoteAssetId(){
   if(window.crypto && typeof window.crypto.randomUUID==='function')return window.crypto.randomUUID();
   return `note-image-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
+function transcriptNoteUsesFreePosition(layout){return layout==='behind'||layout==='front';}
 function saveTranscriptNoteSelection(){
   const editor=$('transcriptNoteText'), selection=window.getSelection();
   if(!selection||!selection.rangeCount||!editor.contains(selection.anchorNode))return;
@@ -5131,7 +5136,7 @@ function transcriptNoteImageNode(node){
   figure.dataset.noteLayout=String(node.layout||'inline');
   figure.dataset.notePosition=JSON.stringify(node.position||{mode:'flow',x:null,y:null});
   const position=node.position||{};
-  if(position.mode==='free'){
+  if(position.mode==='free'&&transcriptNoteUsesFreePosition(figure.dataset.noteLayout)){
     const x=Math.max(0,Number(position.x)||0), y=Math.max(0,Number(position.y)||0);
     figure.style.transform=`translate(${x}px,${y}px)`;
   }
@@ -5148,6 +5153,8 @@ function transcriptNoteImageNode(node){
   figure.appendChild(image);
   const handle=document.createElement('span'); handle.className='tn-resize-handle'; handle.setAttribute('aria-hidden','true');
   figure.appendChild(handle);
+  const remove=document.createElement('button'); remove.className='tn-delete-image'; remove.type='button';
+  remove.setAttribute('aria-label','删除图片'); remove.textContent='×'; figure.appendChild(remove);
   return figure;
 }
 function renderTranscriptNoteContent(content,legacyText){
@@ -5303,6 +5310,14 @@ $('transcriptNoteText').addEventListener('paste',event=>{
 function setTranscriptNoteImageLayout(figure,layout){
   if(!figure||!['inline','square','top-bottom','behind','front'].includes(layout))return;
   figure.dataset.noteLayout=layout;
+  let position={};try{position=JSON.parse(figure.dataset.notePosition||'{}');}catch(e){}
+  if(transcriptNoteUsesFreePosition(layout)){
+    position={mode:'free',x:Number(position.x)||0,y:Number(position.y)||0};
+    figure.style.transform=`translate(${position.x}px,${position.y}px)`;
+  }else{
+    position={mode:'flow',x:null,y:null}; figure.style.removeProperty('transform');
+  }
+  figure.dataset.notePosition=JSON.stringify(position);
   selectTranscriptNoteImage(figure);
   transcriptNoteImageMenuTarget=figure;
   $('transcriptNoteImageMenu').querySelectorAll('button[data-layout]').forEach(button=>button.classList.toggle('on',button.dataset.layout===layout));
@@ -5326,11 +5341,17 @@ function setTranscriptNoteImagePosition(figure,x,y){
   const position={mode:'free',x:Math.max(0,Math.round(x)),y:Math.max(0,Math.round(y))};
   figure.dataset.notePosition=JSON.stringify(position); figure.style.transform=`translate(${position.x}px,${position.y}px)`;
 }
+function moveTranscriptNoteFlowImage(figure,range){
+  if(!figure||!range||range.commonAncestorContainer===figure||figure.contains(range.commonAncestorContainer))return;
+  range.deleteContents(); range.insertNode(figure);
+  figure.dataset.notePosition=JSON.stringify({mode:'flow',x:null,y:null}); figure.style.removeProperty('transform');
+}
 function startTranscriptNoteMove(event,figure){
   if(event.button!==0)return;
   event.preventDefault(); selectTranscriptNoteImage(figure); transcriptNoteImageMenuTarget=figure;
   let position={};try{position=JSON.parse(figure.dataset.notePosition||'{}');}catch(e){}
-  transcriptNoteImageMoveState={figure,startX:event.clientX,startY:event.clientY,baseX:Number(position.x)||0,baseY:Number(position.y)||0};
+  transcriptNoteImageMoveState={figure,startX:event.clientX,startY:event.clientY,baseX:Number(position.x)||0,baseY:Number(position.y)||0,
+    free:transcriptNoteUsesFreePosition(figure.dataset.noteLayout),range:null,moved:false};
 }
 function startTranscriptNoteResize(event,figure){
   if(event.button!==0)return;
@@ -5340,17 +5361,30 @@ function startTranscriptNoteResize(event,figure){
 }
 document.addEventListener('pointermove',event=>{
   if(transcriptNoteImageMoveState){
-    const state=transcriptNoteImageMoveState; setTranscriptNoteImagePosition(state.figure,state.baseX+event.clientX-state.startX,state.baseY+event.clientY-state.startY);
+    const state=transcriptNoteImageMoveState;
+    if(Math.abs(event.clientX-state.startX)+Math.abs(event.clientY-state.startY)>2)state.moved=true;
+    if(state.free)setTranscriptNoteImagePosition(state.figure,state.baseX+event.clientX-state.startX,state.baseY+event.clientY-state.startY);
+    else if(state.moved)state.range=transcriptNoteRangeAtPoint(event.clientX,event.clientY);
+    if(state.range&&!state.free)showTranscriptNoteDropIndicator(state.range);
   }
   if(transcriptNoteImageResizeState){
     const state=transcriptNoteImageResizeState, width=Math.max(48,state.startWidth+event.clientX-state.startX);
     state.image.style.width=`${Math.round(width)}px`;state.figure.dataset.noteDisplayWidth=String(Math.round(width));
   }
 });
-document.addEventListener('pointerup',()=>{transcriptNoteImageMoveState=null;transcriptNoteImageResizeState=null;});
+document.addEventListener('pointerup',()=>{
+  const move=transcriptNoteImageMoveState;
+  if(move&&!move.free&&move.moved&&move.range){moveTranscriptNoteFlowImage(move.figure,move.range);hideTranscriptNoteDropIndicator();}
+  transcriptNoteImageMoveState=null;transcriptNoteImageResizeState=null;
+});
 $('transcriptNoteText').addEventListener('pointerdown',event=>{
   const figure=event.target.closest('.tn-image-node'); if(!figure)return;
+  if(event.target.closest('.tn-delete-image')){event.stopPropagation();return;}
   if(event.target.closest('.tn-resize-handle'))startTranscriptNoteResize(event,figure); else startTranscriptNoteMove(event,figure);
+});
+$('transcriptNoteText').addEventListener('click',event=>{
+  const remove=event.target.closest('.tn-delete-image'); if(!remove)return;
+  event.preventDefault(); event.stopPropagation(); remove.closest('.tn-image-node').remove(); closeTranscriptNoteImageMenu();
 });
 $('transcriptNoteText').addEventListener('contextmenu',event=>{
   const figure=event.target.closest('.tn-image-node'); if(!figure)return;

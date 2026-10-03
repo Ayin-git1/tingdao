@@ -30,8 +30,11 @@ test('image nodes expose a Word-like layout menu with supported modes', () => {
 
 test('image nodes can be resized and freely dragged, and serialization keeps geometry', () => {
   includes(/tn-resize-handle/);
+  includes(/tn-delete-image/);
   includes(/startTranscriptNoteResize/);
   includes(/startTranscriptNoteMove/);
+  includes(/moveTranscriptNoteFlowImage/);
+  includes(/transcriptNoteUsesFreePosition/);
   includes(/displayWidth/);
   includes(/position\.mode/);
   includes(/position\.x/);
