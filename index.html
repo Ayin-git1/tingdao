@@ -1135,6 +1135,19 @@
   .histlist{flex:1; overflow-y:auto; padding:5px 8px 64px; position:relative;
             scrollbar-width:none;}
   .histlist::-webkit-scrollbar{width:0; display:none;}
+  .sbsection-head{display:flex; align-items:center; gap:7px; min-height:24px; padding:0 8px;
+                  margin:4px 2px 3px; color:var(--sub); font-size:13px; font-weight:600;
+                  letter-spacing:.1px; user-select:none;}
+  .sbsection-icon{width:16px; height:16px; flex:none; color:var(--g);}
+  .sbsection-head.groups{margin-top:14px; padding-top:10px; border-top:1px solid var(--line);}
+  .sbsection-head .sbsection-name{flex:1; min-width:0;}
+  .sbsection-head .sbsection-count{color:var(--gry-icon); font-size:var(--fs-micro); font-weight:400;
+                                    font-variant-numeric:tabular-nums;}
+  .sbsection-add{width:22px; height:22px; padding:0; border:none; border-radius:6px;
+                 background:none; color:var(--gry-icon); font:inherit; font-size:19px; line-height:1;
+                 cursor:pointer; transition:background var(--hov), color var(--hov);}
+  .sbsection-add:hover{background:var(--hover); color:var(--txt);}
+  .sbsection-empty{padding:10px 12px; color:var(--gry-icon); font-size:var(--fs-ctl); text-align:center;}
   /* 方向 B：等高·扁平·淡绿底选中。默认单行 38px(标题 14px), 点击/有进行中任务才展开第二行 52px */
   @keyframes hitemIn{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none}}
   .hitem{padding:10px 12px 0 24px;height:38px;cursor:pointer;position:relative;
@@ -5903,6 +5916,36 @@ const hic = k => `<svg class="hico" viewBox="0 0 24 24" fill="none" stroke="curr
 let groupMeta = {order:[], collapsed:[], colors:{}};   // 分组顺序/折叠态/标签色(groups.json); 成员在各项目 group 字段
 let lastHistRaw = [];                       // 最近一次历史原始数据, 分组弹窗数计数用
 
+function sidebarRecentItems(items, limit=3){
+  return (items || []).filter(it=>!it.pending).slice()
+    .sort((a,b)=>(b.date||'').localeCompare(a.date||''))
+    .slice(0, Math.max(0, Number(limit) || 0));
+}
+function sidebarGroupItems(items, meta){
+  const source = (items || []).filter(it=>!it.pending);
+  const counts = {};
+  const names = [''];
+  source.forEach(it=>{
+    const name = it.group || '';
+    if(name) counts[name] = (counts[name] || 0) + 1;
+  });
+  (meta && meta.order || []).forEach(name=>{
+    if(name && !names.includes(name)) names.push(name);
+  });
+  source.forEach(it=>{
+    const name = it.group || '';
+    if(name && !names.includes(name)) names.push(name);
+  });
+  return names.map(name=>({name, count: name ? (counts[name] || 0) : source.filter(it=>!(it.group || '')).length,
+                           color: (meta && meta.colors && meta.colors[name]) || ''}));
+}
+function sidebarSectionIcon(kind){
+  const body = kind === 'groups'
+    ? '<circle cx="5" cy="7" r="1.2" fill="currentColor" stroke="none"/><circle cx="5" cy="12" r="1.2" fill="currentColor" stroke="none"/><circle cx="5" cy="17" r="1.2" fill="currentColor" stroke="none"/><path d="M9 7h9M9 12h9M9 17h9"/>'
+    : '<circle cx="12" cy="12" r="7.5"/><path d="M12 8v4l2.8 1.8"/>';
+  return `<svg class="sbsection-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
+}
+
 async function refreshHistory(){
   let raw = (await api('/api/history')).items || [];
   lastHistRaw = raw;
@@ -5929,8 +5972,8 @@ async function refreshHistory(){
   const shown = q ? items.filter(it=>it.name.toLowerCase().includes(q)) : items;
   // 分组优先于排序: 排序只决定组内顺序, 分区按「未分组 → groups.json 顺序」;
   // 搜索跨组: 有关键词时摊平不显示组标题; 一个命名组都没有时也摊平(没分组的人看不到新东西)
+  const recent = q ? [] : sidebarRecentItems(items);
   let secs = q ? null : sectionize(shown);
-  if(secs && secs.length === 1 && secs[0].name === '') secs = null;
   // 「按组标签」: 组之间按标签色排序(未上色命名组次之, 未分组最后); 组内维持上面的时间倒序
   if(secs && histSort === 'group_tag'){
     const rank = n => n === '' ? 9999
@@ -5939,9 +5982,9 @@ async function refreshHistory(){
     secs = secs.slice().sort((a,b)=> (rank(a.name)-rank(b.name))
                  || (a.name||'').localeCompare(b.name||'','zh-Hans-CN'));
   }
-  const renderedCount = secs
+  const renderedCount = recent.length + (secs
     ? secs.reduce((n,s)=> n + s.items.length, 0)   // render-all: 折叠组条目仍在 DOM, 靠 .gbody 收放(可动画)
-    : shown.length;
+    : shown.length);
   const sig = JSON.stringify(shown.map(it => [it.id, it.name, it.lines, it.duration,
                     it.hasAudio, it.notes, it.group || '', !!it.stopped,
                     !!it.favorite, !!it.archived])) + '|' + (view ? view.id : '') + '|' +
@@ -5958,8 +6001,32 @@ async function refreshHistory(){
   _histSig = sig;
   const _keepScroll = list.scrollTop;   // innerHTML='' 会把滚动位置归零, 重建后原样放回
   list.innerHTML = '';
-  if(!shown.length){
-    list.innerHTML = `<div style="padding:18px 12px; font-size:var(--fs-ctl); color:var(--gry-icon); text-align:center;">${q?'没有匹配的项目':'还没有录音'}</div>`;
+  if(!q){
+    const rh = document.createElement('div');
+    rh.className = 'sbsection-head recent';
+    rh.innerHTML = `${sidebarSectionIcon('recent')}<span class="sbsection-name">最近</span><span class="sbsection-count">${recent.length}</span>`;
+    list.appendChild(rh);
+    const recentItems = document.createElement('div');
+    recentItems.className = 'recent-items';
+    recent.forEach(it=>recentItems.appendChild(mkHistItem(it, '', 'recent')));
+    list.appendChild(recentItems);
+
+    const gh = document.createElement('div');
+    gh.className = 'sbsection-head groups';
+    gh.innerHTML = `${sidebarSectionIcon('groups')}<span class="sbsection-name">我的分组</span><button class="sbsection-add" type="button" title="新建分组" aria-label="新建分组">＋</button>`;
+    gh.querySelector('.sbsection-add').onclick = e=>{
+      e.stopPropagation();
+      selected.clear(); renderSelState();
+      openGroupPopover(gh.querySelector('.sbsection-add'), true);
+    };
+    list.appendChild(gh);
+  }
+  if(!shown.length && (!secs || !secs.length)){
+    const empty = document.createElement('div');
+    empty.className = 'sbsection-empty';
+    empty.textContent = q ? '没有匹配的项目' : '还没有录音';
+    list.appendChild(empty);
+    list.scrollTop = _keepScroll;
     return;
   }
   if(secs){
@@ -5997,7 +6064,7 @@ async function refreshHistory(){
   }
   list.scrollTop = _keepScroll;         // 回到重建前看的那一行, 不再跳回顶部
 }
-function mkHistItem(it, q){
+function mkHistItem(it, q, region){
     const div = document.createElement('div');
     const jb = jobs[it.id];
     const isRun = it.pending || (jb && jb.state === 'run');
@@ -6007,7 +6074,8 @@ function mkHistItem(it, q){
     const expanded = !isRun && !!it.stopped;
     div.className = 'hitem' + (view && view.id===it.id ? ' on' : '')
                     + (selected.has(it.id)?' sel':'') + (isRun ? ' refining' : '')
-                    + (expanded ? ' x' : '') + (isWait ? ' q' : '');
+                    + (expanded ? ' x' : '') + (isWait ? ' q' : '')
+                    + (region ? ` ${region}-item` : '');
     if(_histSeen.has(it.id)) div.classList.add('noanim'); else _histSeen.add(it.id);
     div.dataset.id = it.id;
     const chk = document.createElement('input');
@@ -6094,11 +6162,11 @@ function sectionize(items){
     if(!by.has(g)) by.set(g, []);
     by.get(g).push(it);
   }
-  const secs = [];
-  if(by.has('')) secs.push({name:'', items: by.get('')});
-  for(const name of groupMeta.order) if(by.has(name)) secs.push({name, items: by.get(name)});
-  for(const [name, arr] of by) if(name && !groupMeta.order.includes(name)) secs.push({name, items:arr});
-  return secs;
+  if(!items.length && !(groupMeta.order || []).length) return [];
+  return sidebarGroupItems(items, groupMeta).map(group=>({
+    name: group.name,
+    items: by.get(group.name) || [],
+  }));
 }
 function toggleGroupCollapse(name, hd, gb){
   const i = groupMeta.collapsed.indexOf(name);
