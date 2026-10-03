@@ -4921,6 +4921,8 @@ class App:
                               "cloud": bool(meta.get("cloud_used")),
                               "stopped": bool(meta.get("stopped")),
                               "group": str(meta.get("group") or ""),
+                              "favorite": bool(meta.get("favorite")),
+                              "archived": bool(meta.get("archived")),
                               "notes": len(meta.get("notes", []))})
             elif (d / "transcript.md").exists():
                 # 旧版 whisper 会话
@@ -4930,7 +4932,8 @@ class App:
                 items.append({"id": d.name, "name": self._clean_title(name.group(1) if name else d.name),
                               "date": time.strftime("%Y-%m-%d %H:%M", time.localtime(d.stat().st_mtime)),
                               "duration": 0, "lines": len(lines),
-                              "hasAudio": False, "notes": 0, "group": "", "legacy": True})
+                              "hasAudio": False, "notes": 0, "group": "", "legacy": True,
+                              "favorite": False, "archived": False})
             elif (d / "raw.s16").exists() or (d / MASTER_RAW_FILE).exists() \
                     or any(d.glob("*.m4a")) or any(d.glob("*.wav")):
                 # 孤儿夹(多为旧版残留): 录音起过但没走到收尾(进程被杀/起动失败),
@@ -4941,8 +4944,29 @@ class App:
                               "date": time.strftime("%Y-%m-%d %H:%M", time.localtime(d.stat().st_mtime)),
                               "duration": 0, "lines": 0,
                               "hasAudio": False, "cloud": False, "stopped": True,
-                              "group": "", "notes": 0})
+                              "group": "", "notes": 0, "favorite": False, "archived": False})
         return items
+
+    def session_flags(self, ids, favorite=None, archived=None):
+        """批量更新项目的收藏/归档状态，只写已有 session.json 的项目。"""
+        if not isinstance(ids, (list, tuple, set)):
+            raise RuntimeError("参数错误")
+        updated = 0
+        for sid in ids:
+            if not isinstance(sid, str) or not sid or ".." in sid \
+                    or "/" in sid or "\\" in sid:
+                raise RuntimeError("非法路径")
+            sj = SESSIONS_DIR / sid / "session.json"
+            if not sj.is_file():
+                continue
+            meta = json.loads(sj.read_text(encoding="utf-8"))
+            if favorite is not None:
+                meta["favorite"] = bool(favorite)
+            if archived is not None:
+                meta["archived"] = bool(archived)
+            sj.write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
+            updated += 1
+        return {"ok": True, "updated": updated}
 
     # ---- 分组: 成员写各项目 session.json 的 group 字段, 顺序/折叠在 groups.json ----
     def _each_meta(self):
@@ -5520,6 +5544,9 @@ class Handler(BaseHTTPRequestHandler):
                                                    body.get("last_pos")))
             if u.path == "/api/rename":
                 return self._json(APP.rename(body.get("name", ""), body.get("id") or None))
+            if u.path == "/api/session_flags":
+                return self._json(APP.session_flags(
+                    body.get("ids") or [], body.get("favorite"), body.get("archived")))
             if u.path == "/api/delete_audio":
                 return self._json(APP.delete_audio(body.get("id", "")))
             if u.path == "/api/delete_session":
