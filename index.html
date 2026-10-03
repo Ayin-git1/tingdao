@@ -1004,7 +1004,8 @@
                        display:grid; place-items:center; color:var(--gry-icon); background:transparent;
                        cursor:pointer; transition:color var(--hov), background var(--hov), transform var(--hov);}
   .app-rail .rail-btn:hover{color:var(--g-ink); background:var(--g-tint);}
-  .app-rail .rail-btn.active{color:var(--g-ink); background:transparent;}
+  .app-rail .rail-btn.active{color:var(--g-ink); background:rgba(255,255,255,.58);}
+  html[data-appearance="dark"] .app-rail .rail-btn.active{background:rgba(255,255,255,.10);}
   .app-rail .rail-btn:active{transform:scale(.94);}
   .app-rail .rail-btn:focus-visible{outline:2px solid var(--g); outline-offset:2px;}
   .app-rail .rail-btn svg{width:19px; height:19px; display:block;}
