@@ -81,3 +81,19 @@ test('setSessionFlags posts state changes and refreshes the collection', async (
   assert.deepEqual(calls, [['/api/session_flags', {ids: ['project-a'], favorite: true}]]);
   assert.equal(global.refreshed, true);
 });
+
+test('the drawer toolbar is an inset glass pill and the rail stays independent', () => {
+  const cols = html.slice(html.indexOf('<div class="cols">'), html.indexOf('</div><!-- /cols -->') + 21);
+  assert.match(cols, /<nav class="app-rail"[\s\S]*?<div class="sidebar"/);
+  const sidefoot = html.match(/\.sidefoot\{[^}]+\}/)?.[0] || '';
+  assert.match(sidefoot, /left:10px/);
+  assert.match(sidefoot, /right:10px/);
+  assert.match(sidefoot, /border-radius:999px/);
+  assert.match(sidefoot, /backdrop-filter:blur\(/);
+  assert.match(html, /\.sidehide \.sidebar\{margin-left:-291px;\}/);
+  assert.match(html, /\.app-rail \.rail-btn\.active\{color:var\(--g-ink\); background:var\(--g-tint\);\}/);
+  assert.match(html, /id="btnSort"/);
+  assert.match(html, /id="btnImport"/);
+  assert.match(html, /id="sfMode"/);
+  assert.match(html, /id="btnSet"/);
+});
