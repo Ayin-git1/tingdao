@@ -1022,6 +1022,12 @@
   .collection-count{font-size:var(--fs-meta); color:var(--gry-ink); white-space:nowrap;}
   .collection-grid{width:100%;}
   .collection-grid .rc{min-height:132px;}
+  .collection-actions{display:flex; gap:7px; margin-top:auto;}
+  .collection-action{border:1px solid var(--line); border-radius:999px; padding:5px 10px; background:transparent;
+                     color:var(--sub); font:inherit; font-size:var(--fs-meta); cursor:pointer;
+                     transition:color var(--hov), background var(--hov), border-color var(--hov);}
+  .collection-action:hover{color:var(--g-ink); background:var(--g-tint); border-color:var(--g-ring);}
+  .collection-action.danger:hover{color:var(--warn); background:rgba(255,59,48,.08); border-color:rgba(255,59,48,.26);}
   .collection-empty{display:none; border:1px dashed var(--line); border-radius:18px; padding:42px 20px;
                    text-align:center; color:var(--sub); background:var(--soft);}
   .collection-empty.show{display:block;}
@@ -2611,8 +2617,8 @@
       <button class="tpb f-only" id="btnCopy" data-tip="复制逐字稿">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
       </button>
-      <button class="tpb f-only" id="btnDel" data-tip="移到废纸篓（可找回）">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-13M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3"/></svg>
+      <button class="tpb f-only" id="btnDel" data-tip="归档项目">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7.5h16v12a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19.5zM3 4h18v3.5H3zM9 12h6"/></svg>
       </button>
       <button class="tpb f-only" id="btnReveal" data-tip="打开项目文件夹">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
@@ -2713,8 +2719,8 @@
   <button class="tpb" id="btnGroup" data-tip="把选中项放进分组">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h10M4 18h6"/><circle cx="18" cy="15" r="3.2"/></svg>
   </button><span class="glabel">分组</span>
-  <button class="tpb" id="btnDelBatch" data-tip="选中项移入废纸篓">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-13M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3"/></svg>
+  <button class="tpb" id="btnDelBatch" data-tip="归档选中项目">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7.5h16v12a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19.5zM3 4h18v3.5H3zM9 12h6"/></svg>
   </button>
   <button class="tpb" id="btnSelCancel" data-tip="取消选择">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg>
@@ -2748,8 +2754,11 @@
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>移到项目
     <svg class="mchev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
   </button>
-  <button class="hmi red" data-act="del">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M6 7l1 13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-13"/><path d="M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3"/></svg>删除
+  <button class="hmi" data-act="favorite">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m12 4 2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4-3.9-3.8 5.4-.8z"/></svg><span class="hmi-label">收藏</span>
+  </button>
+  <button class="hmi" data-act="archive">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7.5h16v12a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19.5zM3 4h18v3.5H3zM9 12h6"/></svg>归档
   </button>
 </div>
 
@@ -5420,24 +5429,35 @@ $('btnReveal').onclick = ()=>{
   api('/api/reveal', {id: view.id});
 };
 
-let delTargets = [];
-$('btnDel').onclick = ()=>{ if(view) openDelModal([view.id]); };
-$('btnDelBatch').onclick = ()=>{ if(selected.size) openDelModal([...selected]); };
+let delTargets = [], delArchiveDelete = false;
+$('btnDel').onclick = ()=>{ if(view) archiveProjects([view.id]); };
+$('btnDelBatch').onclick = ()=>{ if(selected.size) archiveProjects([...selected]); };
 
-function openDelModal(ids){
+function openDelModal(ids, options={}){
   delTargets = ids;
-  $('delFull').checked = false;
+  delArchiveDelete = !!options.archiveDelete;
+  $('delFull').checked = delArchiveDelete;
+  $('delFull').disabled = delArchiveDelete;
+  $('delFull').parentElement.style.display = delArchiveDelete ? 'none' : '';
   const many = ids.length > 1;
-  $('delTitle').textContent = many ? `把 ${ids.length} 个项目的录音移到废纸篓？` : '把录音移到废纸篓？';
-  $('delSub').textContent = many
-    ? '默认只移走选中项目的音频，文稿全部保留；废纸篓里随时能拖回来。'
-    : '文稿会留在原处；废纸篓里随时能拖回来。';
+  if(delArchiveDelete){
+    $('delTitle').textContent = many ? `删除 ${ids.length} 个归档项目？` : '删除这个归档项目？';
+    $('delSub').textContent = '项目将移到系统废纸篓，可从废纸篓中找回。';
+    $('delConfirm').textContent = '删除项目';
+  }else{
+    $('delTitle').textContent = many ? `把 ${ids.length} 个项目的录音移到废纸篓？` : '把录音移到废纸篓？';
+    $('delSub').textContent = many
+      ? '默认只移走选中项目的音频，文稿全部保留；废纸篓里随时能拖回来。'
+      : '文稿会留在原处；废纸篓里随时能拖回来。';
+    $('delConfirm').textContent = '移到废纸篓';
+  }
   $('delmodal').classList.add('show');
 }
 $('delCancel').onclick = ()=> $('delmodal').classList.remove('show');
 $('delmodal').addEventListener('click', e=>{ if(e.target === $('delmodal')) $('delmodal').classList.remove('show'); });
 $('delConfirm').onclick = async ()=>{
-  const full = $('delFull').checked;
+  const archiveDelete = delArchiveDelete;
+  const full = archiveDelete || $('delFull').checked;
   $('delmodal').classList.remove('show');
   let ok = 0; const errs = [];
   for(const id of delTargets){
@@ -5450,6 +5470,7 @@ $('delConfirm').onclick = async ()=>{
   if(errs.length) toast(`${ok} 个已移入废纸篓，${errs.length} 个没动（仍在原处）：${errs[0]}`);
   else toast(`${ok} 个${full ? '项目' : '录音'}已移入废纸篓，可随时找回`);
   if(ok) playNotificationSound('project_delete.mp3');
+  delArchiveDelete = false;
   selected.clear();
   if(view && delTargets.includes(view.id)) exitView();
   refreshHistory();
@@ -6038,6 +6059,9 @@ function openItemMenu(id, pt, btn){
   closePops();                       // 其它弹层收干净(含上一次菜单)
   menuCtx = {id};
   const m = $('hmenu');
+  const item = lastHistRaw.find(x=>x.id===id);
+  const favLabel = m.querySelector('[data-act="favorite"] .hmi-label');
+  if(favLabel) favLabel.textContent = item && item.favorite ? '取消收藏' : '收藏';
   m.classList.add('show');
   const r = m.getBoundingClientRect();
   let x, y;
@@ -6065,7 +6089,8 @@ $('hmenu').addEventListener('click', e=>{
   if(act === 'rename') startItemRename(it.id);
   else if(act === 'copy') copyAs('plain', it.id);
   else if(act === 'batch'){ selected.add(it.id); renderSelState(); _histSig=''; refreshHistory(); }
-  else if(act === 'del') openDelModal([it.id]);
+  else if(act === 'favorite') setSessionFlags([it.id], {favorite:!it.favorite});
+  else if(act === 'archive') archiveProjects([it.id]);
 });
 /* 右键条目 = 直接呼出菜单 */
 $('histlist').addEventListener('contextmenu', e=>{
@@ -7398,6 +7423,29 @@ function renderHomePanel(){
   const nw=$('hpNew'); if(nw) nw.onclick = ()=>{ if(state === 'idle') $('fab').click(); };
 }
 
+async function setSessionFlags(ids, flags){
+  const body = {ids: [...new Set(ids)].filter(Boolean)};
+  if(flags && flags.favorite !== undefined) body.favorite = !!flags.favorite;
+  if(flags && flags.archived !== undefined) body.archived = !!flags.archived;
+  let result = null;
+  try{ result = await api('/api/session_flags', body); }catch(e){ result = null; }
+  if(!result || !result.ok){ toast((result && result.error) || '项目状态保存失败'); return result; }
+  _histSig = '';
+  if($('collectionList')) $('collectionList')._sig = '';
+  await refreshHistory();
+  return result;
+}
+
+async function archiveProjects(ids){
+  const targets = [...new Set(ids)].filter(Boolean);
+  const open = view && targets.includes(view.id);
+  const result = await setSessionFlags(targets, {archived:true});
+  if(!result || !result.ok) return result;
+  toast(`${targets.length} 个项目已归档`);
+  if(open){ section = 'documents'; exitView(); }
+  return result;
+}
+
 function renderCollectionPanel(){
   const panel = $('collectionPanel');
   if(!panel || section === 'documents' || view !== null || state !== 'idle') return;
@@ -7417,9 +7465,13 @@ function renderCollectionPanel(){
   const html = items.map(it=>{
     const dstr = (it.date||'').slice(5,10).replace(/-/g,'.');
     const dur = it.duration ? `<span class="dot"></span>${fmt(it.duration)}` : '';
+    const actions = archive
+      ? `<div class="collection-actions"><button class="collection-action" data-act="restore">恢复</button><button class="collection-action danger" data-act="delete">删除</button></div>`
+      : `<div class="collection-actions"><button class="collection-action" data-act="unfavorite">取消收藏</button></div>`;
     return `<div class="rc collection-card" data-id="${esc(it.id)}">${_hpWave(it.id)}
       <div class="tt">${esc(it.name)}</div>
       <div class="meta">${esc(dstr)}${dur}<span style="flex:1"></span><span class="st done">${archive?'已归档':'已收藏'}</span></div>
+      ${actions}
     </div>`;
   }).join('');
   if(list._sig === html) return;
@@ -7430,6 +7482,15 @@ function renderCollectionPanel(){
       if(state !== 'idle'){ toast('请先结束当前录音'); return; }
       loadSession(el.dataset.id, true);
     };
+    el.querySelectorAll('.collection-action').forEach(btn=>{
+      btn.onclick = e=>{
+        e.stopPropagation();
+        const id = el.dataset.id;
+        if(btn.dataset.act === 'restore') setSessionFlags([id], {archived:false});
+        else if(btn.dataset.act === 'unfavorite') setSessionFlags([id], {favorite:false});
+        else if(btn.dataset.act === 'delete') openDelModal([id], {archiveDelete:true});
+      };
+    });
   });
 }
 

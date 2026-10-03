@@ -54,3 +54,30 @@ test('goToDocumentsHome resets section and exits an open project', () => {
   assert.equal(global.exited, true);
 });
 
+test('ordinary project menu archives instead of exposing real deletion', () => {
+  const menu = html.slice(html.indexOf('<div class="hmenu"'), html.indexOf('</div>', html.indexOf('<div class="hmenu"')) + 6);
+  assert.match(menu, /data-act="favorite"/);
+  assert.match(menu, /data-act="archive"/);
+  assert.doesNotMatch(menu, /data-act="del"/);
+});
+
+test('archive cards expose restore and real-delete actions', () => {
+  const source = functionSource('function renderCollectionPanel()');
+  assert.match(source, /data-act=\\?"restore\\?"/);
+  assert.match(source, /data-act=\\?"delete\\?"/);
+  assert.match(source, /openDelModal\(\[id\], \{archiveDelete:true\}\)/);
+});
+
+test('setSessionFlags posts state changes and refreshes the collection', async () => {
+  const source = functionSource('async function setSessionFlags(ids, flags)');
+  const calls = [];
+  global.api = async (path, body) => { calls.push([path, body]); return {ok: true, updated: body.ids.length}; };
+  global.$ = () => ({_sig: ''});
+  global.refreshHistory = async () => { global.refreshed = true; };
+  const setSessionFlags = Function(`${source}; return setSessionFlags;`)();
+
+  await setSessionFlags(['project-a'], {favorite: true});
+
+  assert.deepEqual(calls, [['/api/session_flags', {ids: ['project-a'], favorite: true}]]);
+  assert.equal(global.refreshed, true);
+});
