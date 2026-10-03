@@ -117,6 +117,7 @@
 </script>
 <style>
   :root{
+    --rail-width:72px;
     --bg:#ffffff; --side:#f6f6f7; --card:#ffffff; --line:#e2e3e3;
     --txt:#141414; --sub:#86868b; --acc:#141414; --heading-ink:#4a4a4f;
     --ok:var(--g); --warn:#ff3b30; --idle:#8e8e93; --soft:#f5f5f7;
@@ -996,6 +997,34 @@
   .resumebar button.ghost:hover{background:none; color:var(--txt);}
 
   /* ============ 右侧: 历史栏 ============ */
+  .app-rail{width:var(--rail-width); flex:none; display:flex; flex-direction:column; align-items:center;
+            gap:8px; padding:54px 10px 14px; box-sizing:border-box; background:var(--side);
+            border-right:1px solid var(--line); color:var(--gry-icon);}
+  .app-rail .rail-btn{width:42px; height:42px; padding:0; border:0; border-radius:12px;
+                       display:grid; place-items:center; color:var(--gry-icon); background:transparent;
+                       cursor:pointer; transition:color var(--hov), background var(--hov), transform var(--hov);}
+  .app-rail .rail-btn:hover{color:var(--g-ink); background:var(--g-tint);}
+  .app-rail .rail-btn.active{color:var(--g-ink); background:var(--g-tint);}
+  .app-rail .rail-btn:active{transform:scale(.94);}
+  .app-rail .rail-btn:focus-visible{outline:2px solid var(--g); outline-offset:2px;}
+  .app-rail .rail-btn svg{width:19px; height:19px; display:block;}
+  .app-rail .rail-gap{flex:1; min-height:12px;}
+  body.section-favorites .sidebar,
+  body.section-archive .sidebar{display:none;}
+  body.section-favorites .side-dock-bg,
+  body.section-archive .side-dock-bg{display:none;}
+  .collection-panel{display:none; flex:1; min-height:0; overflow:auto; flex-direction:column;
+                   padding:54px clamp(28px, 7vw, 104px) 72px; box-sizing:border-box;}
+  .collection-panel.show{display:flex;}
+  .collection-head{display:flex; align-items:end; justify-content:space-between; gap:18px; margin-bottom:28px;}
+  .collection-head h1{font-size:26px; line-height:1.15; letter-spacing:-.5px; font-weight:800; color:var(--txt);}
+  .collection-head p{margin-top:7px; color:var(--sub); font-size:var(--fs-body);}
+  .collection-count{font-size:var(--fs-meta); color:var(--gry-ink); white-space:nowrap;}
+  .collection-grid{width:100%;}
+  .collection-grid .rc{min-height:132px;}
+  .collection-empty{display:none; border:1px dashed var(--line); border-radius:18px; padding:42px 20px;
+                   text-align:center; color:var(--sub); background:var(--soft);}
+  .collection-empty.show{display:block;}
   /* padding-left:1px 是补掉原来 border-left 那 1px 的占位(box-sizing:border-box,
      总宽仍是 290), 保证内容一个像素都不横移 */
   .cols{display:flex; flex:1; min-height:0; position:relative;}
@@ -1268,7 +1297,7 @@
        feedzone 遮罩跟边, 边界照常"推"给正文。滑动量全挂在 dock-bg/main 上,
        侧栏布局被 sideDockPin 钉死在终值 —— 列表不再吃 margin+transform 双轨补偿(抽搐源头)。
      B 控件归位: 侧栏只走自己的 translate/height .52s 滑回常驻位, 圆角 120ms 收平。 */
-  .side-dock-bg{display:none; position:absolute; inset:0 auto 0 0; width:290px;
+  .side-dock-bg{display:none; position:absolute; inset:0 auto 0 var(--rail-width); width:290px;
           z-index:7; pointer-events:none; background:var(--side);}
   body.side-promoting .side-dock-bg{display:block;
           animation:sideDockWash .52s cubic-bezier(.22,.75,.25,1) both;}
@@ -2205,6 +2234,18 @@
 <div class="peekscrim" id="peekscrim"></div>
 
 <div class="cols">
+<nav class="app-rail" id="appRail" aria-label="主导航">
+  <button class="rail-btn active" id="navDocuments" data-section="documents" aria-label="文稿" aria-current="page" title="文稿">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.5h8l4 4V20a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1z"/><path d="M14 3.5V8h4M8.5 12h7M8.5 16h7"/></svg>
+  </button>
+  <button class="rail-btn" id="navFavorites" data-section="favorites" aria-label="收藏" title="收藏">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 4 2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4-3.9-3.8 5.4-.8z"/></svg>
+  </button>
+  <button class="rail-btn" id="navArchive" data-section="archive" aria-label="归档" title="归档">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7.5h16v12a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19.5zM3 4h18v3.5H3zM9 12h6"/></svg>
+  </button>
+  <span class="rail-gap" aria-hidden="true"></span>
+</nav>
 <div class="side-dock-bg" aria-hidden="true"></div>
 <div class="sidebar">
   <div class="brand-info" id="brandInfo" tabindex="0" aria-describedby="brandInfoCard" aria-expanded="false">
@@ -2243,6 +2284,14 @@
   <div id="tip"></div>
   <div class="popscrim" id="popscrim"></div>
   <div id="subscrim"></div>
+  <section class="collection-panel" id="collectionPanel" aria-live="polite">
+    <div class="collection-head">
+      <div><h1 id="collectionTitle">收藏</h1><p id="collectionSubtitle">只显示你标记过的项目</p></div>
+      <span class="collection-count" id="collectionCount">0 个项目</span>
+    </div>
+    <div class="hp-grid collection-grid" id="collectionList"></div>
+    <div class="collection-empty" id="collectionEmpty">这里还没有项目</div>
+  </section>
   <div class="setpop" id="setpop">
    <div class="sethead"><span class="ht">设置</span><span class="hs" id="setShortcutHint">全部摊开 · 点外面或 ⌘, 也能关</span>
     <button class="setclose" id="setClose" title="关闭设置"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
@@ -2895,6 +2944,7 @@ function syncRecordModeUI(){
 }
 let engine = 'sensevoice';
 let view = null;
+let section = 'documents';
 let sessionName = '';
 let segEls = [];
 let selected = new Set();
@@ -3045,8 +3095,24 @@ document.querySelector('.namebox').addEventListener('click', ()=>{
 
 /* 工具条折叠: 折叠态只留 箭头 + 搜索; 宽度连续变化带动标题框同步伸缩 */
 $('fold').onclick = ()=> $('toolpanel').classList.toggle('fold');
-/* 主页按钮: 一键退回主页(与点空白退出同一出口) */
-$('btnHome').onclick = ()=>{ if(view !== null) exitView(); };
+function sectionItems(items, section){
+  const list = Array.isArray(items) ? items : [];
+  if(section === 'archive') return list.filter(it=>!!it.archived);
+  if(section === 'favorites') return list.filter(it=>!!it.favorite && !it.archived);
+  return list.filter(it=>!it.archived);
+}
+function goToDocumentsHome(){
+  section = 'documents';
+  if(view !== null){ exitView(); return; }
+  closePops();
+  closeItemMenu();
+  selected.clear();
+  _histSig = '';
+  updateChrome();
+  refreshHistory();
+}
+/* 主页按钮: 无论来自项目、收藏还是归档，都回到文稿主界面 */
+$('btnHome').onclick = goToDocumentsHome;
 
 function syncPlatformUI(platform){
   if(!platform) return;
@@ -3134,14 +3200,28 @@ bindResizeEdges();
 function updateChrome(){
   const inView = view !== null;
   const rec = (state==='recording'||state==='paused'||state==='stopping');
-  const welcome = !inView && !rec;
+  const landing = !inView && !rec;
+  const welcome = section === 'documents' && landing;
+  const collection = section !== 'documents' && landing;
   // 首页 hero 仅空闲且未查看项目时显示
   $('homePanel').style.display = welcome ? 'flex' : 'none';
   if(welcome) renderHomePanel();
   if(welcome) $('empty').style.display = 'none';
+  $('feedwrap').style.display = collection ? 'none' : '';
+  $('collectionPanel').classList.toggle('show', collection);
+  if(collection) renderCollectionPanel();
   // 主页背景光斑: 仅欢迎态显示(固定层, 故意压在侧栏分割线与按钮上)
   document.body.classList.toggle('home', welcome);
-  $('titlebar').style.display = welcome ? 'none' : 'flex';
+  document.body.classList.toggle('section-documents', section === 'documents');
+  document.body.classList.toggle('section-favorites', section === 'favorites');
+  document.body.classList.toggle('section-archive', section === 'archive');
+  document.querySelectorAll('.app-rail .rail-btn').forEach(btn=>{
+    const active = btn.dataset.section === section;
+    btn.classList.toggle('active', active);
+    if(active) btn.setAttribute('aria-current', 'page');
+    else btn.removeAttribute('aria-current');
+  });
+  $('titlebar').style.display = inView || rec ? 'flex' : 'none';
   // 底部白纱只在文稿/录制时有意义(遮滚动文字); 主页没有可滚内容, 收掉
   document.querySelectorAll('.fogmask').forEach(f=>{ f.style.opacity = welcome ? '0' : '1'; });
   if(welcome && renameArmed){ renameArmed = false; setConfirm(false); }
@@ -5410,9 +5490,10 @@ async function refreshHistory(){
     groupMeta = {order: g.order || [], collapsed: g.collapsed || [], colors: g.colors || {}};
   }catch(e){}
   renderHomePanel();   // 首页卡片墙随每次历史刷新保持新鲜（内部有 sig 去重，只在主页可见）
+  renderCollectionPanel();
   // 导入大文件时后端要先抽音轨才建得出项目, 期间先在前端挂一条占位项让用户看得见
   // 排序: 时间倒序(默认)/时间正序/字母(拼音)
-  let items = raw.slice();
+  let items = sectionItems(raw, 'documents').slice();
   if(histSort === 'alpha') items.sort((a,b)=>a.name.localeCompare(b.name,'zh-Hans-CN'));
   else if(histSort === 'time_asc') items.sort((a,b)=>(a.date||'').localeCompare(b.date||''));
   else items.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
@@ -5441,7 +5522,8 @@ async function refreshHistory(){
     ? secs.reduce((n,s)=> n + s.items.length, 0)   // render-all: 折叠组条目仍在 DOM, 靠 .gbody 收放(可动画)
     : shown.length;
   const sig = JSON.stringify(shown.map(it => [it.id, it.name, it.lines, it.duration,
-                    it.hasAudio, it.notes, it.group || '', !!it.stopped])) + '|' + (view ? view.id : '') + '|' +
+                    it.hasAudio, it.notes, it.group || '', !!it.stopped,
+                    !!it.favorite, !!it.archived])) + '|' + (view ? view.id : '') + '|' +
               [...selected].join(',') + '|' + JSON.stringify(
                 Object.entries(jobs).map(([k,v])=>[k,v.state,v.pct])) + '|' + histQuery
               + '|' + (importPendingShow || '')
@@ -7278,7 +7360,7 @@ function _hpWave(id){
 }
 function renderHomePanel(){
   const grid=$('hpGrid'); if(!grid) return;
-  const items=(lastHistRaw||[]).filter(it=>!it.pending)
+  const items=sectionItems(lastHistRaw||[], 'documents').filter(it=>!it.pending)
     .sort((a,b)=>(b.date||'').localeCompare(a.date||''));
   const empty=items.length===0;
   $('hpCount').textContent = items.length;
@@ -7315,6 +7397,57 @@ function renderHomePanel(){
   });
   const nw=$('hpNew'); if(nw) nw.onclick = ()=>{ if(state === 'idle') $('fab').click(); };
 }
+
+function renderCollectionPanel(){
+  const panel = $('collectionPanel');
+  if(!panel || section === 'documents' || view !== null || state !== 'idle') return;
+  const archive = section === 'archive';
+  const items = sectionItems(lastHistRaw || [], section)
+    .filter(it=>!it.pending)
+    .sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const title = archive ? '归档' : '收藏';
+  const subtitle = archive ? '集中管理已归档的项目' : '只显示你标记过的项目';
+  $('collectionTitle').textContent = title;
+  $('collectionSubtitle').textContent = subtitle;
+  $('collectionCount').textContent = `${items.length} 个项目`;
+  const list = $('collectionList'), empty = $('collectionEmpty');
+  list.style.display = items.length ? 'grid' : 'none';
+  empty.classList.toggle('show', !items.length);
+  empty.textContent = archive ? '还没有归档项目' : '还没有收藏项目';
+  const html = items.map(it=>{
+    const dstr = (it.date||'').slice(5,10).replace(/-/g,'.');
+    const dur = it.duration ? `<span class="dot"></span>${fmt(it.duration)}` : '';
+    return `<div class="rc collection-card" data-id="${esc(it.id)}">${_hpWave(it.id)}
+      <div class="tt">${esc(it.name)}</div>
+      <div class="meta">${esc(dstr)}${dur}<span style="flex:1"></span><span class="st done">${archive?'已归档':'已收藏'}</span></div>
+    </div>`;
+  }).join('');
+  if(list._sig === html) return;
+  list._sig = html;
+  list.innerHTML = html;
+  list.querySelectorAll('.collection-card').forEach(el=>{
+    el.onclick = ()=>{
+      if(state !== 'idle'){ toast('请先结束当前录音'); return; }
+      loadSession(el.dataset.id, true);
+    };
+  });
+}
+
+document.querySelectorAll('.app-rail .rail-btn').forEach(btn=>{
+  btn.onclick = ()=>{
+    const next = btn.dataset.section;
+    if(state !== 'idle'){ toast('请先结束当前录音'); return; }
+    if(next === 'documents'){ goToDocumentsHome(); return; }
+    section = next;
+    closePops();
+    closeItemMenu();
+    selected.clear();
+    _histSig = '';
+    if(view !== null){ exitView(); return; }
+    updateChrome();
+    refreshHistory();
+  };
+});
 
 $('nameInput').value = defaultName();
 window.addEventListener('resize', anchorLive);
