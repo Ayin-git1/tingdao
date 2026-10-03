@@ -184,7 +184,7 @@ test('outline hierarchy indents L2 and L3 while L1 keeps the transcript heading 
 });
 
 test('chapter outline card stays compact and rises above the reading toolbar', () => {
-  assert.match(html, /\.transcript-outline-card\{[^}]*right:32px;[^}]*width:min\(340px,/);
+  assert.match(html, /\.transcript-outline-card\{[^}]*right:32px;[^}]*width:min\(260px,/);
   assert.match(html, /\.transcript-outline-card\{[^}]*max-height:min\(420px,/);
   assert.match(html, /\.transcript-anchors\.has-outline\{[^}]*z-index:var\(--z-tip\);/);
 });

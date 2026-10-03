@@ -17,3 +17,14 @@ test('dark theme keeps the settings close X light on a medium hover surface', ()
     /html\[data-appearance="dark"\] \.setclose:hover\s*\{\s*background:#5a5c63; border-color:#6a6c73; color:#fff;\s*\}/,
   );
 });
+
+test('transcript outline level-2 items are black in light mode and readable in dark mode', () => {
+  assert.match(
+    html,
+    /\.transcript-outline-item\.level-2\s*\{\s*padding-left:28px; color:#000;\s*\}/,
+  );
+  assert.match(
+    html,
+    /html\[data-appearance="dark"\] \.transcript-outline-item\.level-2\s*\{\s*color:var\(--txt\);\s*\}/,
+  );
+});

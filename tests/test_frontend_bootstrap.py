@@ -29,7 +29,7 @@ class FrontendBootstrapTests(unittest.TestCase):
             "platform": platform,
             "urlparse": urlparse,
             "INDEX": INDEX,
-            "APP_VERSION": "2.7.10",
+            "APP_VERSION": "3.0.0",
             "load_setting": lambda key: {
                 "appearance": "system",
                 "theme_color": {"h": 335.9, "s": 79, "l": 79},
@@ -56,7 +56,7 @@ class FrontendBootstrapTests(unittest.TestCase):
         self.do_GET(response)
         self.assertEqual(response.status, 200)
         html = response.wfile.getvalue().decode("utf-8")
-        self.assertIn("v2.7.10", html)
+        self.assertIn("v3.0.0", html)
         self.assertNotIn("__TINGDAO_VERSION__", html)
         scripts = re.findall(r"<script[^>]*>(.*?)</script>", html, re.S)
         self.assertTrue(scripts)
@@ -85,6 +85,16 @@ class FrontendBootstrapTests(unittest.TestCase):
             version,
             json.loads((ROOT / "tauri-shell" / "tauri.conf.json").read_text(encoding="utf-8"))["version"],
         )
+        cargo_version = re.search(
+            r'^version = "([^"]+)"$',
+            (ROOT / "tauri-shell" / "Cargo.toml").read_text(encoding="utf-8"),
+            re.M,
+        )
+        self.assertIsNotNone(cargo_version)
+        self.assertEqual(version, cargo_version.group(1))
+        for package_file in ("package.json", "package-lock.json"):
+            package = json.loads((ROOT / "tauri-shell" / package_file).read_text(encoding="utf-8"))
+            self.assertEqual(version, package["version"])
 
 
 if __name__ == "__main__":
