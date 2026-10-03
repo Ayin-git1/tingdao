@@ -55,6 +55,21 @@ test('file drops accept known image extensions when the system omits MIME type',
   includes(/transcriptNoteImageFileIsSupported\(file\)/);
 });
 
+test('dragover shows an indicator when WebKit exposes only file drag types', () => {
+  includes(/function transcriptNoteMayContainImageFile\(dataTransfer\)/);
+  includes(/dataTransfer\.types/);
+  includes(/addEventListener\(['"]dragenter['"]/);
+  includes(/!files\.length&&!transcriptNoteMayContainImageFile\(event\.dataTransfer\)/);
+});
+
+test('image drag target is a visible insertion placeholder, not only a caret line', () => {
+  includes(/<span class="tn-drop-label">图片将在此处插入<\/span>/);
+  includes(/\.tn-drop-indicator\{[^}]*min-height:44px/);
+  includes(/\.tn-drop-indicator\{[^}]*border:1px dashed/);
+  includes(/indicator\.style\.width=`\$\{Math\.max\(0,editorRect\.width\)\}px`/);
+  includes(/indicator\.setAttribute\(['"]aria-hidden['"],['"]false['"]\)/);
+});
+
 test('drop and move indicators fall back to the editor end and clear outside it', () => {
   includes(/function transcriptNoteDropFallbackRange\(\)/);
   includes(/transcriptNoteDropRange\|\|transcriptNoteRangeAtPoint\([\s\S]*?\)\|\|transcriptNoteDropFallbackRange\(\)/);

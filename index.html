@@ -1941,9 +1941,14 @@
   .tn-delete-image{position:absolute;right:4px;top:4px;width:22px;height:22px;border:0;border-radius:50%;
                    background:rgba(255,253,240,.9);color:#786b4e;font-size:17px;line-height:20px;cursor:pointer;display:none;}
   .tn-image-node.tn-selected .tn-delete-image{display:block;}
-  .tn-drop-indicator{position:absolute;z-index:4;width:2px;height:24px;border-radius:2px;background:#b98a51;
-                     pointer-events:none;display:none;box-shadow:0 0 0 1px rgba(255,255,255,.45);}
-  .tn-drop-indicator.show{display:block;}
+  .tn-drop-indicator{position:absolute;z-index:4;box-sizing:border-box;min-height:44px;align-items:center;gap:8px;
+                     padding:8px 12px;border:1px dashed #b98a51;border-radius:6px;background:rgba(255,248,221,.94);
+                     color:#8c6c3a;font:600 11px/1.2 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;
+                     pointer-events:none;display:none;box-shadow:0 2px 8px rgba(71,52,30,.14),inset 0 0 0 1px rgba(255,255,255,.42);}
+  .tn-drop-indicator::before{content:'＋';display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;
+                             border:1px solid rgba(140,108,58,.45);border-radius:50%;font-size:16px;line-height:1;}
+  .tn-drop-label{white-space:nowrap;}
+  .tn-drop-indicator.show{display:flex;}
   .tn-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:13px;}
   .tn-hint{color:#998c6a;font-size:9px;}
   .tn-actions{display:flex;gap:7px;}
@@ -2190,6 +2195,8 @@
   html[data-appearance="dark"] .tn-image-menu button.on{background:#3c3e43;}
   html[data-appearance="dark"] .tn-resize-handle{background:#766747;border-color:#dec27c;}
   html[data-appearance="dark"] .tn-delete-image{background:rgba(42,43,47,.9);color:#e0d2aa;}
+  html[data-appearance="dark"] .tn-drop-indicator{border-color:#dec27c;background:rgba(72,61,36,.94);color:#f0d895;box-shadow:0 2px 8px rgba(0,0,0,.3),inset 0 0 0 1px rgba(255,255,255,.12);}
+  html[data-appearance="dark"] .tn-drop-indicator::before{border-color:rgba(240,216,149,.52);}
   html[data-appearance="dark"] .tn-actions button{border-color:rgba(215,192,134,.32);background:rgba(255,255,255,.06);color:#e0d2aa;}
   html[data-appearance="dark"] .tn-actions .tn-save{border-color:#766747;background:#766747;color:#f4e8c5;}
   html[data-appearance="dark"] .tn-actions .tn-save:hover{background:#887655;}
@@ -2954,7 +2961,7 @@
     <label class="tn-label" for="transcriptNoteText">这时想到的事</label>
     <div class="tn-editor" id="transcriptNoteText" contenteditable="true" role="textbox" aria-multiline="true"
          data-placeholder="写下此刻想到的内容…" spellcheck="true"></div>
-    <div class="tn-drop-indicator" id="transcriptNoteDropIndicator" aria-hidden="true"></div>
+    <div class="tn-drop-indicator" id="transcriptNoteDropIndicator" aria-hidden="true"><span class="tn-drop-label">图片将在此处插入</span></div>
     <div class="tn-editor-tools">
       <button class="tn-image-button" id="transcriptNoteImageButton" type="button">插入图片</button>
       <input id="transcriptNoteImageInput" type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden>
@@ -5395,6 +5402,12 @@ function transcriptNoteImageFiles(dataTransfer){
   return [...(dataTransfer&&dataTransfer.items||[])].filter(item=>item.kind==='file')
     .map(item=>item.getAsFile()).filter(transcriptNoteImageFileIsSupported);
 }
+function transcriptNoteMayContainImageFile(dataTransfer){
+  if(!dataTransfer)return false;
+  if(transcriptNoteImageFiles(dataTransfer).length)return true;
+  return [...(dataTransfer.types||[])].some(type=>['files','public.file-url','text/uri-list','application/x-moz-file']
+    .includes(String(type).toLowerCase()));
+}
 function transcriptNoteDropFallbackRange(){
   const range=document.createRange(), editor=$('transcriptNoteText');
   range.selectNodeContents(editor); range.collapse(false); return range;
@@ -5422,24 +5435,27 @@ function showTranscriptNoteDropIndicator(range){
   const rect=range.getBoundingClientRect(), editorRect=editor.getBoundingClientRect(), cardRect=card.getBoundingClientRect();
   const left=(rect.left||editorRect.left)-cardRect.left+editor.scrollLeft;
   const top=Math.max(8,(rect.top||editorRect.top)-cardRect.top+editor.scrollTop);
-  indicator.style.left=`${left}px`; indicator.style.top=`${top}px`;
-  indicator.style.height=`${Math.max(20,rect.height||20)}px`; indicator.classList.add('show');
+  indicator.style.left=`${Math.max(0,left)}px`; indicator.style.top=`${top}px`;
+  indicator.style.width=`${Math.max(0,editorRect.width)}px`;
+  indicator.setAttribute('aria-hidden','false'); indicator.classList.add('show');
   transcriptNoteDropRange=range.cloneRange();
 }
 function hideTranscriptNoteDropIndicator(){
-  $('transcriptNoteDropIndicator').classList.remove('show'); transcriptNoteDropRange=null;
+  const indicator=$('transcriptNoteDropIndicator'); indicator.classList.remove('show');
+  indicator.setAttribute('aria-hidden','true'); indicator.style.removeProperty('width'); transcriptNoteDropRange=null;
 }
 function transcriptNoteDropPoint(event){
-  const range=transcriptNoteRangeAtPoint(event.clientX,event.clientY);
-  if(range)showTranscriptNoteDropIndicator(range);
-  else hideTranscriptNoteDropIndicator();
+  const range=transcriptNoteRangeAtPoint(event.clientX,event.clientY)||transcriptNoteDropFallbackRange();
+  showTranscriptNoteDropIndicator(range);
   return range;
 }
-$('transcriptNoteText').addEventListener('dragover',event=>{
+function handleTranscriptNoteImageDrag(event){
   const files=transcriptNoteImageFiles(event.dataTransfer);
-  if(!files.length)return;
+  if(!files.length&&!transcriptNoteMayContainImageFile(event.dataTransfer))return;
   event.preventDefault(); event.dataTransfer.dropEffect='copy'; transcriptNoteDropPoint(event);
-});
+}
+$('transcriptNoteText').addEventListener('dragenter',handleTranscriptNoteImageDrag);
+$('transcriptNoteText').addEventListener('dragover',handleTranscriptNoteImageDrag);
 $('transcriptNoteText').addEventListener('dragleave',event=>{
   if(!event.relatedTarget||!$('transcriptNoteText').contains(event.relatedTarget))hideTranscriptNoteDropIndicator();
 });
