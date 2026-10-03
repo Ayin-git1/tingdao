@@ -203,4 +203,3 @@
   git add tauri-shell/src/main.rs tests/shell-clipboard-menu.test.js README.md
   git commit -m "feat: restore native clipboard menu for notes"
   ```
-
