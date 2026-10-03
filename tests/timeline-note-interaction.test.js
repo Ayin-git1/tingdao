@@ -41,6 +41,26 @@ test('image nodes can be resized and freely dragged, and serialization keeps geo
   includes(/position\.y/);
 });
 
+test('custom image dragging suppresses native image drag and keeps pointer capture', () => {
+  includes(/image\.draggable\s*=\s*false/);
+  includes(/addEventListener\(['"]dragstart['"][\s\S]*?preventDefault\(\)/);
+  includes(/setPointerCapture\(/);
+  includes(/releasePointerCapture\(/);
+});
+
+test('file drops accept known image extensions when the system omits MIME type', () => {
+  includes(/function transcriptNoteImageFileIsSupported\(file\)/);
+  includes(/file&&file\.type\|\|''\)\.toLowerCase\(\)/);
+  includes(/file&&file\.name\|\|''\)\.toLowerCase\(\)/);
+  includes(/transcriptNoteImageFileIsSupported\(file\)/);
+});
+
+test('drop and move indicators fall back to the editor end and clear outside it', () => {
+  includes(/function transcriptNoteDropFallbackRange\(\)/);
+  includes(/transcriptNoteDropRange\|\|transcriptNoteRangeAtPoint\([\s\S]*?\)\|\|transcriptNoteDropFallbackRange\(\)/);
+  includes(/!state\.free&&!state\.range\)hideTranscriptNoteDropIndicator\(\)/);
+});
+
 test('saved timeline note rows render text and image content at the note time', () => {
   includes(/function renderTimelineNoteText\(/);
   includes(/addNoteDom\(m\.t,\s*m\.text,\s*null,\s*m\.noteIndex,\s*m\.content\)/);

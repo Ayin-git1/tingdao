@@ -1925,7 +1925,8 @@
   .tn-editor:focus{box-shadow:inset 2px 0 #b98a51;}
   .tn-editor:empty::before{content:attr(data-placeholder);color:#aa9d77;pointer-events:none;}
   .tn-image-node{display:block;width:fit-content;max-width:100%;margin:8px 0;padding:5px;
-                 border:1px solid rgba(163,136,75,.26);border-radius:5px;background:rgba(255,253,240,.3);position:relative;}
+                 border:1px solid rgba(163,136,75,.26);border-radius:5px;background:rgba(255,253,240,.3);position:relative;
+                 user-select:none;}
   .tn-image-node img{display:block;max-width:100%;height:auto;border-radius:3px;}
   .tn-image-node:focus{outline:2px solid rgba(185,138,81,.55);outline-offset:2px;}
   .tn-image-node.tn-selected{outline:2px solid rgba(185,138,81,.55);outline-offset:2px;}
@@ -5235,6 +5236,14 @@ let transcriptNoteAssets = new Map();
 let transcriptNoteSelection = null;
 const TRANSCRIPT_NOTE_IMAGE_MIMES = new Set(['image/png','image/jpeg','image/gif','image/webp']);
 const TRANSCRIPT_NOTE_MAX_IMAGE_BYTES = 20 * 1024 * 1024;
+function transcriptNoteImageMime(file){
+  const type=String(file&&file.type||'').toLowerCase();
+  if(TRANSCRIPT_NOTE_IMAGE_MIMES.has(type))return type;
+  const name=String(file&&file.name||'').toLowerCase();
+  const ext=name.match(/\.(png|jpe?g|gif|webp)$/)?.[1]||'';
+  return ({png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',gif:'image/gif',webp:'image/webp'})[ext]||'';
+}
+function transcriptNoteImageFileIsSupported(file){return !!transcriptNoteImageMime(file);}
 function hideTranscriptNoteMenu(){
   const menu=$('transcriptNoteMenu'); menu.hidden=true; menu.classList.remove('show');
 }
@@ -5275,6 +5284,8 @@ function transcriptNoteImageNode(node){
     figure.style.transform=`translate(${x}px,${y}px)`;
   }
   const image=document.createElement('img');
+  image.draggable=false;
+  image.addEventListener('dragstart',event=>event.preventDefault());
   image.alt=figure.dataset.noteName;
   const pending=figure.dataset.noteAsset&&transcriptNoteAssets.get(figure.dataset.noteAsset);
   if(pending)image.src=`data:${pending.mime};base64,${pending.data}`;
@@ -5336,14 +5347,15 @@ function serializeTranscriptNoteContent(){
 }
 function transcriptNoteReadFile(file){
   return new Promise((resolve,reject)=>{
-    if(!TRANSCRIPT_NOTE_IMAGE_MIMES.has(file.type))return reject(new Error('仅支持 PNG、JPG、GIF、WebP 图片'));
+    const mime=transcriptNoteImageMime(file);
+    if(!mime)return reject(new Error('仅支持 PNG、JPG、GIF、WebP 图片'));
     if(file.size>TRANSCRIPT_NOTE_MAX_IMAGE_BYTES)return reject(new Error('图片不能超过 20 MB'));
     const reader=new FileReader();
     reader.onerror=()=>reject(new Error('读取图片失败'));
     reader.onload=()=>{
       const dataUrl=String(reader.result||''), data=dataUrl.split(',',2)[1]||'';
       const image=new Image();
-      image.onload=()=>resolve({id:transcriptNoteAssetId(),name:file.name,mime:file.type,data,
+      image.onload=()=>resolve({id:transcriptNoteAssetId(),name:file.name,mime,data,
         width:image.naturalWidth||1,height:image.naturalHeight||1});
       image.onerror=()=>reject(new Error(`无法读取图片：${file.name}`)); image.src=dataUrl;
     };
@@ -5378,19 +5390,25 @@ let transcriptNoteImageMenuTarget=null;
 let transcriptNoteImageMoveState=null;
 let transcriptNoteImageResizeState=null;
 function transcriptNoteImageFiles(dataTransfer){
-  const files=[...(dataTransfer&&dataTransfer.files||[])].filter(file=>TRANSCRIPT_NOTE_IMAGE_MIMES.has(file.type));
+  const files=[...(dataTransfer&&dataTransfer.files||[])].filter(transcriptNoteImageFileIsSupported);
   if(files.length)return files;
   return [...(dataTransfer&&dataTransfer.items||[])].filter(item=>item.kind==='file')
-    .map(item=>item.getAsFile()).filter(Boolean).filter(file=>TRANSCRIPT_NOTE_IMAGE_MIMES.has(file.type));
+    .map(item=>item.getAsFile()).filter(transcriptNoteImageFileIsSupported);
+}
+function transcriptNoteDropFallbackRange(){
+  const range=document.createRange(), editor=$('transcriptNoteText');
+  range.selectNodeContents(editor); range.collapse(false); return range;
 }
 function transcriptNoteRangeAtPoint(x,y){
   const editor=$('transcriptNoteText');
+  const editorRect=editor.getBoundingClientRect();
+  if(x<editorRect.left||x>editorRect.right||y<editorRect.top||y>editorRect.bottom)return null;
   let range=null;
   if(document.caretRangeFromPoint)range=document.caretRangeFromPoint(x,y);
   else if(document.caretPositionFromPoint){
     const point=document.caretPositionFromPoint(x,y); if(point){range=document.createRange();range.setStart(point.offsetNode,point.offset);range.collapse(true);}
   }
-  if(!range||!editor.contains(range.startContainer))return null;
+  if(!range||!editor.contains(range.startContainer))return transcriptNoteDropFallbackRange();
   const holder=range.startContainer.nodeType===Node.ELEMENT_NODE?range.startContainer:range.startContainer.parentElement;
   const figure=holder&&holder.closest('.tn-image-node');
   if(figure){
@@ -5414,6 +5432,7 @@ function hideTranscriptNoteDropIndicator(){
 function transcriptNoteDropPoint(event){
   const range=transcriptNoteRangeAtPoint(event.clientX,event.clientY);
   if(range)showTranscriptNoteDropIndicator(range);
+  else hideTranscriptNoteDropIndicator();
   return range;
 }
 $('transcriptNoteText').addEventListener('dragover',event=>{
@@ -5428,16 +5447,16 @@ $('transcriptNoteText').addEventListener('drop',event=>{
   const files=transcriptNoteImageFiles(event.dataTransfer);
   if(!files.length)return;
   event.preventDefault();
-  const range=transcriptNoteDropRange||transcriptNoteRangeAtPoint(event.clientX,event.clientY);
+  const range=transcriptNoteDropRange||transcriptNoteRangeAtPoint(event.clientX,event.clientY)||transcriptNoteDropFallbackRange();
   if(range)transcriptNoteSelection=range.cloneRange();
   hideTranscriptNoteDropIndicator(); insertTranscriptNoteFiles(files);
 });
 $('transcriptNoteText').addEventListener('paste',event=>{
   const imageFiles=[];
   for(const item of [...(event.clipboardData.items||[])]){
-    if(item.kind==='file'){const file=item.getAsFile();if(file&&TRANSCRIPT_NOTE_IMAGE_MIMES.has(file.type))imageFiles.push(file);}
+    if(item.kind==='file'){const file=item.getAsFile();if(file&&transcriptNoteImageFileIsSupported(file))imageFiles.push(file);}
   }
-  for(const file of [...(event.clipboardData.files||[])])if(TRANSCRIPT_NOTE_IMAGE_MIMES.has(file.type)&&!imageFiles.includes(file))imageFiles.push(file);
+  for(const file of [...(event.clipboardData.files||[])])if(transcriptNoteImageFileIsSupported(file)&&!imageFiles.includes(file))imageFiles.push(file);
   if(imageFiles.length)event.preventDefault();
   if(imageFiles.length){saveTranscriptNoteSelection();insertTranscriptNoteFiles(imageFiles);}
 });
@@ -5475,6 +5494,14 @@ function setTranscriptNoteImagePosition(figure,x,y){
   const position={mode:'free',x:Math.max(0,Math.round(x)),y:Math.max(0,Math.round(y))};
   figure.dataset.notePosition=JSON.stringify(position); figure.style.transform=`translate(${position.x}px,${position.y}px)`;
 }
+function captureTranscriptNotePointer(figure,event){
+  if(!Number.isFinite(event.pointerId)||typeof figure.setPointerCapture!=='function')return;
+  try{figure.setPointerCapture(event.pointerId);}catch(e){}
+}
+function releaseTranscriptNotePointer(state){
+  if(!state||!Number.isFinite(state.pointerId)||typeof state.figure.releasePointerCapture!=='function')return;
+  try{if(state.figure.hasPointerCapture?.(state.pointerId))state.figure.releasePointerCapture(state.pointerId);}catch(e){}
+}
 function moveTranscriptNoteFlowImage(figure,range){
   if(!figure||!range||range.commonAncestorContainer===figure||figure.contains(range.commonAncestorContainer))return;
   range.deleteContents(); range.insertNode(figure);
@@ -5485,13 +5512,15 @@ function startTranscriptNoteMove(event,figure){
   event.preventDefault(); selectTranscriptNoteImage(figure); transcriptNoteImageMenuTarget=figure;
   let position={};try{position=JSON.parse(figure.dataset.notePosition||'{}');}catch(e){}
   transcriptNoteImageMoveState={figure,startX:event.clientX,startY:event.clientY,baseX:Number(position.x)||0,baseY:Number(position.y)||0,
-    free:transcriptNoteUsesFreePosition(figure.dataset.noteLayout),range:null,moved:false};
+    free:transcriptNoteUsesFreePosition(figure.dataset.noteLayout),range:null,moved:false,pointerId:event.pointerId};
+  captureTranscriptNotePointer(figure,event);
 }
 function startTranscriptNoteResize(event,figure){
   if(event.button!==0)return;
   event.preventDefault();event.stopPropagation();selectTranscriptNoteImage(figure);
   const image=figure.querySelector('img'), rect=image.getBoundingClientRect();
-  transcriptNoteImageResizeState={figure,image,startX:event.clientX,startWidth:rect.width};
+  transcriptNoteImageResizeState={figure,image,startX:event.clientX,startWidth:rect.width,pointerId:event.pointerId};
+  captureTranscriptNotePointer(figure,event);
 }
 document.addEventListener('pointermove',event=>{
   if(transcriptNoteImageMoveState){
@@ -5500,6 +5529,7 @@ document.addEventListener('pointermove',event=>{
     if(state.free)setTranscriptNoteImagePosition(state.figure,state.baseX+event.clientX-state.startX,state.baseY+event.clientY-state.startY);
     else if(state.moved)state.range=transcriptNoteRangeAtPoint(event.clientX,event.clientY);
     if(state.range&&!state.free)showTranscriptNoteDropIndicator(state.range);
+    else if(!state.free&&!state.range)hideTranscriptNoteDropIndicator();
   }
   if(transcriptNoteImageResizeState){
     const state=transcriptNoteImageResizeState, width=Math.max(48,state.startWidth+event.clientX-state.startX);
@@ -5508,8 +5538,14 @@ document.addEventListener('pointermove',event=>{
 });
 document.addEventListener('pointerup',()=>{
   const move=transcriptNoteImageMoveState;
+  const resize=transcriptNoteImageResizeState;
   if(move&&!move.free&&move.moved&&move.range){moveTranscriptNoteFlowImage(move.figure,move.range);hideTranscriptNoteDropIndicator();}
+  releaseTranscriptNotePointer(move); releaseTranscriptNotePointer(resize);
   transcriptNoteImageMoveState=null;transcriptNoteImageResizeState=null;
+});
+document.addEventListener('pointercancel',()=>{
+  releaseTranscriptNotePointer(transcriptNoteImageMoveState); releaseTranscriptNotePointer(transcriptNoteImageResizeState);
+  transcriptNoteImageMoveState=null; transcriptNoteImageResizeState=null; hideTranscriptNoteDropIndicator();
 });
 $('transcriptNoteText').addEventListener('pointerdown',event=>{
   const figure=event.target.closest('.tn-image-node'); if(!figure)return;
