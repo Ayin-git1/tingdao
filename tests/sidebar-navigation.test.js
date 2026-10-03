@@ -93,7 +93,7 @@ test('the drawer toolbar is an inset glass pill and the rail stays independent',
   assert.match(sidefoot, /border-radius:999px/);
   assert.match(sidefoot, /backdrop-filter:blur\(/);
   assert.match(html, /\.sidehide \.sidebar\{margin-left:-291px;\}/);
-  assert.match(html, /\.app-rail \.rail-btn\.active\{color:var\(--g-ink\); background:var\(--g-tint\);\}/);
+  assert.match(html, /\.app-rail \.rail-btn\.active\{color:var\(--g-ink\); background:transparent;\}/);
   assert.match(html, /id="btnSort"/);
   assert.match(html, /id="btnImport"/);
   assert.match(html, /id="sfMode"/);
