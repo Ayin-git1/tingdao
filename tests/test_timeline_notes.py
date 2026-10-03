@@ -26,7 +26,8 @@ class TimelineNoteTests(unittest.TestCase):
 
     def make_app(self, sessions_dir):
         names = ("add_transcript_note", "update_transcript_note",
-                 "delete_transcript_note", "_write_md")
+                 "delete_transcript_note", "_write_md",
+                 "note_image_path", "_cleanup_note_assets")
         if any(name not in self.methods for name in names):
             return None
         namespace = {
@@ -34,6 +35,13 @@ class TimelineNoteTests(unittest.TestCase):
             "json": json,
             "threading": threading,
             "fmt_ts": fmt_ts,
+            "Path": Path,
+            "NOTE_IMAGE_DIR": "note-images",
+            "NOTE_IMAGE_MIMES": {
+                ".png": "image/png", ".jpg": "image/jpeg",
+                ".jpeg": "image/jpeg", ".gif": "image/gif",
+                ".webp": "image/webp",
+            },
         }
         module = ast.Module(body=[self.methods[name] for name in names], type_ignores=[])
         exec(compile(ast.fix_missing_locations(module), str(APP), "exec"), namespace)
