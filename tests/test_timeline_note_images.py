@@ -31,6 +31,7 @@ class TimelineNoteImageTests(unittest.TestCase):
         names = (
             "add_transcript_note", "update_transcript_note",
             "delete_transcript_note", "_write_md", "note_image_path",
+            "read_note_image_file",
             "_note_content_text", "_materialize_note_content",
             "_cleanup_note_assets",
         )
@@ -177,6 +178,22 @@ class TimelineNoteImageTests(unittest.TestCase):
                     [{"id": "large", "name": "large.png",
                       "mime": "image/png", "data": large}],
                 )
+
+    def test_reads_native_dragged_image_path_as_frontend_asset(self):
+        with TemporaryDirectory() as temp:
+            image = Path(temp) / "拖入.png"
+            image.write_bytes(PNG_BYTES)
+            app = self.make_app(Path(temp) / "sessions")
+
+            result = app.read_note_image_file(str(image))
+
+            self.assertEqual(result["name"], "拖入.png")
+            self.assertEqual(result["mime"], "image/png")
+            self.assertEqual(base64.b64decode(result["data"]), PNG_BYTES)
+
+            image.with_suffix(".svg").write_bytes(PNG_BYTES)
+            with self.assertRaisesRegex(RuntimeError, "仅支持"):
+                app.read_note_image_file(str(image.with_suffix(".svg")))
 
 
 if __name__ == "__main__":

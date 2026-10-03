@@ -6,6 +6,8 @@
 	<string>听道需要访问麦克风以录制和转写语音。</string>
 	<key>NSScreenCaptureUsageDescription</key>
 	<string>听道需要屏幕录制权限以采集系统播放的声音（仅取音频，不录画面）。</string>
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>听道需要读取文稿目录，以显示和保存你的录音文稿。</string>
 	<key>CFBundleIconFile</key>
 	<string>Tingdao</string>
 	<key>CFBundleIconName</key>

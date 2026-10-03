@@ -117,7 +117,7 @@
 </script>
 <style>
   :root{
-    --rail-width:56px;
+    --rail-width:0px;
     --bg:#ffffff; --side:#f6f6f7; --card:#ffffff; --line:#e2e3e3;
     --txt:#141414; --sub:#86868b; --acc:#141414; --heading-ink:#4a4a4f;
     --ok:var(--g); --warn:#ff3b30; --idle:#8e8e93; --soft:#f5f5f7;
@@ -252,6 +252,7 @@
   .topbar{position:fixed; top:0; left:0; right:0; z-index:var(--z-topbar);   /* 第一层: 压在抽屉(52)之上, 仍在弹层背板(54)之下 */
           display:flex; align-items:center; gap:10px; padding:14px 18px 0 88px;
           background:transparent; pointer-events:none; transition:opacity .45s ease;}
+  html[data-platform="mac"] .topbar{transform:translateY(-5px);}
   /* Windows 单独适配(不动 mac): 原生标题栏已摘, 顶栏不再需要 14px 让位, 且要与自绘三键同处一排。
      把整条 topbar 钉成与 .winctl 同高的 34px caption 带(top:0、padding-top:0), 靠上面已有的
      align-items:center 让 30px 的 .sbtn 居中于 17px —— 正好对上三键 34px 带的中心线, 同一水平、垂直居中。
@@ -540,9 +541,23 @@
   .seg.note .ts{color:var(--note-ts);}
   .seg.note::before{content:"✎"; color:var(--noted);}
   .tn-note-body{min-width:0;white-space:pre-wrap;word-break:break-word;}
-  .seg.note-image{margin:4px 0;cursor:default;}
-  .tn-note-image-body{min-width:0;display:block;}
-  .tn-note-image-body img{display:block;max-width:min(720px,100%);height:auto;border-radius:4px;}
+  /* 文稿图片是独立画布对象，不再占用时间戳行；画布本身不拦截正文拖入。 */
+  #feed{position:relative;}
+  .transcript-image-canvas{position:absolute;left:0;right:0;top:0;min-height:100%;height:0;
+                           z-index:2;pointer-events:none;}
+  .transcript-canvas-image{position:absolute;min-width:48px;margin:0;padding:5px;
+                           border:1px solid rgba(163,136,75,.32);border-radius:5px;
+                           background:rgba(255,253,240,.72);box-shadow:0 2px 8px rgba(71,52,30,.10);
+                           cursor:grab;pointer-events:auto;user-select:none;touch-action:none;}
+  .transcript-canvas-image:active,.transcript-canvas-image.tn-main-image-moving{cursor:grabbing;}
+  .transcript-canvas-image.tn-main-image-selected{outline:2px solid rgba(185,138,81,.55);outline-offset:2px;}
+  .transcript-canvas-image[data-layout="behind"]{opacity:.72;}
+  .transcript-canvas-image[data-layout="front"]{z-index:3;}
+  .transcript-canvas-image img{display:block;max-width:none;height:auto;border-radius:3px;pointer-events:none;}
+  .transcript-canvas-image-resize{position:absolute;right:-5px;bottom:-5px;width:10px;height:10px;
+                                 border:1px solid #a77e48;border-radius:2px;background:#fff4c9;
+                                 cursor:nwse-resize;display:none;}
+  .transcript-canvas-image.tn-main-image-selected .transcript-canvas-image-resize{display:block;}
   /* 就地改字: 双击一句进编辑态。底色用现成的 --soft, 描边用 --line —— 不新增颜色 */
   .seg[data-edit]{background:var(--soft); cursor:text; outline:none;
                   box-shadow:inset 0 0 0 1px var(--line);}
@@ -1000,23 +1015,44 @@
   .resumebar button.ghost{background:none; color:var(--sub); text-decoration:underline; padding:5px 8px;}
   .resumebar button.ghost:hover{background:none; color:var(--txt);}
 
-  /* ============ 右侧: 历史栏 ============ */
-  .app-rail{width:var(--rail-width); flex:none; display:flex; flex-direction:column; align-items:center;
-            gap:8px; padding:54px 7px 14px; box-sizing:border-box; background:var(--side);
-            color:var(--gry-icon);}
-  .app-rail .rail-btn{width:38px; height:38px; padding:0; border:0; border-radius:11px;
-                       display:grid; place-items:center; color:var(--gry-icon); background:transparent;
-                       cursor:pointer; transition:color var(--hov), background var(--hov), transform var(--hov);}
-  .app-rail .rail-btn:hover{color:var(--g-ink); background:var(--g-tint); transform:translateY(-1px);}
-  .app-rail .rail-btn.active{color:var(--g-ink); background:rgba(255,255,255,.58);}
-  html[data-appearance="dark"] .app-rail .rail-btn.active{background:rgba(255,255,255,.10);}
-  .app-rail .rail-btn:active{transform:scale(.94);}
-  .app-rail .rail-btn:focus-visible{outline:2px solid var(--g); outline-offset:2px;}
-  .app-rail .rail-btn svg{width:19px; height:19px; display:block;}
-  .app-rail .rail-gap{flex:1; min-height:12px;}
+  /* ============ 顶部: 主导航 ============ */
+  .app-rail{position:relative; width:max-content; height:38px; flex:none; display:flex; flex-direction:row; align-items:center;
+            gap:4px; padding:0; box-sizing:border-box; background:transparent; color:var(--gry-icon); --rail-shift:0px;}
+  .app-rail .rail-indicator{position:absolute; top:30px; left:0; z-index:0; pointer-events:none;
+            height:3px; width:24px; transform:translateX(calc(var(--rail-indicator-x, 0px) + var(--rail-shift, 0px)));
+            transition:transform .36s cubic-bezier(.16,1,.3,1);
+            border-radius:999px; background:var(--g); box-shadow:0 2px 8px var(--g-glow);}
+  .app-rail .rail-btn{position:relative; z-index:1; width:38px; height:38px; flex:none; padding:0;
+                       border:0; border-radius:999px; display:flex; align-items:center; justify-content:center;
+                       gap:7px; overflow:hidden; color:var(--gry-icon); background:transparent; cursor:pointer;
+                       transform:translateX(var(--rail-shift, 0px));
+                       transition:transform .42s cubic-bezier(.16,1,.3,1) var(--rail-delay, 0ms),
+                                  width .36s cubic-bezier(.16,1,.3,1), padding .36s cubic-bezier(.16,1,.3,1),
+                                  color var(--hov);}
+  .app-rail .rail-btn:nth-of-type(1){--rail-delay:0ms;}
+  .app-rail .rail-btn:nth-of-type(2){--rail-delay:16ms;}
+  .app-rail .rail-btn:nth-of-type(3){--rail-delay:32ms;}
+  body:not(.home) .app-rail .rail-btn:nth-of-type(1){--rail-delay:32ms;}
+  body:not(.home) .app-rail .rail-btn:nth-of-type(2){--rail-delay:16ms;}
+  body:not(.home) .app-rail .rail-btn:nth-of-type(3){--rail-delay:0ms;}
+  .app-rail .rail-btn:hover,
+  .app-rail .rail-btn:focus-visible{color:var(--g-ink);}
+  .app-rail .rail-btn.active{width:calc(50px + var(--rail-label-width, 24px)); padding:0 12px;
+                              justify-content:flex-start; color:var(--g-ink); font-weight:650;}
+  .app-rail .rail-btn:active{transform:translateX(var(--rail-shift, 0px)) scale(.96);}
+  .app-rail .rail-btn:focus-visible{outline:2px solid var(--g); outline-offset:3px;}
+  .app-rail .rail-btn svg{width:19px; height:19px; display:block; flex:none;}
+  .app-rail .rail-label{display:block; max-width:0; opacity:0; overflow:hidden; white-space:nowrap;
+            font-size:var(--fs-ctl); line-height:1; transition:max-width .36s cubic-bezier(.16,1,.3,1),
+            opacity .22s ease;}
+  .app-rail .rail-btn.active .rail-label{max-width:var(--rail-label-width, 24px); opacity:1;}
   @media (prefers-reduced-motion:reduce){
-    .app-rail .rail-btn{transition:none;}
-    .app-rail .rail-btn:hover,.app-rail .rail-btn:active{transform:none;}
+    .app-rail .rail-indicator,
+    .app-rail .rail-btn,
+    .app-rail .rail-label{transition:none;}
+    .app-rail .rail-btn,
+    .app-rail .rail-btn:hover,
+    .app-rail .rail-btn:active{transform:translateX(var(--rail-shift, 0px));}
   }
   body.section-favorites .sidebar,
   body.section-archive .sidebar{display:none;}
@@ -1326,7 +1362,7 @@
        feedzone 遮罩跟边, 边界照常"推"给正文。滑动量全挂在 dock-bg/main 上,
        侧栏布局被 sideDockPin 钉死在终值 —— 列表不再吃 margin+transform 双轨补偿(抽搐源头)。
      B 控件归位: 侧栏只走自己的 translate/height .52s 滑回常驻位, 圆角 120ms 收平。 */
-  .side-dock-bg{display:none; position:absolute; inset:0 auto 0 var(--rail-width); width:290px;
+  .side-dock-bg{display:none; position:absolute; inset:0 auto 0 0; width:290px;
           z-index:7; pointer-events:none; background:var(--side);}
   body.side-promoting .side-dock-bg{display:block;
           animation:sideDockWash .52s cubic-bezier(.22,.75,.25,1) both;}
@@ -1949,6 +1985,7 @@
                              border:1px solid rgba(140,108,58,.45);border-radius:50%;font-size:16px;line-height:1;}
   .tn-drop-label{white-space:nowrap;}
   .tn-drop-indicator.show{display:flex;}
+  #transcriptImageDropIndicator{position:fixed;z-index:var(--z-pop-lift);}
   .tn-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:13px;}
   .tn-hint{color:#998c6a;font-size:9px;}
   .tn-actions{display:flex;gap:7px;}
@@ -2242,6 +2279,21 @@
     <button class="sbtn" id="btnHistSearch" title="搜索 (⌘K)">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
     </button>
+    <nav class="app-rail" id="appRail" aria-label="主导航">
+      <span class="rail-indicator" aria-hidden="true"></span>
+      <button class="rail-btn" id="navFavorites" data-section="favorites" aria-label="收藏" title="收藏">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 4 2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4-3.9-3.8 5.4-.8z"/></svg>
+        <span class="rail-label">收藏</span>
+      </button>
+      <button class="rail-btn" id="navArchive" data-section="archive" aria-label="归档" title="归档">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7.5h16v12a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19.5zM3 4h18v3.5H3zM9 12h6"/></svg>
+        <span class="rail-label">归档</span>
+      </button>
+      <button class="rail-btn active" id="navDocuments" data-section="documents" aria-label="文稿" aria-current="page" title="文稿">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.5h8l4 4V20a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1z"/><path d="M14 3.5V8h4M8.5 12h7M8.5 16h7"/></svg>
+        <span class="rail-label">文稿</span>
+      </button>
+    </nav>
     <button class="sbtn home" id="btnHome" title="返回主页">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5 12 4l8 6.5"/><path d="M6 9.5V19a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V9.5"/><path d="M10 20v-5h4v5"/></svg>
     </button>
@@ -2312,18 +2364,6 @@
 <div class="peekscrim" id="peekscrim"></div>
 
 <div class="cols">
-<nav class="app-rail" id="appRail" aria-label="主导航">
-  <button class="rail-btn active" id="navDocuments" data-section="documents" aria-label="文稿" aria-current="page" title="文稿">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.5h8l4 4V20a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1z"/><path d="M14 3.5V8h4M8.5 12h7M8.5 16h7"/></svg>
-  </button>
-  <button class="rail-btn" id="navFavorites" data-section="favorites" aria-label="收藏" title="收藏">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 4 2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4-3.9-3.8 5.4-.8z"/></svg>
-  </button>
-  <button class="rail-btn" id="navArchive" data-section="archive" aria-label="归档" title="归档">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7.5h16v12a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19.5zM3 4h18v3.5H3zM9 12h6"/></svg>
-  </button>
-  <span class="rail-gap" aria-hidden="true"></span>
-</nav>
 <div class="side-dock-bg" aria-hidden="true"></div>
 <div class="sidebar">
   <div class="brand-info" id="brandInfo" tabindex="0" aria-describedby="brandInfoCard" aria-expanded="false">
@@ -2744,6 +2784,7 @@
       <span id="emptyText">点击右下角「开始录音」</span>
     </div>
     <div id="feed"></div>
+    <div class="transcript-image-canvas" id="transcriptImageCanvas" aria-label="文稿图片层"></div>
   </div>
   <nav class="transcript-anchors" id="transcriptAnchors" aria-label="文稿时间分段" hidden></nav>
   <div class="skel" id="skel">
@@ -2944,7 +2985,9 @@
   <button type="button" data-layout="top-bottom">上下型环绕</button>
   <button type="button" data-layout="behind">衬于文字下方</button>
   <button type="button" data-layout="front">浮于文字上方</button>
+  <button type="button" data-action="delete">删除图片</button>
 </div>
+<div class="tn-drop-indicator" id="transcriptImageDropIndicator" aria-hidden="true"><span class="tn-drop-label">图片将在此处插入</span></div>
 <div class="tn-layer" id="transcriptNoteLayer" hidden>
   <section class="tn-card" role="dialog" aria-modal="false" aria-labelledby="transcriptNoteTitle">
     <header class="tn-head">
@@ -3230,6 +3273,67 @@ function syncPlatformUI(platform){
     : '按 Ctrl+Shift+R 开始录音 · Ctrl+/ 查看全部 · Ctrl+, 打开 / 收起设置 · Esc 关掉当前弹层';
 }
 
+let railIndicatorTarget = null;
+function syncRailIndicator(target){
+  const rail = $('appRail');
+  if(!rail) return;
+  const indicator = rail.querySelector('.rail-indicator');
+  const active = rail.querySelector('.rail-btn.active');
+  const next = target || railIndicatorTarget || active;
+  if(!indicator || !next) return;
+  rail.querySelectorAll('.rail-btn').forEach(btn=>{
+    const label = btn.querySelector('.rail-label');
+    if(label){
+      const previousMaxWidth = label.style.maxWidth;
+      label.style.maxWidth = 'none';
+      const labelWidth = label.scrollWidth;
+      label.style.maxWidth = previousMaxWidth;
+      btn.style.setProperty('--rail-label-width', `${labelWidth}px`);
+    }
+  });
+  railIndicatorTarget = next;
+  const left = next.offsetLeft;
+  const width = next.offsetWidth;
+  indicator.style.setProperty('--rail-indicator-x', `${left + (width - 24) / 2}px`);
+}
+function syncRailPlacement(){
+  const rail = $('appRail');
+  const topbar = document.querySelector('.topbar');
+  if(!rail || !topbar) return;
+  const homeButton = $('btnHome');
+  const drawerButton = $('btnNoteTop');
+  const homeHidden = !homeButton || getComputedStyle(homeButton).display === 'none';
+  const drawerHidden = !drawerButton || getComputedStyle(drawerButton).display === 'none';
+  const homeControlsHidden = homeHidden && drawerHidden;
+  const right = parseFloat(getComputedStyle(topbar).paddingRight) || 0;
+  const gap = parseFloat(getComputedStyle(topbar).gap) || 0;
+  const railRect = rail.getBoundingClientRect();
+  const topbarRect = topbar.getBoundingClientRect();
+  const homeRect = homeButton && homeButton.getBoundingClientRect();
+  const targetLeft = !homeControlsHidden && !homeHidden
+    ? homeRect.left - gap - railRect.width
+    : topbarRect.right - right - railRect.width;
+  const shift = Math.max(0, Math.round(targetLeft - railRect.left));
+  rail.style.setProperty('--rail-shift', `${shift}px`);
+}
+function resetRailIndicator(){
+  railIndicatorTarget = null;
+  syncRailIndicator();
+}
+
+document.querySelectorAll('.app-rail .rail-btn').forEach(btn=>{
+  btn.addEventListener('mouseenter', ()=>syncRailIndicator(btn));
+  btn.addEventListener('focusin', ()=>syncRailIndicator(btn));
+  btn.addEventListener('mouseleave', resetRailIndicator);
+  btn.addEventListener('focusout', e=>{
+    if(!e.relatedTarget || !btn.contains(e.relatedTarget)) resetRailIndicator();
+  });
+});
+window.addEventListener('resize', ()=>{
+  syncRailIndicator();
+  syncRailPlacement();
+});
+
 /* 首帧同步套用平台版式：body 脚本在解析阶段就执行，趁 status 异步回来之前把 ⌘/Ctrl 落定，
    配合 <head> 里已打的 data-platform，Windows 从第一帧起就是 Ctrl 提示，不再闪 ⌘。 */
 syncPlatformUI(hostPlatform);
@@ -3315,6 +3419,8 @@ function updateChrome(){
     if(active) btn.setAttribute('aria-current', 'page');
     else btn.removeAttribute('aria-current');
   });
+  syncRailIndicator(document.querySelector('.app-rail .rail-btn.active'));
+  syncRailPlacement();
   $('titlebar').style.display = inView || rec ? 'flex' : 'none';
   // 底部白纱只在文稿/录制时有意义(遮滚动文字); 主页没有可滚内容, 收掉
   document.querySelectorAll('.fogmask').forEach(f=>{ f.style.opacity = welcome ? '0' : '1'; });
@@ -3744,30 +3850,73 @@ function createNoteDom(t, text, noteIndex=null, content=null){
   const body=document.createElement('span'); body.className='tn-note-body'; renderTimelineNoteText(body,content,text); div.appendChild(body);
   return div;
 }
-function createNoteImageDom(t,node,noteIndex=null){
-  const div=document.createElement('div'); div.className='seg note-image'; div.dataset.t=t;
-  if(Number.isInteger(noteIndex))div.dataset.noteIndex=noteIndex;
-  const stamp=document.createElement('span'); stamp.className='ts'; stamp.textContent=fmt(t); div.appendChild(stamp);
-  const body=document.createElement('span'); body.className='tn-note-image-body';
-  const image=document.createElement('img'); image.alt=String(node&&node.name||'图片');
-  const filename=String(node&&node.file||'').split('/').pop();
-  if(filename&&view&&view.id)image.src=`/note-image/${encodeURIComponent(view.id)}/${encodeURIComponent(filename)}`;
-  const displayWidth=Number(node&&node.displayWidth);
-  if(Number.isFinite(displayWidth)&&displayWidth>0)image.style.width=`${displayWidth}px`;
-  body.appendChild(image); div.appendChild(body);
-  return div;
-}
 function addNoteDom(t, text, before=null, noteIndex=null, content=null){
   $('feed').insertBefore(createNoteDom(t,text,noteIndex,content),before);
   anchorLive();
 }
-function addNoteImageDom(t,node,before=null,noteIndex=null){
-  $('feed').insertBefore(createNoteImageDom(t,node,noteIndex),before);
-  anchorLive();
+
+function transcriptCanvasDefaultPosition(t){
+  const rows=[...$('feed').querySelectorAll('.seg:not(.sum)')]
+    .filter(row=>Number.isFinite(Number(row.dataset.t)))
+    .sort((a,b)=>Number(a.dataset.t)-Number(b.dataset.t));
+  const row=rows.find(item=>Number(item.dataset.t)>=Number(t))||rows[rows.length-1];
+  return {x:0,y:Math.max(0,row?row.offsetTop:$('feed').scrollHeight)};
+}
+function transcriptCanvasImagePosition(node,t){
+  const position=node&&node.position&&typeof node.position==='object'?node.position:{};
+  const x=Number(position.x), y=Number(position.y);
+  return position.mode==='free'&&Number.isFinite(x)&&Number.isFinite(y)
+    ? {x:Math.max(0,x),y:Math.max(0,y)} : transcriptCanvasDefaultPosition(t);
+}
+function syncTranscriptImageCanvasSize(){
+  const canvas=$('transcriptImageCanvas'),feed=$('feed'),wrap=$('feedwrap');
+  if(!canvas||!feed||!wrap)return;
+  const wrapRect=wrap.getBoundingClientRect(), feedRect=feed.getBoundingClientRect();
+  // 画布坐标与 feed 内容坐标一致，抵消 feedwrap 的 padding；滚动时两者作为同一滚动内容移动。
+  canvas.style.left=`${Math.max(0,feedRect.left-wrapRect.left+wrap.scrollLeft)}px`;
+  canvas.style.top=`${Math.max(0,feedRect.top-wrapRect.top+wrap.scrollTop)}px`;
+  canvas.style.right='auto'; canvas.style.width=`${Math.max(0,feed.clientWidth)}px`;
+  const bottom=[...canvas.children].reduce((max,item)=>Math.max(max,item.offsetTop+item.offsetHeight),0);
+  canvas.style.height=`${Math.max(wrap.clientHeight,feed.scrollHeight,bottom)}px`;
+}
+window.addEventListener('resize',syncTranscriptImageCanvasSize);
+function createTranscriptCanvasImage(t,node,noteIndex=null,contentIndex=null){
+  const figure=document.createElement('figure');
+  figure.className='transcript-canvas-image';
+  figure.dataset.t=t;
+  if(Number.isInteger(noteIndex))figure.dataset.noteIndex=noteIndex;
+  if(Number.isInteger(contentIndex))figure.dataset.noteContentIndex=contentIndex;
+  figure.dataset.noteLayout=String(node&&node.layout||'inline');
+  const storedPosition=node&&node.position&&typeof node.position==='object'
+    ? node.position : {mode:'flow',x:null,y:null};
+  const position=transcriptCanvasImagePosition(node,t);
+  figure.dataset.notePosition=JSON.stringify(storedPosition);
+  figure.dataset.canvasX=String(position.x); figure.dataset.canvasY=String(position.y);
+  figure.style.left=`${position.x}px`; figure.style.top=`${position.y}px`;
+  const image=document.createElement('img');
+  image.alt=String(node&&node.name||'图片'); image.draggable=false;
+  image.addEventListener('dragstart',event=>event.preventDefault());
+  const filename=String(node&&node.file||'').split('/').pop();
+  if(filename&&view&&view.id)image.src=`/note-image/${encodeURIComponent(view.id)}/${encodeURIComponent(filename)}`;
+  const displayWidth=Number(node&&node.displayWidth);
+  const width=Number.isFinite(displayWidth)&&displayWidth>0?displayWidth:Math.min(Number(node&&node.width)||260,260);
+  figure.dataset.noteDisplayWidth=String(width); image.style.width=`${Math.max(48,width)}px`;
+  figure.appendChild(image);
+  const handle=document.createElement('span'); handle.className='transcript-canvas-image-resize';
+  handle.setAttribute('aria-label','调整图片大小'); figure.appendChild(handle);
+  return figure;
+}
+function renderTranscriptCanvasImages(){
+  const canvas=$('transcriptImageCanvas'); if(!canvas)return;
+  canvas.replaceChildren();
+  for(const [noteIndex,note] of (view&&Array.isArray(view.notes)?view.notes:[]).entries())
+    for(const [contentIndex,node] of (Array.isArray(note&&note.content)?note.content:[]).entries())
+      if(node&&node.type==='image')canvas.appendChild(createTranscriptCanvasImage(note.t,node,noteIndex,contentIndex));
+  syncTranscriptImageCanvasSize();
 }
 
 function renderTimelineNotes(){
-  $('feed').querySelectorAll('.seg.note,.seg.note-image').forEach(row=>row.remove());
+  $('feed').querySelectorAll('.seg.note').forEach(row=>row.remove());
   const ordered=(view.notes||[]).map((note,index)=>({note,index}))
     .sort((a,b)=>Number(a.note.t)-Number(b.note.t));
   for(const {note,index} of ordered){
@@ -3776,18 +3925,18 @@ function renderTimelineNotes(){
       Number.isFinite(Number(row.dataset.t))&&Number(row.dataset.t)>Number(note.t));
     const fragment=document.createDocumentFragment();
     if(String(note.text||'').trim())fragment.appendChild(createNoteDom(note.t,note.text,index,note.content));
-    for(const node of Array.isArray(note.content)?note.content:[])
-      if(node&&node.type==='image')fragment.appendChild(createNoteImageDom(note.t,node,index));
     $('feed').insertBefore(fragment,next);
     anchorLive();
   }
-  const hasTimeline=$('feed').querySelector('.seg:not(.sum)');
+  renderTranscriptCanvasImages();
+  const hasTimeline=$('feed').querySelector('.seg:not(.sum)')||$('transcriptImageCanvas').children.length;
   if(!hasTimeline){
     $('emptyText').textContent='（该项目无语音内容）';
     $('empty').style.display='flex'; $('feed').style.display='none';
   }else{
     $('empty').style.display='none'; $('feed').style.display='block';
   }
+  syncTranscriptImageCanvasSize();
 }
 
 function applyStatus(d){
@@ -5369,6 +5518,20 @@ function transcriptNoteReadFile(file){
     reader.readAsDataURL(file);
   });
 }
+async function transcriptNoteReadNativeFile(path){
+  const result=await api('/api/read_note_image_file',{path});
+  if(result.error)throw new Error(result.error);
+  const mime=transcriptNoteImageMime({name:result.name,type:result.mime});
+  if(!mime)throw new Error('仅支持 PNG、JPG、GIF、WebP 图片');
+  const data=String(result.data||''), dataUrl=`data:${mime};base64,${data}`;
+  return await new Promise((resolve,reject)=>{
+    const image=new Image();
+    image.onload=()=>resolve({id:transcriptNoteAssetId(),name:result.name,mime,data,
+      width:image.naturalWidth||1,height:image.naturalHeight||1});
+    image.onerror=()=>reject(new Error(`无法读取图片：${result.name||'图片'}`));
+    image.src=dataUrl;
+  });
+}
 function insertTranscriptNoteImage(node){
   const range=restoreTranscriptNoteSelection();
   range.deleteContents();
@@ -5376,16 +5539,26 @@ function insertTranscriptNoteImage(node){
   range.insertNode(figure); range.setStartAfter(figure); range.collapse(true);
   const selection=window.getSelection(); selection.removeAllRanges(); selection.addRange(range); saveTranscriptNoteSelection();
 }
+function insertTranscriptNoteRecords(records){
+  records.forEach(record=>{
+    transcriptNoteAssets.set(record.id,record);
+    insertTranscriptNoteImage({...record,asset:record.id});
+  });
+  $('transcriptNoteImageInput').value='';
+  $('transcriptNoteText').focus();
+}
 async function insertTranscriptNoteFiles(files){
   const selected=[...files||[]]; if(!selected.length)return;
   try{
     const records=await Promise.all(selected.map(transcriptNoteReadFile));
-    records.forEach(record=>{
-      transcriptNoteAssets.set(record.id,record);
-      insertTranscriptNoteImage({...record,asset:record.id});
-    });
-    $('transcriptNoteImageInput').value='';
-    $('transcriptNoteText').focus();
+    insertTranscriptNoteRecords(records);
+  }catch(error){toast(error.message||'图片插入失败');}
+}
+async function insertTranscriptNoteNativeFiles(paths){
+  const selected=transcriptNoteNativeImagePaths(paths); if(!selected.length)return;
+  try{
+    const records=await Promise.all(selected.map(transcriptNoteReadNativeFile));
+    insertTranscriptNoteRecords(records);
   }catch(error){toast(error.message||'图片插入失败');}
 }
 $('transcriptNoteText').addEventListener('mouseup',saveTranscriptNoteSelection);
@@ -5394,8 +5567,11 @@ $('transcriptNoteImageButton').onclick=()=>{saveTranscriptNoteSelection();$('tra
 $('transcriptNoteImageInput').onchange=e=>insertTranscriptNoteFiles(e.target.files);
 let transcriptNoteDropRange=null;
 let transcriptNoteImageMenuTarget=null;
+let transcriptMainImageMenuTarget=null;
 let transcriptNoteImageMoveState=null;
 let transcriptNoteImageResizeState=null;
+let transcriptMainImageMoveState=null;
+let transcriptMainImageResizeState=null;
 function transcriptNoteImageFiles(dataTransfer){
   const files=[...(dataTransfer&&dataTransfer.files||[])].filter(transcriptNoteImageFileIsSupported);
   if(files.length)return files;
@@ -5426,7 +5602,7 @@ function transcriptNoteRangeAtPoint(x,y){
   const figure=holder&&holder.closest('.tn-image-node');
   if(figure){
     const imageRange=document.createRange(), rect=figure.getBoundingClientRect();
-    imageRange.selectNode(figure); imageRange.collapse(x>rect.left+rect.width/2); return imageRange;
+    imageRange.selectNode(figure); imageRange.collapse(x<rect.left+rect.width/2); return imageRange;
   }
   return range;
 }
@@ -5467,6 +5643,129 @@ $('transcriptNoteText').addEventListener('drop',event=>{
   if(range)transcriptNoteSelection=range.cloneRange();
   hideTranscriptNoteDropIndicator(); insertTranscriptNoteFiles(files);
 });
+let transcriptNoteNativeDropPaths=[];
+function transcriptNoteNativeEventPayload(event){
+  return event&&event.payload!==undefined?event.payload:(event||{});
+}
+function transcriptNoteNativeImageMime(path){
+  const name=String(path||'').split(/[\\/]/).pop()||'';
+  return transcriptNoteImageMime({name,type:''});
+}
+function transcriptNoteNativeImagePaths(paths){
+  return [...paths||[]].map(path=>String(path||'')).filter(path=>path&&transcriptNoteNativeImageMime(path));
+}
+function transcriptNoteNativeClientPoint(payload){
+  const position=payload&&payload.position;
+  // Wry 0.55 macOS uses NSDraggingInfo coordinates in logical points.
+  const dpr=document.documentElement.dataset.platform==='mac'?1:Math.max(1,Number(window.devicePixelRatio)||1);
+  const x=Number(position&&position.x)/dpr, y=Number(position&&position.y)/dpr;
+  return Number.isFinite(x)&&Number.isFinite(y)?{x,y}:null;
+}
+function handleTranscriptNoteNativeDrag(type,event){
+  const payload=transcriptNoteNativeEventPayload(event);
+  if(type==='leave'){
+    transcriptNoteNativeDropPaths=[]; hideTranscriptNoteDropIndicator(); hideTranscriptImageDropIndicator(); return;
+  }
+  if(type==='enter'&&payload.paths)transcriptNoteNativeDropPaths=transcriptNoteNativeImagePaths(payload.paths);
+  if(type==='drop'){
+    const paths=transcriptNoteNativeImagePaths(payload.paths||transcriptNoteNativeDropPaths);
+    const point=transcriptNoteNativeClientPoint(payload);
+    const range=point&&!$('transcriptNoteLayer').hidden&&transcriptNoteRangeAtPoint(point.x,point.y);
+    const target=point&&transcriptImageDropTarget(point.x,point.y);
+    hideTranscriptImageDropIndicator();
+    if(!paths.length||!range){
+      transcriptNoteNativeDropPaths=[];hideTranscriptNoteDropIndicator();
+      if(paths.length&&target)return insertTranscriptImageFiles(paths,target,true);
+      return;
+    }
+    transcriptNoteSelection=range.cloneRange();
+    transcriptNoteNativeDropPaths=[]; hideTranscriptNoteDropIndicator(); insertTranscriptNoteNativeFiles(paths);
+    return;
+  }
+  if(!transcriptNoteNativeDropPaths.length)return;
+  const point=transcriptNoteNativeClientPoint(payload);
+  const range=point&&!$('transcriptNoteLayer').hidden&&transcriptNoteRangeAtPoint(point.x,point.y);
+  if(range){hideTranscriptImageDropIndicator();showTranscriptNoteDropIndicator(range);}
+  else{
+    hideTranscriptNoteDropIndicator();
+    const target=point&&transcriptImageDropTarget(point.x,point.y);
+    if(target)showTranscriptImageDropIndicator(target);else hideTranscriptImageDropIndicator();
+  }
+}
+function transcriptImageDropTarget(x,y,ignoreRow=null){
+  if(!view||!view.id||!$('transcriptNoteLayer').hidden)return null;
+  const wrap=$('feedwrap'), bounds=wrap.getBoundingClientRect();
+  if(!wrap.getClientRects().length||x<bounds.left||x>bounds.right||y<bounds.top||y>bounds.bottom)return null;
+  const feedRect=$('feed').getBoundingClientRect?$('feed').getBoundingClientRect():bounds;
+  const rows=[...$('feed').querySelectorAll('.seg:not(.sum)')]
+    .filter(row=>row!==ignoreRow&&Number.isFinite(Number(row.dataset.t)));
+  const before=rows.find(row=>{const rect=row.getBoundingClientRect();return y<rect.top+rect.height/2;})||null;
+  const previous=before?rows[rows.indexOf(before)-1]:rows[rows.length-1];
+  // Notes render after segments at the same timestamp and before the next timestamp.
+  const time=previous?Number(previous.dataset.t):0;
+  const targetRow=before||previous;
+  const targetY=targetRow?targetRow.offsetTop:Math.max(0,$('feed').scrollHeight);
+  const targetX=feedRect.width?Math.max(0,Math.round(x-feedRect.left)):0;
+  return {time,before:rows.find(row=>Number(row.dataset.t)>time)||null,x:targetX,y:Math.max(0,targetY)};
+}
+function showTranscriptImageDropIndicator(target){
+  const indicator=$('transcriptImageDropIndicator'), wrap=$('feedwrap').getBoundingClientRect();
+  const feedRect=$('feed').getBoundingClientRect(), feed=feedRect.width?feedRect:wrap;
+  const edge=target.before?target.before.getBoundingClientRect().top:feed.bottom;
+  indicator.style.left=`${Math.max(wrap.left,feed.left)}px`;
+  indicator.style.top=`${Math.max(wrap.top,Math.min(edge,wrap.bottom-44))}px`;
+  indicator.style.width=`${Math.min(wrap.width,feed.width)}px`;
+  indicator.classList.add('show');indicator.setAttribute('aria-hidden','false');
+}
+function hideTranscriptImageDropIndicator(){
+  const indicator=$('transcriptImageDropIndicator');
+  indicator.classList.remove('show');indicator.setAttribute('aria-hidden','true');
+}
+async function insertTranscriptImageFiles(files,target,native=false){
+  const sid=view&&view.id;if(!sid)return;
+  try{
+    const records=await Promise.all([...files].map(native?transcriptNoteReadNativeFile:transcriptNoteReadFile));
+    if(!records.length)return;
+    const content=records.map(record=>({type:'image',asset:record.id,name:record.name,mime:record.mime,
+      width:record.width,height:record.height,displayWidth:Math.min(record.width,260),
+      layout:'inline',position:{mode:'free',x:Math.max(0,Number(target.x)||0),y:Math.max(0,Number(target.y)||0)}}));
+    const result=await api('/api/timeline_note',{id:sid,t:target.time,text:'',content,assets:records});
+    if(result.error)throw new Error(result.error);
+    if(view&&view.id===sid){view.notes=result.notes;renderTimelineNotes();}
+    refreshHistory();toast('图片已插入文稿');
+  }catch(error){toast(error.message||'图片插入失败');}
+}
+function handleTranscriptImageDrag(event){
+  if(!transcriptNoteMayContainImageFile(event.dataTransfer))return;
+  const target=transcriptImageDropTarget(event.clientX,event.clientY);
+  if(!target)return;
+  event.preventDefault();event.dataTransfer.dropEffect='copy';showTranscriptImageDropIndicator(target);
+}
+$('feedwrap').addEventListener('dragenter',handleTranscriptImageDrag);
+$('feedwrap').addEventListener('dragover',handleTranscriptImageDrag);
+$('feedwrap').addEventListener('dragleave',event=>{
+  if(!event.relatedTarget||!$('feedwrap').contains(event.relatedTarget))hideTranscriptImageDropIndicator();
+});
+$('feedwrap').addEventListener('drop',event=>{
+  const files=transcriptNoteImageFiles(event.dataTransfer),target=transcriptImageDropTarget(event.clientX,event.clientY);
+  hideTranscriptImageDropIndicator();if(!files.length||!target)return;
+  event.preventDefault();insertTranscriptImageFiles(files,target);
+});
+$('feedwrap').addEventListener('scroll',hideTranscriptImageDropIndicator);
+function registerTranscriptNoteNativeDragBridge(){
+  const internals=window.__TAURI_INTERNALS__;
+  if(!internals||typeof internals.invoke!=='function'||typeof internals.transformCallback!=='function')return;
+  const events=[
+    ['tauri://drag-enter','enter'],['tauri://drag-over','over'],
+    ['tauri://drag-drop','drop'],['tauri://drag-leave','leave'],
+  ];
+  events.forEach(([name,type])=>{
+    const handler=internals.transformCallback(event=>handleTranscriptNoteNativeDrag(type,event));
+    internals.invoke('plugin:event|listen',{event:name,target:{kind:'Webview',label:'main'},handler})
+      .catch(error=>console.error('图片拖入事件注册失败',name,error));
+  });
+}
+registerTranscriptNoteNativeDragBridge();
 $('transcriptNoteText').addEventListener('paste',event=>{
   const imageFiles=[];
   for(const item of [...(event.clipboardData.items||[])]){
@@ -5496,15 +5795,96 @@ function selectTranscriptNoteImage(figure){
   figure.classList.add('tn-selected');
 }
 function closeTranscriptNoteImageMenu(){
-  const menu=$('transcriptNoteImageMenu');menu.hidden=true;menu.classList.remove('show');transcriptNoteImageMenuTarget=null;
+  const menu=$('transcriptNoteImageMenu');menu.hidden=true;menu.classList.remove('show');
+  transcriptNoteImageMenuTarget=null; transcriptMainImageMenuTarget=null;
 }
 function openTranscriptNoteImageMenu(figure,event){
-  const menu=$('transcriptNoteImageMenu'); transcriptNoteImageMenuTarget=figure;
+  const menu=$('transcriptNoteImageMenu'); transcriptNoteImageMenuTarget=figure; transcriptMainImageMenuTarget=null;
   menu.querySelectorAll('button[data-layout]').forEach(button=>button.classList.toggle('on',button.dataset.layout===figure.dataset.noteLayout));
   menu.hidden=false;menu.classList.add('show');
   const bounds=menu.getBoundingClientRect();
   menu.style.left=Math.max(8,Math.min(event.clientX,innerWidth-bounds.width-8))+'px';
   menu.style.top=Math.max(8,Math.min(event.clientY,innerHeight-bounds.height-8))+'px';
+}
+function transcriptMainImageTarget(row){
+  if(!row||!view||!view.id)return null;
+  const noteIndex=Number(row.dataset.noteIndex), contentIndex=Number(row.dataset.noteContentIndex);
+  const note=Number.isInteger(noteIndex)&&view.notes&&view.notes[noteIndex];
+  const node=note&&Array.isArray(note.content)&&Number.isInteger(contentIndex)?note.content[contentIndex]:null;
+  if(!note||!node||node.type!=='image')return null;
+  return {row,noteIndex,contentIndex,note,node};
+}
+function selectTranscriptMainImage(row){
+  $('transcriptImageCanvas').querySelectorAll('.transcript-canvas-image.tn-main-image-selected')
+    .forEach(node=>node.classList.remove('tn-main-image-selected'));
+  if(row)row.classList.add('tn-main-image-selected');
+}
+function openTranscriptMainImageMenu(target,event){
+  if(!target)return;
+  const menu=$('transcriptNoteImageMenu'); transcriptMainImageMenuTarget=target; transcriptNoteImageMenuTarget=null;
+  selectTranscriptMainImage(target.row);
+  menu.querySelectorAll('button[data-layout]').forEach(button=>button.classList.toggle('on',button.dataset.layout===target.node.layout));
+  menu.hidden=false;menu.classList.add('show');
+  const bounds=menu.getBoundingClientRect();
+  menu.style.left=Math.max(8,Math.min(event.clientX,innerWidth-bounds.width-8))+'px';
+  menu.style.top=Math.max(8,Math.min(event.clientY,innerHeight-bounds.height-8))+'px';
+}
+function transcriptMainImageContent(target,node){
+  return target.note.content.map((item,index)=>index===target.contentIndex?node:item);
+}
+async function persistTranscriptMainImageNode(target,node,message){
+  const sid=view&&view.id;if(!sid||!target)return false;
+  try{
+    const result=await api('/api/timeline_note_update',{id:sid,index:target.noteIndex,
+      expected_t:target.note.t,expected_text:target.note.text||'',t:target.note.t,
+      text:target.note.text||'',content:transcriptMainImageContent(target,node),assets:[]});
+    if(result.error)throw new Error(result.error);
+    if(view&&view.id===sid){view.notes=result.notes||[];renderTimelineNotes();}
+    refreshHistory();if(message)toast(message);return true;
+  }catch(error){toast(error.message||'图片保存失败');return false;}
+}
+async function persistTranscriptMainImagePosition(target,x,y){
+  const width=Number(target.row.dataset.noteDisplayWidth)||Number(target.node.displayWidth)||null;
+  return persistTranscriptMainImageMove(target,x,y,width);
+}
+async function setTranscriptMainImageLayout(target,layout){
+  if(!target||!['inline','square','top-bottom','behind','front'].includes(layout))return false;
+  const current=transcriptMainImageCoordinates(target.row);
+  const position={mode:'free',x:current.x,y:current.y};
+  const node={...target.node,layout,position};
+  return persistTranscriptMainImageNode(target,node,'图片排版已保存');
+}
+async function persistTranscriptMainImageMove(target,x,y,width=null){
+  const sid=view&&view.id;if(!sid||!target)return false;
+  try{
+    const result=await api('/api/timeline_note_image_move',{id:sid,note_index:target.noteIndex,
+      content_index:target.contentIndex,expected_t:target.note.t,expected_text:target.note.text||'',
+      x:Math.max(0,Math.round(Number(x)||0)),y:Math.max(0,Math.round(Number(y)||0)),
+      display_width:Number.isFinite(Number(width))?Math.max(48,Math.round(Number(width))):null});
+    if(result.error)throw new Error(result.error);
+    if(view&&view.id===sid){view.notes=result.notes||[];renderTimelineNotes();}
+    refreshHistory();toast('图片位置已保存');return true;
+  }catch(error){toast(error.message||'图片保存失败');return false;}
+}
+async function deleteTranscriptMainImage(target){
+  const sid=view&&view.id;if(!sid||!target)return false;
+  const content=target.note.content.filter((_,index)=>index!==target.contentIndex);
+  try{
+    let result;
+    const hasText=String(target.note.text||'').trim();
+    const hasContent=content.some(node=>node&&node.type==='image')||hasText;
+    if(hasContent){
+      result=await api('/api/timeline_note_update',{id:sid,index:target.noteIndex,
+        expected_t:target.note.t,expected_text:target.note.text||'',t:target.note.t,
+        text:target.note.text||'',content,assets:[]});
+    }else{
+      result=await api('/api/timeline_note_delete',{id:sid,index:target.noteIndex,
+        expected_t:target.note.t,expected_text:target.note.text||''});
+    }
+    if(result.error)throw new Error(result.error);
+    if(view&&view.id===sid){view.notes=result.notes||[];renderTimelineNotes();}
+    refreshHistory();toast('图片已删除');return true;
+  }catch(error){toast(error.message||'图片删除失败');return false;}
 }
 function setTranscriptNoteImagePosition(figure,x,y){
   const position={mode:'free',x:Math.max(0,Math.round(x)),y:Math.max(0,Math.round(y))};
@@ -5538,6 +5918,49 @@ function startTranscriptNoteResize(event,figure){
   transcriptNoteImageResizeState={figure,image,startX:event.clientX,startWidth:rect.width,pointerId:event.pointerId};
   captureTranscriptNotePointer(figure,event);
 }
+function transcriptMainImageCoordinates(row){
+  const x=Number(row&&row.dataset.canvasX), y=Number(row&&row.dataset.canvasY);
+  if(Number.isFinite(x)&&Number.isFinite(y))return {x:Math.max(0,x),y:Math.max(0,y)};
+  let position={};try{position=JSON.parse(row?.dataset.notePosition||'{}');}catch(e){}
+  return {x:Math.max(0,Number(position.x)||0),y:Math.max(0,Number(position.y)||0)};
+}
+function setTranscriptMainImagePosition(row,x,y){
+  const position={mode:'free',x:Math.max(0,Math.round(x)),y:Math.max(0,Math.round(y))};
+  row.dataset.notePosition=JSON.stringify(position);
+  row.dataset.canvasX=String(position.x); row.dataset.canvasY=String(position.y);
+  row.style.left=`${position.x}px`; row.style.top=`${position.y}px`;
+}
+function setTranscriptMainImageWidth(row,width){
+  const safe=Math.max(48,Math.round(Number(width)||48));
+  const image=row.querySelector('img'); if(image)image.style.width=`${safe}px`;
+  row.dataset.noteDisplayWidth=String(safe);
+}
+function startTranscriptMainImageResize(event,target){
+  if(!target||event.button!==0)return;
+  event.preventDefault();event.stopPropagation();closeTranscriptNoteImageMenu();selectTranscriptMainImage(target.row);
+  const image=target.row.querySelector('img'), rect=image.getBoundingClientRect();
+  transcriptMainImageResizeState={target,image,startX:event.clientX,startWidth:rect.width,pointerId:event.pointerId};
+  transcriptMainImageResizeState.figure=target.row;
+  captureTranscriptNotePointer(target.row,event);
+}
+function startTranscriptMainImageMove(event,target){
+  if(!target||event.button!==0)return;
+  event.preventDefault();closeTranscriptNoteImageMenu();selectTranscriptMainImage(target.row);
+  const position=transcriptMainImageCoordinates(target.row);
+  target.row.classList.add('tn-main-image-moving');
+  transcriptMainImageMoveState={target,startX:event.clientX,startY:event.clientY,
+    baseX:position.x,baseY:position.y,moved:false,pointerId:event.pointerId,
+    figure:target.row};
+  captureTranscriptNotePointer(target.row,event);
+}
+$('transcriptImageCanvas').addEventListener('pointerdown',event=>{
+  const row=event.target.closest('.transcript-canvas-image');
+  if(!row)return;
+  const target=transcriptMainImageTarget(row);
+  if(!target)return;
+  if(event.target.closest('.transcript-canvas-image-resize'))startTranscriptMainImageResize(event,target);
+  else startTranscriptMainImageMove(event,target);
+});
 document.addEventListener('pointermove',event=>{
   if(transcriptNoteImageMoveState){
     const state=transcriptNoteImageMoveState;
@@ -5551,6 +5974,17 @@ document.addEventListener('pointermove',event=>{
     const state=transcriptNoteImageResizeState, width=Math.max(48,state.startWidth+event.clientX-state.startX);
     state.image.style.width=`${Math.round(width)}px`;state.figure.dataset.noteDisplayWidth=String(Math.round(width));
   }
+  if(transcriptMainImageMoveState){
+    const state=transcriptMainImageMoveState;
+    if(Math.abs(event.clientX-state.startX)+Math.abs(event.clientY-state.startY)>2)state.moved=true;
+    setTranscriptMainImagePosition(state.target.row,state.baseX+event.clientX-state.startX,state.baseY+event.clientY-state.startY);
+  }
+  if(transcriptMainImageResizeState){
+    const state=transcriptMainImageResizeState;
+    const width=Math.max(48,state.startWidth+event.clientX-state.startX);
+    if(Math.abs(width-state.startWidth)>2)state.moved=true;
+    setTranscriptMainImageWidth(state.target.row,width);
+  }
 });
 document.addEventListener('pointerup',()=>{
   const move=transcriptNoteImageMoveState;
@@ -5558,10 +5992,34 @@ document.addEventListener('pointerup',()=>{
   if(move&&!move.free&&move.moved&&move.range){moveTranscriptNoteFlowImage(move.figure,move.range);hideTranscriptNoteDropIndicator();}
   releaseTranscriptNotePointer(move); releaseTranscriptNotePointer(resize);
   transcriptNoteImageMoveState=null;transcriptNoteImageResizeState=null;
+  const main=transcriptMainImageMoveState;
+  const mainResize=transcriptMainImageResizeState;
+  if(main){
+    main.target.row.classList.remove('tn-main-image-moving');hideTranscriptImageDropIndicator();
+    if(main.moved){
+      const position=transcriptMainImageCoordinates(main.target.row);
+      persistTranscriptMainImagePosition(main.target,position.x,position.y);
+    }
+  }
+  if(mainResize&&mainResize.moved){
+    const position=transcriptMainImageCoordinates(mainResize.target.row);
+    persistTranscriptMainImageMove(mainResize.target,position.x,position.y,mainResize.target.row.dataset.noteDisplayWidth);
+  }
+  releaseTranscriptNotePointer(main);releaseTranscriptNotePointer(mainResize);
+  transcriptMainImageMoveState=null;transcriptMainImageResizeState=null;
 });
 document.addEventListener('pointercancel',()=>{
   releaseTranscriptNotePointer(transcriptNoteImageMoveState); releaseTranscriptNotePointer(transcriptNoteImageResizeState);
   transcriptNoteImageMoveState=null; transcriptNoteImageResizeState=null; hideTranscriptNoteDropIndicator();
+  if(transcriptMainImageMoveState){
+    transcriptMainImageMoveState.target.row.classList.remove('tn-main-image-moving');
+    releaseTranscriptNotePointer(transcriptMainImageMoveState);transcriptMainImageMoveState=null;hideTranscriptImageDropIndicator();
+  }
+  if(transcriptMainImageResizeState){
+    const state=transcriptMainImageResizeState;
+    setTranscriptMainImageWidth(state.target.row,state.startWidth);
+    releaseTranscriptNotePointer(state);transcriptMainImageResizeState=null;
+  }
 });
 $('transcriptNoteText').addEventListener('pointerdown',event=>{
   const figure=event.target.closest('.tn-image-node'); if(!figure)return;
@@ -5577,12 +6035,25 @@ $('transcriptNoteText').addEventListener('contextmenu',event=>{
   event.preventDefault();event.stopPropagation();selectTranscriptNoteImage(figure);openTranscriptNoteImageMenu(figure,event);
 });
 $('transcriptNoteImageMenu').addEventListener('click',event=>{
-  const button=event.target.closest('button[data-layout]');if(!button||!transcriptNoteImageMenuTarget)return;
-  setTranscriptNoteImageLayout(transcriptNoteImageMenuTarget,button.dataset.layout);closeTranscriptNoteImageMenu();
+  const action=event.target.closest('button[data-action]')?.dataset.action;
+  if(action==='delete'){
+    if(transcriptMainImageMenuTarget)deleteTranscriptMainImage(transcriptMainImageMenuTarget);
+    else if(transcriptNoteImageMenuTarget)transcriptNoteImageMenuTarget.remove();
+    closeTranscriptNoteImageMenu();return;
+  }
+  const button=event.target.closest('button[data-layout]');if(!button)return;
+  if(transcriptMainImageMenuTarget){
+    setTranscriptMainImageLayout(transcriptMainImageMenuTarget,button.dataset.layout);
+    closeTranscriptNoteImageMenu();return;
+  }
+  if(transcriptNoteImageMenuTarget){
+    setTranscriptNoteImageLayout(transcriptNoteImageMenuTarget,button.dataset.layout);closeTranscriptNoteImageMenu();
+  }
 });
 document.addEventListener('pointerdown',event=>{
   const menu=$('transcriptNoteImageMenu');
-  if(!menu.hidden&&!menu.contains(event.target)&&!event.target.closest('.tn-image-node'))closeTranscriptNoteImageMenu();
+  if(!menu.hidden&&!menu.contains(event.target)&&!event.target.closest('.tn-image-node')&&
+     !event.target.closest('.transcript-canvas-image'))closeTranscriptNoteImageMenu();
 });
 function parseTranscriptNoteTime(value){
   const match=String(value).trim().match(/^(\d{1,4}):(\d{2})$/);
@@ -5661,13 +6132,19 @@ function closeTranscriptNote(){
   transcriptNoteCloseEnd=finish;
   card.addEventListener('animationend',finish);
 }
+$('transcriptImageCanvas').addEventListener('contextmenu',e=>{
+  const row=e.target.closest('.transcript-canvas-image');
+  if(!row)return;
+  const target=transcriptMainImageTarget(row);
+  if(target){e.preventDefault();e.stopPropagation();openTranscriptMainImageMenu(target,e);}
+});
 $('feed').addEventListener('contextmenu', e=>{
   const row=e.target.closest('.seg:not(.sum)');
   if(!view || !view.id || !row || row.hasAttribute('data-edit') || !Number.isFinite(Number(row.dataset.t))) return;
   e.preventDefault();
   closeTranscriptNote();
   transcriptNoteTargetTime=Math.max(0,Number(row.dataset.t)||0);
-  const isNoteRow=row.classList.contains('note')||row.classList.contains('note-image');
+  const isNoteRow=row.classList.contains('note');
   transcriptNoteTargetIndex=isNoteRow?Number(row.dataset.noteIndex):null;
   if(isNoteRow&&!Number.isInteger(transcriptNoteTargetIndex))return;
   $('transcriptNoteAdd').hidden=transcriptNoteTargetIndex!==null;
@@ -5693,7 +6170,7 @@ $('transcriptNoteDelete').onclick=async()=>{
 document.addEventListener('pointerdown',e=>{
   const menu=$('transcriptNoteMenu'),layer=$('transcriptNoteLayer'),card=layer.querySelector('.tn-card');
   if(!menu.hidden&&!menu.contains(e.target)&&!card.contains(e.target))hideTranscriptNoteMenu();
-  if(!layer.hidden&&!card.contains(e.target)&&!menu.contains(e.target))closeTranscriptNote();
+  if(!layer.hidden&&!card.contains(e.target)&&!menu.contains(e.target)&&!$('transcriptNoteImageMenu').contains(e.target))closeTranscriptNote();
 });
 $('transcriptNoteClose').onclick=$('transcriptNoteCancel').onclick=closeTranscriptNote;
 const transcriptNoteCard=$('transcriptNoteLayer').querySelector('.tn-card');
@@ -5999,7 +6476,14 @@ function sidebarSectionIcon(kind){
 }
 
 async function refreshHistory(){
-  let raw = (await api('/api/history')).items || [];
+  const response = await api('/api/history');
+  if(response.error){
+    lastHistRaw = [];
+    renderHomePanel(); renderCollectionPanel();
+    toast(response.error);
+    return;
+  }
+  let raw = response.items || [];
   lastHistRaw = raw;
   try{
     const g = await api('/api/groups');
@@ -6755,8 +7239,8 @@ function transcriptContentItems(segments,notes,outline){
   for(const segment of segments||[]) items.push({type:'seg',...segment});
   for(const [noteIndex,note] of (notes||[]).entries()){
     if(String(note&&note.text||'').trim()) items.push({type:'note',noteIndex,...note});
-    for(const node of Array.isArray(note&&note.content)?note.content:[])
-      if(node&&node.type==='image') items.push({type:'note-image',noteIndex,...note,image:node});
+    for(const [contentIndex,node] of (Array.isArray(note&&note.content)?note.content:[]).entries())
+      if(node&&node.type==='image') items.push({type:'note-image',noteIndex,contentIndex,...note,image:node});
   }
   const priority={heading:0,seg:1,note:2,'note-image':3};
   return items.sort((a,b)=>Number(a.t)-Number(b.t)||priority[a.type]-priority[b.type]);
@@ -6937,6 +7421,7 @@ $('feedwrap').addEventListener('scroll',updateTranscriptAnchorFromScroll,{passiv
 
 let player = $('player');
 async function loadSession(sid, keepList){
+  hideTranscriptImageDropIndicator(); transcriptNoteNativeDropPaths=[];
   // 离开上一个项目：若刚才真播过/拖过，先把播放位置存回上一个项目
   if(view && view.id && posDirty) savePos(true);
   const d = await api('/api/session/'+encodeURIComponent(sid));
@@ -6988,8 +7473,8 @@ async function loadSession(sid, keepList){
       if(m.type==='heading') addTranscriptHeading(m);
       else if(m.type==='seg') addSeg(m, false);
       else if(m.type==='note') addNoteDom(m.t, m.text, null, m.noteIndex, m.content);
-      else addNoteImageDom(m.t, m.image, null, m.noteIndex);
     }
+    renderTranscriptCanvasImages();
     $('feedwrap').scrollTop = 0;
   }
   $('nameInput').value = d.name;
@@ -8132,6 +8617,7 @@ $('noteCopy').onclick = async ()=>{
 function updateNoteBtn(){
   const show = talkMode === 'cloud' || !!(view && (view.hasNote || noteJob()));
   $('btnNoteTop').style.display = show ? '' : 'none';
+  syncRailPlacement();
 }
 
 /* ---- 模板弹窗(两处共用同一个组件) ---- */

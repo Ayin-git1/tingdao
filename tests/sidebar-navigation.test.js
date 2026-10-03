@@ -82,10 +82,10 @@ test('setSessionFlags posts state changes and refreshes the collection', async (
   assert.equal(global.refreshed, true);
 });
 
-test('the drawer toolbar is an inset glass pill and the rail stays independent', () => {
-  const cols = html.slice(html.indexOf('<div class="cols">'), html.indexOf('</div><!-- /cols -->') + 21);
-  assert.match(cols, /<nav class="app-rail"[\s\S]*?<div class="sidebar"/);
-  assert.match(html, /--rail-width:56px/);
+test('the drawer toolbar is an inset glass pill and the rail lives in the top chrome', () => {
+  const topbar = html.slice(html.indexOf('<div class="topbar">'), html.indexOf('</div>', html.indexOf('<div class="topbar">')) + 6);
+  assert.match(topbar, /id="navFavorites"[\s\S]*?id="navArchive"[\s\S]*?id="navDocuments"[\s\S]*?id="btnHome"[\s\S]*?id="btnNoteTop"/);
+  assert.match(html, /--rail-width:0px/);
   assert.doesNotMatch(html, /\.app-rail\{[^}]*border-right:/);
   const sidefoot = html.match(/\.sidefoot\{[^}]+\}/)?.[0] || '';
   assert.match(sidefoot, /left:10px/);
@@ -93,10 +93,9 @@ test('the drawer toolbar is an inset glass pill and the rail stays independent',
   assert.match(sidefoot, /border-radius:999px/);
   assert.match(sidefoot, /backdrop-filter:blur\(/);
   assert.match(html, /\.sidehide \.sidebar\{margin-left:-291px;\}/);
-  assert.match(html, /\.app-rail \.rail-btn\.active\{color:var\(--g-ink\); background:rgba\(255,255,255,\.58\);\}/);
-  assert.match(html, /html\[data-appearance="dark"\] \.app-rail \.rail-btn\.active\{background:rgba\(255,255,255,\.10\);\}/);
-  assert.match(html, /\.app-rail \.rail-btn:hover\{color:var\(--g-ink\); background:var\(--g-tint\); transform:translateY\(-1px\);\}/);
-  assert.match(html, /\.app-rail \.rail-btn\{transition:none;\}/);
+  assert.match(html, /\.app-rail \.rail-indicator\{/);
+  assert.match(html, /\.app-rail \.rail-btn\.active\{/);
+  assert.doesNotMatch(html, /html\[data-appearance="dark"\] \.app-rail \.rail-btn\.active\{/);
   assert.match(html, /id="btnSort"/);
   assert.match(html, /id="btnImport"/);
   assert.match(html, /id="sfMode"/);

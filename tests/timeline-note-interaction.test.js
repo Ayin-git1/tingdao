@@ -70,23 +70,35 @@ test('image drag target is a visible insertion placeholder, not only a caret lin
   includes(/indicator\.setAttribute\(['"]aria-hidden['"],['"]false['"]\)/);
 });
 
+test('Tauri native file drags reach the note editor and reuse the insertion placeholder', () => {
+  includes(/tauri:\/\/drag-enter/);
+  includes(/tauri:\/\/drag-over/);
+  includes(/tauri:\/\/drag-drop/);
+  includes(/tauri:\/\/drag-leave/);
+  includes(/plugin:event\|listen/);
+  includes(/target:\{kind:'Webview',label:'main'\}/);
+  includes(/transcriptNoteNativeDropPaths/);
+  includes(/transcriptNoteNativeClientPoint/);
+  includes(/insertTranscriptNoteNativeFiles\(paths\)/);
+});
+
 test('drop and move indicators fall back to the editor end and clear outside it', () => {
   includes(/function transcriptNoteDropFallbackRange\(\)/);
   includes(/transcriptNoteDropRange\|\|transcriptNoteRangeAtPoint\([\s\S]*?\)\|\|transcriptNoteDropFallbackRange\(\)/);
   includes(/!state\.free&&!state\.range\)hideTranscriptNoteDropIndicator\(\)/);
 });
 
-test('saved timeline note rows render text and image content at the note time', () => {
+test('saved timeline notes render text rows while images use the independent canvas', () => {
   includes(/function renderTimelineNoteText\(/);
   includes(/addNoteDom\(m\.t,\s*m\.text,\s*null,\s*m\.noteIndex,\s*m\.content\)/);
-  includes(/addNoteImageDom\(m\.t,\s*m\.image,\s*null,\s*m\.noteIndex\)/);
+  includes(/renderTranscriptCanvasImages\(\)/);
 });
 
-test('saved note images render as separate timeline rows instead of note-container children', () => {
-  includes(/function renderTimelineNoteText\(/);
-  includes(/function addNoteImageDom\(/);
-  includes(/div\.className\s*=\s*['"]seg note-image['"]/);
+test('saved note images render as independent canvas objects instead of timestamp rows', () => {
+  includes(/id="transcriptImageCanvas"/);
+  includes(/function createTranscriptCanvasImage\(/);
+  includes(/transcript-canvas-image/);
   includes(/type:\s*['"]note-image['"]/);
-  includes(/else\s+addNoteImageDom\(m\.t,\s*m\.image,\s*null,\s*m\.noteIndex\)/);
-  includes(/querySelectorAll\(['"]\.seg\.note,\.seg\.note-image['"]\)/);
+  assert.doesNotMatch(html, /div\.className\s*=\s*['"]seg note-image['"]/);
+  assert.doesNotMatch(html, /querySelectorAll\(['"]\.seg\.note,\.seg\.note-image['"]\)/);
 });
