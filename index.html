@@ -539,6 +539,10 @@
             cursor:default;}
   .seg.note .ts{color:var(--note-ts);}
   .seg.note::before{content:"✎"; color:var(--noted);}
+  .tn-note-body{min-width:0;white-space:pre-wrap;word-break:break-word;}
+  .seg.note-image{margin:4px 0;cursor:default;}
+  .tn-note-image-body{min-width:0;display:block;}
+  .tn-note-image-body img{display:block;max-width:min(720px,100%);height:auto;border-radius:4px;}
   /* 就地改字: 双击一句进编辑态。底色用现成的 --soft, 描边用 --line —— 不新增颜色 */
   .seg[data-edit]{background:var(--soft); cursor:text; outline:none;
                   box-shadow:inset 0 0 0 1px var(--line);}
@@ -1829,6 +1833,14 @@
   .tn-menu button[hidden]{display:none;}
   .tn-menu button:hover{background:var(--soft);}
   .tn-menu svg{width:15px;height:15px;color:var(--gry-icon);flex:none;}
+  .tn-image-menu{display:none;position:fixed;z-index:var(--z-menu);min-width:164px;padding:5px;
+                  border:1px solid var(--line);border-radius:12px;background:rgba(255,255,255,.94);
+                  backdrop-filter:blur(22px) saturate(1.5);-webkit-backdrop-filter:blur(22px) saturate(1.5);
+                  box-shadow:0 1px 2px rgba(0,0,0,.06),0 14px 38px rgba(20,30,50,.20);}
+  .tn-image-menu.show{display:block;animation:popDrop .22s cubic-bezier(.16,1,.3,1);}
+  .tn-image-menu button{width:100%;height:30px;padding:0 10px;border:0;border-radius:8px;background:transparent;
+                        color:var(--txt);font-family:inherit;font-size:var(--fs-ctl);text-align:left;cursor:pointer;}
+  .tn-image-menu button:hover,.tn-image-menu button.on{background:var(--soft);}
   .tn-layer{position:fixed;z-index:var(--z-pop-lift);top:124px;right:30px;width:340px;
             pointer-events:none;}
   .tn-layer[hidden]{display:none;}
@@ -1889,11 +1901,35 @@
   .tn-step{width:27px;height:27px;border:1px solid rgba(163,136,75,.3);border-radius:50%;
            background:rgba(255,253,240,.55);color:#806e4a;cursor:pointer;}
   .tn-step:hover{background:#fae8a2;}
-  .tn-text{width:100%;min-height:102px;max-height:calc(100vh - 32px);padding:7px 3px;resize:vertical;border:0;
-           border-top:1px solid rgba(163,136,75,.32);border-radius:0;outline:0;
-           background:transparent;color:#534a36;font:13px/1.8 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;}
-  .tn-text:focus{box-shadow:inset 2px 0 #b98a51;}
-  .tn-text::placeholder{color:#aa9d77;}
+  .tn-editor-tools{display:flex;justify-content:flex-end;margin:-2px 0 4px;}
+  .tn-image-button{padding:4px 8px;border:1px solid rgba(137,115,70,.24);border-radius:3px;
+                   background:rgba(255,253,240,.34);color:#786b4e;font-size:10px;cursor:pointer;}
+  .tn-image-button:hover{background:rgba(255,253,240,.62);}
+  .tn-editor{width:100%;min-height:102px;max-height:calc(100vh - 32px);overflow-y:auto;padding:7px 3px;
+             border-top:1px solid rgba(163,136,75,.32);border-radius:0;outline:0;
+             background:transparent;color:#534a36;font:13px/1.8 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;
+             white-space:pre-wrap;word-break:break-word;position:relative;}
+  .tn-editor:focus{box-shadow:inset 2px 0 #b98a51;}
+  .tn-editor:empty::before{content:attr(data-placeholder);color:#aa9d77;pointer-events:none;}
+  .tn-image-node{display:block;width:fit-content;max-width:100%;margin:8px 0;padding:5px;
+                 border:1px solid rgba(163,136,75,.26);border-radius:5px;background:rgba(255,253,240,.3);position:relative;}
+  .tn-image-node img{display:block;max-width:100%;height:auto;border-radius:3px;}
+  .tn-image-node:focus{outline:2px solid rgba(185,138,81,.55);outline-offset:2px;}
+  .tn-image-node.tn-selected{outline:2px solid rgba(185,138,81,.55);outline-offset:2px;}
+  .tn-image-node[data-layout="inline"]{display:inline-block;vertical-align:middle;}
+  .tn-image-node[data-layout="square"]{float:left;margin:8px 14px 8px 0;}
+  .tn-image-node[data-layout="top-bottom"]{clear:both;}
+  .tn-image-node[data-layout="behind"]{opacity:.72;z-index:0;}
+  .tn-image-node[data-layout="front"]{z-index:3;}
+  .tn-resize-handle{position:absolute;right:-5px;bottom:-5px;width:10px;height:10px;border:1px solid #a77e48;
+                    border-radius:2px;background:#fff4c9;cursor:nwse-resize;display:none;}
+  .tn-image-node.tn-selected .tn-resize-handle{display:block;}
+  .tn-delete-image{position:absolute;right:4px;top:4px;width:22px;height:22px;border:0;border-radius:50%;
+                   background:rgba(255,253,240,.9);color:#786b4e;font-size:17px;line-height:20px;cursor:pointer;display:none;}
+  .tn-image-node.tn-selected .tn-delete-image{display:block;}
+  .tn-drop-indicator{position:absolute;z-index:4;width:2px;height:24px;border-radius:2px;background:#b98a51;
+                     pointer-events:none;display:none;box-shadow:0 0 0 1px rgba(255,255,255,.45);}
+  .tn-drop-indicator.show{display:block;}
   .tn-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:13px;}
   .tn-hint{color:#998c6a;font-size:9px;}
   .tn-actions{display:flex;gap:7px;}
@@ -2129,9 +2165,17 @@
   html[data-appearance="dark"] .tn-time input:focus-visible{box-shadow:0 2px 0 #dec27c;}
   html[data-appearance="dark"] .tn-step{border-color:rgba(215,192,134,.28);background:rgba(255,255,255,.06);color:#e1cf9e;}
   html[data-appearance="dark"] .tn-step:hover{background:rgba(219,190,119,.18);}
-  html[data-appearance="dark"] .tn-text{border-color:rgba(215,192,134,.3);color:#f0e3bd;}
-  html[data-appearance="dark"] .tn-text::placeholder{color:#b4a779;}
-  html[data-appearance="dark"] .tn-text:focus{box-shadow:inset 2px 0 #dec27c;}
+  html[data-appearance="dark"] .tn-editor{border-color:rgba(215,192,134,.3);color:#f0e3bd;}
+  html[data-appearance="dark"] .tn-editor:empty::before{color:#b4a779;}
+  html[data-appearance="dark"] .tn-editor:focus{box-shadow:inset 2px 0 #dec27c;}
+  html[data-appearance="dark"] .tn-image-button,
+  html[data-appearance="dark"] .tn-image-node{border-color:rgba(215,192,134,.32);background:rgba(255,255,255,.06);color:#e0d2aa;}
+  html[data-appearance="dark"] .tn-image-menu{border-color:#4b4d52;background:rgba(42,43,47,.94);box-shadow:0 10px 28px rgba(0,0,0,.42);}
+  html[data-appearance="dark"] .tn-image-menu button{color:#e0d2aa;}
+  html[data-appearance="dark"] .tn-image-menu button:hover,
+  html[data-appearance="dark"] .tn-image-menu button.on{background:#3c3e43;}
+  html[data-appearance="dark"] .tn-resize-handle{background:#766747;border-color:#dec27c;}
+  html[data-appearance="dark"] .tn-delete-image{background:rgba(42,43,47,.9);color:#e0d2aa;}
   html[data-appearance="dark"] .tn-actions button{border-color:rgba(215,192,134,.32);background:rgba(255,255,255,.06);color:#e0d2aa;}
   html[data-appearance="dark"] .tn-actions .tn-save{border-color:#766747;background:#766747;color:#f4e8c5;}
   html[data-appearance="dark"] .tn-actions .tn-save:hover{background:#887655;}
@@ -2873,6 +2917,13 @@
     删除笔记
   </button>
 </div>
+<div class="tn-image-menu" id="transcriptNoteImageMenu" role="menu" hidden>
+  <button type="button" data-layout="inline">嵌入型</button>
+  <button type="button" data-layout="square">四周型环绕</button>
+  <button type="button" data-layout="top-bottom">上下型环绕</button>
+  <button type="button" data-layout="behind">衬于文字下方</button>
+  <button type="button" data-layout="front">浮于文字上方</button>
+</div>
 <div class="tn-layer" id="transcriptNoteLayer" hidden>
   <section class="tn-card" role="dialog" aria-modal="false" aria-labelledby="transcriptNoteTitle">
     <header class="tn-head">
@@ -2887,7 +2938,13 @@
       <div class="tn-stepper"><button class="tn-step" id="transcriptNoteMinus" aria-label="减少 5 秒">−</button><button class="tn-step" id="transcriptNotePlus" aria-label="增加 5 秒">+</button></div>
     </div>
     <label class="tn-label" for="transcriptNoteText">这时想到的事</label>
-    <textarea class="tn-text" id="transcriptNoteText" maxlength="5000" placeholder="写下此刻想到的内容…"></textarea>
+    <div class="tn-editor" id="transcriptNoteText" contenteditable="true" role="textbox" aria-multiline="true"
+         data-placeholder="写下此刻想到的内容…" spellcheck="true"></div>
+    <div class="tn-drop-indicator" id="transcriptNoteDropIndicator" aria-hidden="true"></div>
+    <div class="tn-editor-tools">
+      <button class="tn-image-button" id="transcriptNoteImageButton" type="button">插入图片</button>
+      <input id="transcriptNoteImageInput" type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden>
+    </div>
     <footer class="tn-foot"><span class="tn-hint">Enter 保存 · Shift + Enter 换行</span><span class="tn-actions"><button id="transcriptNoteCancel">收起</button><button class="tn-save" id="transcriptNoteSave">贴进文稿</button></span></footer>
   </section>
   <div class="tn-tape" aria-hidden="true"></div>
@@ -3650,25 +3707,58 @@ function addTranscriptHeading(heading){
   $('feed').appendChild(div);
 }
 
-function addNoteDom(t, text, before=null, noteIndex=null){
+function renderTimelineNoteText(container,content,legacyText){
+  const nodes=Array.isArray(content)&&content.length?content:[{type:'text',text:legacyText||''}];
+  nodes.forEach(node=>{
+    if(!node||typeof node!=='object')return;
+    if(node.type==='text')container.appendChild(document.createTextNode(String(node.text||'')));
+  });
+}
+function createNoteDom(t, text, noteIndex=null, content=null){
   const div = document.createElement('div');
   div.className = 'seg note';
   div.dataset.t = t;
   if(Number.isInteger(noteIndex)) div.dataset.noteIndex=noteIndex;
-  div.innerHTML = `<span class="ts">${fmt(t)}</span><span>${esc(text)}</span>`;
-  $('feed').insertBefore(div, before);
+  const stamp=document.createElement('span'); stamp.className='ts'; stamp.textContent=fmt(t); div.appendChild(stamp);
+  const body=document.createElement('span'); body.className='tn-note-body'; renderTimelineNoteText(body,content,text); div.appendChild(body);
+  return div;
+}
+function createNoteImageDom(t,node,noteIndex=null){
+  const div=document.createElement('div'); div.className='seg note-image'; div.dataset.t=t;
+  if(Number.isInteger(noteIndex))div.dataset.noteIndex=noteIndex;
+  const stamp=document.createElement('span'); stamp.className='ts'; stamp.textContent=fmt(t); div.appendChild(stamp);
+  const body=document.createElement('span'); body.className='tn-note-image-body';
+  const image=document.createElement('img'); image.alt=String(node&&node.name||'图片');
+  const filename=String(node&&node.file||'').split('/').pop();
+  if(filename&&view&&view.id)image.src=`/note-image/${encodeURIComponent(view.id)}/${encodeURIComponent(filename)}`;
+  const displayWidth=Number(node&&node.displayWidth);
+  if(Number.isFinite(displayWidth)&&displayWidth>0)image.style.width=`${displayWidth}px`;
+  body.appendChild(image); div.appendChild(body);
+  return div;
+}
+function addNoteDom(t, text, before=null, noteIndex=null, content=null){
+  $('feed').insertBefore(createNoteDom(t,text,noteIndex,content),before);
+  anchorLive();
+}
+function addNoteImageDom(t,node,before=null,noteIndex=null){
+  $('feed').insertBefore(createNoteImageDom(t,node,noteIndex),before);
   anchorLive();
 }
 
 function renderTimelineNotes(){
-  $('feed').querySelectorAll('.seg.note').forEach(row=>row.remove());
+  $('feed').querySelectorAll('.seg.note,.seg.note-image').forEach(row=>row.remove());
   const ordered=(view.notes||[]).map((note,index)=>({note,index}))
     .sort((a,b)=>Number(a.note.t)-Number(b.note.t));
   for(const {note,index} of ordered){
     const next=[...$('feed').children].find(row=>row.classList.contains('seg')&&
       !row.classList.contains('note')&&!row.classList.contains('sum')&&
       Number.isFinite(Number(row.dataset.t))&&Number(row.dataset.t)>Number(note.t));
-    addNoteDom(note.t,note.text,next,index);
+    const fragment=document.createDocumentFragment();
+    if(String(note.text||'').trim())fragment.appendChild(createNoteDom(note.t,note.text,index,note.content));
+    for(const node of Array.isArray(note.content)?note.content:[])
+      if(node&&node.type==='image')fragment.appendChild(createNoteImageDom(note.t,node,index));
+    $('feed').insertBefore(fragment,next);
+    anchorLive();
   }
   const hasTimeline=$('feed').querySelector('.seg:not(.sum)');
   if(!hasTimeline){
@@ -5128,9 +5218,307 @@ let transcriptNoteTargetIndex = null;
 let transcriptNoteEditingIndex = null;
 let transcriptNoteOriginal = null;
 let transcriptNoteCloseEnd = null;
+let transcriptNoteAssets = new Map();
+let transcriptNoteSelection = null;
+const TRANSCRIPT_NOTE_IMAGE_MIMES = new Set(['image/png','image/jpeg','image/gif','image/webp']);
+const TRANSCRIPT_NOTE_MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 function hideTranscriptNoteMenu(){
   const menu=$('transcriptNoteMenu'); menu.hidden=true; menu.classList.remove('show');
 }
+function transcriptNoteAssetId(){
+  if(window.crypto && typeof window.crypto.randomUUID==='function')return window.crypto.randomUUID();
+  return `note-image-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+function transcriptNoteUsesFreePosition(layout){return layout==='behind'||layout==='front';}
+function saveTranscriptNoteSelection(){
+  const editor=$('transcriptNoteText'), selection=window.getSelection();
+  if(!selection||!selection.rangeCount||!editor.contains(selection.anchorNode))return;
+  transcriptNoteSelection=selection.getRangeAt(0).cloneRange();
+}
+function restoreTranscriptNoteSelection(){
+  const editor=$('transcriptNoteText'), selection=window.getSelection();
+  editor.focus();
+  if(transcriptNoteSelection&&editor.contains(transcriptNoteSelection.startContainer)){
+    selection.removeAllRanges(); selection.addRange(transcriptNoteSelection); return transcriptNoteSelection;
+  }
+  const range=document.createRange(); range.selectNodeContents(editor); range.collapse(false);
+  selection.removeAllRanges(); selection.addRange(range); transcriptNoteSelection=range.cloneRange(); return range;
+}
+function transcriptNoteImageNode(node){
+  const figure=document.createElement('figure');
+  figure.className='tn-image-node'; figure.contentEditable='false'; figure.tabIndex=0;
+  figure.dataset.noteAsset=String(node.asset||'');
+  figure.dataset.noteFile=String(node.file||'');
+  figure.dataset.noteName=String(node.name||'图片');
+  figure.dataset.noteMime=String(node.mime||'image/png');
+  figure.dataset.noteWidth=String(node.width||1);
+  figure.dataset.noteHeight=String(node.height||1);
+  figure.dataset.noteDisplayWidth=String(node.displayWidth||node.width||1);
+  figure.dataset.noteLayout=String(node.layout||'inline');
+  figure.dataset.notePosition=JSON.stringify(node.position||{mode:'flow',x:null,y:null});
+  const position=node.position||{};
+  if(position.mode==='free'&&transcriptNoteUsesFreePosition(figure.dataset.noteLayout)){
+    const x=Math.max(0,Number(position.x)||0), y=Math.max(0,Number(position.y)||0);
+    figure.style.transform=`translate(${x}px,${y}px)`;
+  }
+  const image=document.createElement('img');
+  image.alt=figure.dataset.noteName;
+  const pending=figure.dataset.noteAsset&&transcriptNoteAssets.get(figure.dataset.noteAsset);
+  if(pending)image.src=`data:${pending.mime};base64,${pending.data}`;
+  else if(figure.dataset.noteFile&&view&&view.id){
+    const filename=figure.dataset.noteFile.split('/').pop();
+    image.src=`/note-image/${encodeURIComponent(view.id)}/${encodeURIComponent(filename)}`;
+  }
+  const displayWidth=Number(figure.dataset.noteDisplayWidth);
+  if(Number.isFinite(displayWidth)&&displayWidth>0)image.style.width=`${displayWidth}px`;
+  figure.appendChild(image);
+  const handle=document.createElement('span'); handle.className='tn-resize-handle'; handle.setAttribute('aria-hidden','true');
+  figure.appendChild(handle);
+  const remove=document.createElement('button'); remove.className='tn-delete-image'; remove.type='button';
+  remove.setAttribute('aria-label','删除图片'); remove.textContent='×'; figure.appendChild(remove);
+  return figure;
+}
+function renderTranscriptNoteContent(content,legacyText){
+  const editor=$('transcriptNoteText'); editor.replaceChildren(); transcriptNoteSelection=null;
+  const nodes=Array.isArray(content)&&content.length?content:[{type:'text',text:legacyText||''}];
+  nodes.forEach(node=>{
+    if(!node||typeof node!=='object')return;
+    if(node.type==='text'&&node.text)editor.appendChild(document.createTextNode(String(node.text)));
+    if(node.type==='image')editor.appendChild(transcriptNoteImageNode(node));
+  });
+}
+function transcriptNoteImageRecord(figure){
+  let position={mode:'flow',x:null,y:null};
+  try{position=JSON.parse(figure.dataset.notePosition||'{}');}catch(e){}
+  const node={type:'image',name:figure.dataset.noteName||'图片',mime:figure.dataset.noteMime||'image/png',
+    width:Number(figure.dataset.noteWidth)||1,height:Number(figure.dataset.noteHeight)||1,
+    displayWidth:Number(figure.dataset.noteDisplayWidth)||1,layout:figure.dataset.noteLayout||'inline',position};
+  if(figure.dataset.noteAsset)node.asset=figure.dataset.noteAsset;
+  if(figure.dataset.noteFile)node.file=figure.dataset.noteFile;
+  return node;
+}
+function serializeTranscriptNoteContent(){
+  const content=[],assets=[];
+  const pushText=text=>{
+    if(!text)return;
+    const last=content[content.length-1];
+    if(last&&last.type==='text')last.text+=text; else content.push({type:'text',text});
+  };
+  const walk=node=>{
+    if(node.nodeType===Node.TEXT_NODE){pushText(node.nodeValue||'');return;}
+    if(node.nodeType!==Node.ELEMENT_NODE)return;
+    if(node.matches('.tn-image-node')){
+      const image=transcriptNoteImageRecord(node); content.push(image);
+      if(image.asset&&transcriptNoteAssets.has(image.asset))assets.push(transcriptNoteAssets.get(image.asset));
+      return;
+    }
+    if(node.tagName==='BR'){pushText('\n');return;}
+    const block=/^(DIV|P|LI)$/.test(node.tagName);
+    if(block&&content.length)pushText('\n');
+    [...node.childNodes].forEach(walk);
+    if(block)pushText('\n');
+  };
+  [...$('transcriptNoteText').childNodes].forEach(walk);
+  return {content,assets,text:content.filter(node=>node.type==='text').map(node=>node.text).join('').trim()};
+}
+function transcriptNoteReadFile(file){
+  return new Promise((resolve,reject)=>{
+    if(!TRANSCRIPT_NOTE_IMAGE_MIMES.has(file.type))return reject(new Error('仅支持 PNG、JPG、GIF、WebP 图片'));
+    if(file.size>TRANSCRIPT_NOTE_MAX_IMAGE_BYTES)return reject(new Error('图片不能超过 20 MB'));
+    const reader=new FileReader();
+    reader.onerror=()=>reject(new Error('读取图片失败'));
+    reader.onload=()=>{
+      const dataUrl=String(reader.result||''), data=dataUrl.split(',',2)[1]||'';
+      const image=new Image();
+      image.onload=()=>resolve({id:transcriptNoteAssetId(),name:file.name,mime:file.type,data,
+        width:image.naturalWidth||1,height:image.naturalHeight||1});
+      image.onerror=()=>reject(new Error(`无法读取图片：${file.name}`)); image.src=dataUrl;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+function insertTranscriptNoteImage(node){
+  const range=restoreTranscriptNoteSelection();
+  range.deleteContents();
+  const figure=transcriptNoteImageNode({...node,displayWidth:Math.min(node.width,260),position:{mode:'flow',x:null,y:null}});
+  range.insertNode(figure); range.setStartAfter(figure); range.collapse(true);
+  const selection=window.getSelection(); selection.removeAllRanges(); selection.addRange(range); saveTranscriptNoteSelection();
+}
+async function insertTranscriptNoteFiles(files){
+  const selected=[...files||[]]; if(!selected.length)return;
+  try{
+    const records=await Promise.all(selected.map(transcriptNoteReadFile));
+    records.forEach(record=>{
+      transcriptNoteAssets.set(record.id,record);
+      insertTranscriptNoteImage({...record,asset:record.id});
+    });
+    $('transcriptNoteImageInput').value='';
+    $('transcriptNoteText').focus();
+  }catch(error){toast(error.message||'图片插入失败');}
+}
+$('transcriptNoteText').addEventListener('mouseup',saveTranscriptNoteSelection);
+$('transcriptNoteText').addEventListener('keyup',saveTranscriptNoteSelection);
+$('transcriptNoteImageButton').onclick=()=>{saveTranscriptNoteSelection();$('transcriptNoteImageInput').click();};
+$('transcriptNoteImageInput').onchange=e=>insertTranscriptNoteFiles(e.target.files);
+let transcriptNoteDropRange=null;
+let transcriptNoteImageMenuTarget=null;
+let transcriptNoteImageMoveState=null;
+let transcriptNoteImageResizeState=null;
+function transcriptNoteImageFiles(dataTransfer){
+  const files=[...(dataTransfer&&dataTransfer.files||[])].filter(file=>TRANSCRIPT_NOTE_IMAGE_MIMES.has(file.type));
+  if(files.length)return files;
+  return [...(dataTransfer&&dataTransfer.items||[])].filter(item=>item.kind==='file')
+    .map(item=>item.getAsFile()).filter(Boolean).filter(file=>TRANSCRIPT_NOTE_IMAGE_MIMES.has(file.type));
+}
+function transcriptNoteRangeAtPoint(x,y){
+  const editor=$('transcriptNoteText');
+  let range=null;
+  if(document.caretRangeFromPoint)range=document.caretRangeFromPoint(x,y);
+  else if(document.caretPositionFromPoint){
+    const point=document.caretPositionFromPoint(x,y); if(point){range=document.createRange();range.setStart(point.offsetNode,point.offset);range.collapse(true);}
+  }
+  if(!range||!editor.contains(range.startContainer))return null;
+  const holder=range.startContainer.nodeType===Node.ELEMENT_NODE?range.startContainer:range.startContainer.parentElement;
+  const figure=holder&&holder.closest('.tn-image-node');
+  if(figure){
+    const imageRange=document.createRange(), rect=figure.getBoundingClientRect();
+    imageRange.selectNode(figure); imageRange.collapse(x>rect.left+rect.width/2); return imageRange;
+  }
+  return range;
+}
+function showTranscriptNoteDropIndicator(range){
+  const indicator=$('transcriptNoteDropIndicator'), editor=$('transcriptNoteText'), card=transcriptNoteCard;
+  const rect=range.getBoundingClientRect(), editorRect=editor.getBoundingClientRect(), cardRect=card.getBoundingClientRect();
+  const left=(rect.left||editorRect.left)-cardRect.left+editor.scrollLeft;
+  const top=Math.max(8,(rect.top||editorRect.top)-cardRect.top+editor.scrollTop);
+  indicator.style.left=`${left}px`; indicator.style.top=`${top}px`;
+  indicator.style.height=`${Math.max(20,rect.height||20)}px`; indicator.classList.add('show');
+  transcriptNoteDropRange=range.cloneRange();
+}
+function hideTranscriptNoteDropIndicator(){
+  $('transcriptNoteDropIndicator').classList.remove('show'); transcriptNoteDropRange=null;
+}
+function transcriptNoteDropPoint(event){
+  const range=transcriptNoteRangeAtPoint(event.clientX,event.clientY);
+  if(range)showTranscriptNoteDropIndicator(range);
+  return range;
+}
+$('transcriptNoteText').addEventListener('dragover',event=>{
+  const files=transcriptNoteImageFiles(event.dataTransfer);
+  if(!files.length)return;
+  event.preventDefault(); event.dataTransfer.dropEffect='copy'; transcriptNoteDropPoint(event);
+});
+$('transcriptNoteText').addEventListener('dragleave',event=>{
+  if(!event.relatedTarget||!$('transcriptNoteText').contains(event.relatedTarget))hideTranscriptNoteDropIndicator();
+});
+$('transcriptNoteText').addEventListener('drop',event=>{
+  const files=transcriptNoteImageFiles(event.dataTransfer);
+  if(!files.length)return;
+  event.preventDefault();
+  const range=transcriptNoteDropRange||transcriptNoteRangeAtPoint(event.clientX,event.clientY);
+  if(range)transcriptNoteSelection=range.cloneRange();
+  hideTranscriptNoteDropIndicator(); insertTranscriptNoteFiles(files);
+});
+$('transcriptNoteText').addEventListener('paste',event=>{
+  const imageFiles=[];
+  for(const item of [...(event.clipboardData.items||[])]){
+    if(item.kind==='file'){const file=item.getAsFile();if(file&&TRANSCRIPT_NOTE_IMAGE_MIMES.has(file.type))imageFiles.push(file);}
+  }
+  for(const file of [...(event.clipboardData.files||[])])if(TRANSCRIPT_NOTE_IMAGE_MIMES.has(file.type)&&!imageFiles.includes(file))imageFiles.push(file);
+  if(imageFiles.length)event.preventDefault();
+  if(imageFiles.length){saveTranscriptNoteSelection();insertTranscriptNoteFiles(imageFiles);}
+});
+function setTranscriptNoteImageLayout(figure,layout){
+  if(!figure||!['inline','square','top-bottom','behind','front'].includes(layout))return;
+  figure.dataset.noteLayout=layout;
+  let position={};try{position=JSON.parse(figure.dataset.notePosition||'{}');}catch(e){}
+  if(transcriptNoteUsesFreePosition(layout)){
+    position={mode:'free',x:Number(position.x)||0,y:Number(position.y)||0};
+    figure.style.transform=`translate(${position.x}px,${position.y}px)`;
+  }else{
+    position={mode:'flow',x:null,y:null}; figure.style.removeProperty('transform');
+  }
+  figure.dataset.notePosition=JSON.stringify(position);
+  selectTranscriptNoteImage(figure);
+  transcriptNoteImageMenuTarget=figure;
+  $('transcriptNoteImageMenu').querySelectorAll('button[data-layout]').forEach(button=>button.classList.toggle('on',button.dataset.layout===layout));
+}
+function selectTranscriptNoteImage(figure){
+  $('transcriptNoteText').querySelectorAll('.tn-image-node.tn-selected').forEach(node=>node.classList.remove('tn-selected'));
+  figure.classList.add('tn-selected');
+}
+function closeTranscriptNoteImageMenu(){
+  const menu=$('transcriptNoteImageMenu');menu.hidden=true;menu.classList.remove('show');transcriptNoteImageMenuTarget=null;
+}
+function openTranscriptNoteImageMenu(figure,event){
+  const menu=$('transcriptNoteImageMenu'); transcriptNoteImageMenuTarget=figure;
+  menu.querySelectorAll('button[data-layout]').forEach(button=>button.classList.toggle('on',button.dataset.layout===figure.dataset.noteLayout));
+  menu.hidden=false;menu.classList.add('show');
+  const bounds=menu.getBoundingClientRect();
+  menu.style.left=Math.max(8,Math.min(event.clientX,innerWidth-bounds.width-8))+'px';
+  menu.style.top=Math.max(8,Math.min(event.clientY,innerHeight-bounds.height-8))+'px';
+}
+function setTranscriptNoteImagePosition(figure,x,y){
+  const position={mode:'free',x:Math.max(0,Math.round(x)),y:Math.max(0,Math.round(y))};
+  figure.dataset.notePosition=JSON.stringify(position); figure.style.transform=`translate(${position.x}px,${position.y}px)`;
+}
+function moveTranscriptNoteFlowImage(figure,range){
+  if(!figure||!range||range.commonAncestorContainer===figure||figure.contains(range.commonAncestorContainer))return;
+  range.deleteContents(); range.insertNode(figure);
+  figure.dataset.notePosition=JSON.stringify({mode:'flow',x:null,y:null}); figure.style.removeProperty('transform');
+}
+function startTranscriptNoteMove(event,figure){
+  if(event.button!==0)return;
+  event.preventDefault(); selectTranscriptNoteImage(figure); transcriptNoteImageMenuTarget=figure;
+  let position={};try{position=JSON.parse(figure.dataset.notePosition||'{}');}catch(e){}
+  transcriptNoteImageMoveState={figure,startX:event.clientX,startY:event.clientY,baseX:Number(position.x)||0,baseY:Number(position.y)||0,
+    free:transcriptNoteUsesFreePosition(figure.dataset.noteLayout),range:null,moved:false};
+}
+function startTranscriptNoteResize(event,figure){
+  if(event.button!==0)return;
+  event.preventDefault();event.stopPropagation();selectTranscriptNoteImage(figure);
+  const image=figure.querySelector('img'), rect=image.getBoundingClientRect();
+  transcriptNoteImageResizeState={figure,image,startX:event.clientX,startWidth:rect.width};
+}
+document.addEventListener('pointermove',event=>{
+  if(transcriptNoteImageMoveState){
+    const state=transcriptNoteImageMoveState;
+    if(Math.abs(event.clientX-state.startX)+Math.abs(event.clientY-state.startY)>2)state.moved=true;
+    if(state.free)setTranscriptNoteImagePosition(state.figure,state.baseX+event.clientX-state.startX,state.baseY+event.clientY-state.startY);
+    else if(state.moved)state.range=transcriptNoteRangeAtPoint(event.clientX,event.clientY);
+    if(state.range&&!state.free)showTranscriptNoteDropIndicator(state.range);
+  }
+  if(transcriptNoteImageResizeState){
+    const state=transcriptNoteImageResizeState, width=Math.max(48,state.startWidth+event.clientX-state.startX);
+    state.image.style.width=`${Math.round(width)}px`;state.figure.dataset.noteDisplayWidth=String(Math.round(width));
+  }
+});
+document.addEventListener('pointerup',()=>{
+  const move=transcriptNoteImageMoveState;
+  if(move&&!move.free&&move.moved&&move.range){moveTranscriptNoteFlowImage(move.figure,move.range);hideTranscriptNoteDropIndicator();}
+  transcriptNoteImageMoveState=null;transcriptNoteImageResizeState=null;
+});
+$('transcriptNoteText').addEventListener('pointerdown',event=>{
+  const figure=event.target.closest('.tn-image-node'); if(!figure)return;
+  if(event.target.closest('.tn-delete-image')){event.stopPropagation();return;}
+  if(event.target.closest('.tn-resize-handle'))startTranscriptNoteResize(event,figure); else startTranscriptNoteMove(event,figure);
+});
+$('transcriptNoteText').addEventListener('click',event=>{
+  const remove=event.target.closest('.tn-delete-image'); if(!remove)return;
+  event.preventDefault(); event.stopPropagation(); remove.closest('.tn-image-node').remove(); closeTranscriptNoteImageMenu();
+});
+$('transcriptNoteText').addEventListener('contextmenu',event=>{
+  const figure=event.target.closest('.tn-image-node'); if(!figure)return;
+  event.preventDefault();event.stopPropagation();selectTranscriptNoteImage(figure);openTranscriptNoteImageMenu(figure,event);
+});
+$('transcriptNoteImageMenu').addEventListener('click',event=>{
+  const button=event.target.closest('button[data-layout]');if(!button||!transcriptNoteImageMenuTarget)return;
+  setTranscriptNoteImageLayout(transcriptNoteImageMenuTarget,button.dataset.layout);closeTranscriptNoteImageMenu();
+});
+document.addEventListener('pointerdown',event=>{
+  const menu=$('transcriptNoteImageMenu');
+  if(!menu.hidden&&!menu.contains(event.target)&&!event.target.closest('.tn-image-node'))closeTranscriptNoteImageMenu();
+});
 function parseTranscriptNoteTime(value){
   const match=String(value).trim().match(/^(\d{1,4}):(\d{2})$/);
   if(!match || Number(match[2])>59) return null;
@@ -5168,7 +5556,9 @@ function openTranscriptNote(time,noteIndex=null){
   $('transcriptNoteDuration').textContent=fmt(transcriptNoteDuration);
   $('transcriptNoteTime').value=fmt(Math.min(Number(transcriptNoteOriginal?.t??transcriptNoteTargetTime),transcriptNoteDuration));
   $('transcriptNoteTime').title='';
-  $('transcriptNoteText').value=transcriptNoteOriginal?.text||'';
+  transcriptNoteAssets=new Map();
+  const note=transcriptNoteOriginal||{};
+  renderTranscriptNoteContent(note.content||[],note.text||'');
   hideTranscriptNoteMenu();
   const layer=$('transcriptNoteLayer'),card=layer.querySelector('.tn-card');
   layer.style.removeProperty('top'); transcriptNoteBaseTop=null;
@@ -5187,6 +5577,7 @@ function openTranscriptNote(time,noteIndex=null){
 function closeTranscriptNote(){
   const layer=$('transcriptNoteLayer'),card=layer.querySelector('.tn-card');
   if(layer.hidden||card.classList.contains('tn-closing'))return;
+  hideTranscriptNoteDropIndicator(); closeTranscriptNoteImageMenu();
   card.classList.remove('tn-opening','tn-pressed');
   card.classList.add('tn-closing');
   const finish=event=>{
@@ -5196,7 +5587,7 @@ function closeTranscriptNote(){
     layer.hidden=true;
     layer.style.removeProperty('top'); transcriptNoteBaseTop=null;
     card.classList.remove('tn-closing');
-    $('transcriptNoteText').value='';
+    $('transcriptNoteText').replaceChildren(); transcriptNoteAssets=new Map(); transcriptNoteSelection=null;
     transcriptNoteEditingIndex=null; transcriptNoteOriginal=null;
     $('transcriptNoteTitle').textContent='写一张便签';
     $('transcriptNoteSave').disabled=false;
@@ -5211,8 +5602,9 @@ $('feed').addEventListener('contextmenu', e=>{
   e.preventDefault();
   closeTranscriptNote();
   transcriptNoteTargetTime=Math.max(0,Number(row.dataset.t)||0);
-  transcriptNoteTargetIndex=row.classList.contains('note')?Number(row.dataset.noteIndex):null;
-  if(row.classList.contains('note')&&!Number.isInteger(transcriptNoteTargetIndex))return;
+  const isNoteRow=row.classList.contains('note')||row.classList.contains('note-image');
+  transcriptNoteTargetIndex=isNoteRow?Number(row.dataset.noteIndex):null;
+  if(isNoteRow&&!Number.isInteger(transcriptNoteTargetIndex))return;
   $('transcriptNoteAdd').hidden=transcriptNoteTargetIndex!==null;
   $('transcriptNoteEdit').hidden=transcriptNoteTargetIndex===null;
   $('transcriptNoteDelete').hidden=transcriptNoteTargetIndex===null;
@@ -5245,11 +5637,11 @@ let transcriptNoteBaseTop=null;
 function fitTranscriptNoteLayer(){
   const layer=$('transcriptNoteLayer');
   if(layer.hidden)return;
-  const textarea=$('transcriptNoteText');
-  const fixedHeight=transcriptNoteCard.scrollHeight-textarea.offsetHeight;
+  const editor=$('transcriptNoteText');
+  const fixedHeight=transcriptNoteCard.scrollHeight-editor.offsetHeight;
   const maxTextHeight=Math.max(48,innerHeight-32-fixedHeight);
-  textarea.style.maxHeight=`${maxTextHeight}px`;
-  textarea.style.minHeight=`${Math.min(102,maxTextHeight)}px`;
+  editor.style.maxHeight=`${maxTextHeight}px`;
+  editor.style.minHeight=`${Math.min(102,maxTextHeight)}px`;
   if(innerWidth<=760){layer.style.removeProperty('top');transcriptNoteBaseTop=null;return;}
   if(transcriptNoteBaseTop===null){
     transcriptNoteBaseTop=parseFloat(getComputedStyle(layer).top);
@@ -5311,8 +5703,9 @@ $('transcriptNoteText').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.sh
 $('transcriptNoteLayer').addEventListener('keydown',e=>{if(e.key==='Escape') closeTranscriptNote();});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){hideTranscriptNoteMenu();closeTranscriptNote();}});
 $('transcriptNoteSave').onclick=async()=>{
-  const text=$('transcriptNoteText').value.trim();
-  if(!text){$('transcriptNoteText').focus();return;}
+  const serialized=serializeTranscriptNoteContent();
+  const hasImage=serialized.content.some(node=>node.type==='image');
+  if(!serialized.text&&!hasImage){$('transcriptNoteText').focus();return;}
   if(!validateTranscriptNoteTime()){$('transcriptNoteTime').focus();return;}
   const t=parseTranscriptNoteTime($('transcriptNoteTime').value);
   const sid=view && view.id;
@@ -5320,9 +5713,9 @@ $('transcriptNoteSave').onclick=async()=>{
   const editingIndex=transcriptNoteEditingIndex, original=transcriptNoteOriginal;
   const save=$('transcriptNoteSave'); save.disabled=true; save.textContent=editingIndex===null?'正在贴入…':'正在保存…';
   const result=editingIndex===null
-    ? await api('/api/timeline_note',{id:sid,t,text})
+    ? await api('/api/timeline_note',{id:sid,t,text:serialized.text,content:serialized.content,assets:serialized.assets})
     : await api('/api/timeline_note_update',{id:sid,index:editingIndex,expected_t:original.t,
-        expected_text:original.text,t,text});
+        expected_text:original.text,t,text:serialized.text,content:serialized.content,assets:serialized.assets});
   if(result.error){save.disabled=false;save.textContent=editingIndex===null?'贴进文稿':'保存修改';toast(result.error);return;}
   if(view && view.id===sid){
     view.notes=result.notes||[...(view.notes||[]),result.note];
@@ -6240,8 +6633,12 @@ function transcriptContentItems(segments,notes,outline){
     if([1,2].includes(level)) items.push({type:'heading',...heading,level});
   }
   for(const segment of segments||[]) items.push({type:'seg',...segment});
-  for(const [noteIndex,note] of (notes||[]).entries()) items.push({type:'note',noteIndex,...note});
-  const priority={heading:0,seg:1,note:2};
+  for(const [noteIndex,note] of (notes||[]).entries()){
+    if(String(note&&note.text||'').trim()) items.push({type:'note',noteIndex,...note});
+    for(const node of Array.isArray(note&&note.content)?note.content:[])
+      if(node&&node.type==='image') items.push({type:'note-image',noteIndex,...note,image:node});
+  }
+  const priority={heading:0,seg:1,note:2,'note-image':3};
   return items.sort((a,b)=>Number(a.t)-Number(b.t)||priority[a.type]-priority[b.type]);
 }
 function transcriptAnchorIndex(time,slices){
@@ -6470,7 +6867,8 @@ async function loadSession(sid, keepList){
     for(const m of merged){
       if(m.type==='heading') addTranscriptHeading(m);
       else if(m.type==='seg') addSeg(m, false);
-      else addNoteDom(m.t, m.text, null, m.noteIndex);
+      else if(m.type==='note') addNoteDom(m.t, m.text, null, m.noteIndex, m.content);
+      else addNoteImageDom(m.t, m.image, null, m.noteIndex);
     }
     $('feedwrap').scrollTop = 0;
   }

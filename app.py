@@ -27,6 +27,7 @@ import sys
 import subprocess
 import threading
 import time
+import uuid
 import wave
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -825,6 +826,15 @@ MD_RULES = ("\n输出格式：只用 Markdown，且只允许这几种语法 —�
 # ---------- 课后笔记: 模板与 note.md ----------
 # 没有"默认模板"这回事(用户定的): 每次生成都必须自己选一个, 所以这里只存清单, 不存"当前选中"。
 NOTE_FILE = "note.md"
+NOTE_IMAGE_DIR = "note-images"
+MAX_NOTE_IMAGE_BYTES = 20 * 1024 * 1024
+NOTE_IMAGE_MIMES = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+}
 # 播放偏好侧车：倍速 / 上次播放位置。单独存小文件，避免每次记进度都重写整份
 # session.json（可能几 MB）或误动 transcript.md；删项目时随文件夹一起进废纸篓。
 PREF_FILE = ".pref.json"
@@ -3675,7 +3685,16 @@ class App:
         notes = meta.get("notes") or []
         if notes:
             lines += ["", "## 时间线笔记", ""]
-            lines += [f"- [{fmt_ts(n['t'])}] {n['text']}" for n in notes]
+            for note in notes:
+                body = []
+                for node in note.get("content") or []:
+                    if node.get("type") == "text":
+                        body.append(str(node.get("text") or ""))
+                    elif node.get("type") == "image" and node.get("file"):
+                        label = str(node.get("name") or "图片").replace("]", "")
+                        body.append(f"\n![{label}]({node['file']})\n")
+                rendered = "".join(body) if body else note.get("text", "")
+                lines.append(f"- [{fmt_ts(note['t'])}] {rendered}")
         (d / "transcript.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     # ---------- 原生路径选择器 ----------
@@ -4648,7 +4667,144 @@ class App:
             self.emit(type="note", **item)
             return item
 
-    def add_transcript_note(self, sid, t, text):
+    def _note_content_text(self, content):
+        """取图文内容的纯文本投影；图片节点不进入投影。"""
+        return "".join(
+            str(node.get("text") or "")
+            for node in (content or [])
+            if isinstance(node, dict) and node.get("type") == "text"
+        ).strip()
+
+    def note_image_path(self, sid, relative_name):
+        """解析当前项目内的图片相对路径，拒绝跨目录与非图片文件。"""
+        if not sid or ".." in sid or "/" in sid or "\\" in sid:
+            raise RuntimeError("非法图片路径")
+        raw = str(relative_name or "").replace("\\", "/")
+        parts = Path(raw).parts
+        if len(parts) != 2 or parts[0] != NOTE_IMAGE_DIR:
+            raise RuntimeError("非法图片路径")
+        filename = parts[1]
+        suffix = Path(filename).suffix.lower()
+        if (not filename or filename in (".", "..") or
+                Path(filename).name != filename or suffix not in NOTE_IMAGE_MIMES):
+            raise RuntimeError("非法图片路径")
+        root = (SESSIONS_DIR / sid / NOTE_IMAGE_DIR).resolve()
+        target = (root / filename).resolve()
+        if target.parent != root or not target.is_file():
+            raise RuntimeError("图片不存在")
+        return target
+
+    def _materialize_note_content(self, d, content, assets):
+        """校验图文节点并把新图片资产复制到项目目录。"""
+        if not isinstance(content, list):
+            raise RuntimeError("笔记内容无效")
+        asset_map = {}
+        for asset in assets or []:
+            if not isinstance(asset, dict) or not asset.get("id"):
+                raise RuntimeError("图片资产无效")
+            asset_id = str(asset["id"])
+            if asset_id in asset_map:
+                raise RuntimeError("图片资产重复")
+            asset_map[asset_id] = asset
+
+        made = []
+        made_by_asset = {}
+        normalized = []
+        for node in content:
+            if not isinstance(node, dict):
+                raise RuntimeError("笔记内容无效")
+            kind = node.get("type")
+            if kind == "text":
+                normalized.append({"type": "text", "text": str(node.get("text") or "")})
+                continue
+            if kind != "image":
+                raise RuntimeError("笔记内容类型无效")
+
+            asset_id = str(node.get("asset") or "")
+            if asset_id:
+                if asset_id not in asset_map:
+                    raise RuntimeError("图片资产缺失")
+                if asset_id in made_by_asset:
+                    rel, file_size = made_by_asset[asset_id]
+                else:
+                    asset = asset_map[asset_id]
+                    mime = str(asset.get("mime") or "").lower()
+                    ext = next((key for key, value in NOTE_IMAGE_MIMES.items()
+                                if value == mime), None)
+                    if ext is None:
+                        raise RuntimeError("图片类型不支持")
+                    raw_data = str(asset.get("data") or "")
+                    if raw_data.startswith("data:") and "," in raw_data:
+                        raw_data = raw_data.split(",", 1)[1]
+                    try:
+                        raw = base64.b64decode(raw_data, validate=True)
+                    except Exception as exc:
+                        raise RuntimeError("图片数据无效") from exc
+                    if len(raw) > MAX_NOTE_IMAGE_BYTES:
+                        raise RuntimeError("图片过大")
+                    image_dir = d / NOTE_IMAGE_DIR
+                    image_dir.mkdir(parents=True, exist_ok=True)
+                    filename = uuid.uuid4().hex + ext
+                    target = image_dir / filename
+                    target.write_bytes(raw)
+                    made.append(target)
+                    rel, file_size = f"{NOTE_IMAGE_DIR}/{filename}", len(raw)
+                    made_by_asset[asset_id] = (rel, file_size)
+                mime = str(asset_map[asset_id].get("mime") or "").lower()
+            else:
+                rel = str(node.get("file") or "")
+                target = self.note_image_path(d.name, rel)
+                mime = NOTE_IMAGE_MIMES[target.suffix.lower()]
+                file_size = target.stat().st_size
+
+            layout = str(node.get("layout") or "inline")
+            if layout not in ("inline", "square", "top-bottom", "behind", "front"):
+                raise RuntimeError("图片排版方式无效")
+            position = node.get("position") if isinstance(node.get("position"), dict) else {}
+            mode = "free" if position.get("mode") == "free" else "flow"
+            x = y = None
+            if mode == "free":
+                try:
+                    x, y = max(0, float(position.get("x") or 0)), max(0, float(position.get("y") or 0))
+                except (TypeError, ValueError):
+                    raise RuntimeError("图片位置无效") from None
+            try:
+                width = max(1, int(float(node.get("width") or 1)))
+                height = max(1, int(float(node.get("height") or 1)))
+            except (TypeError, ValueError):
+                raise RuntimeError("图片尺寸无效") from None
+            try:
+                display_width = max(1, int(float(node.get("displayWidth") or width)))
+            except (TypeError, ValueError):
+                raise RuntimeError("图片尺寸无效") from None
+            name = Path(str(node.get("name") or "图片")).name[:120] or "图片"
+            normalized.append({
+                "type": "image", "file": rel, "name": name, "mime": mime,
+                "bytes": file_size, "width": width, "height": height,
+                "displayWidth": display_width, "layout": layout,
+                "position": {"mode": mode, "x": x, "y": y},
+            })
+        return normalized, made
+
+    def _cleanup_note_assets(self, d, notes):
+        """删除当前项目中没有被已保存笔记引用的图片。"""
+        image_dir = d / NOTE_IMAGE_DIR
+        if not image_dir.is_dir():
+            return
+        refs = set()
+        for note in notes or []:
+            for node in note.get("content") or []:
+                if node.get("type") != "image" or not node.get("file"):
+                    continue
+                try:
+                    refs.add(self.note_image_path(d.name, node["file"]).resolve())
+                except RuntimeError:
+                    continue
+        for target in image_dir.iterdir():
+            if target.is_file() and target.resolve() not in refs:
+                target.unlink()
+
+    def add_transcript_note(self, sid, t, text, content=None, assets=None):
         """把课后时间线笔记写入项目元数据与逐字稿。"""
         if not sid or ".." in sid or "/" in sid or "\\" in sid:
             raise RuntimeError("非法路径")
@@ -4656,11 +4812,6 @@ class App:
             raise RuntimeError("录制中不能添加课后笔记")
         if sid in self.progs:
             raise RuntimeError("该项目正在跑后台任务，等它结束再记笔记")
-        new = (text or "").strip()
-        if not new:
-            raise RuntimeError("笔记内容不能为空")
-        if len(new) > 5000:
-            raise RuntimeError("笔记太长了（上限 5000 字）")
         try:
             timestamp = float(t)
         except (TypeError, ValueError):
@@ -4675,15 +4826,43 @@ class App:
             duration = float(meta.get("duration") or 0)
             if not 0 <= timestamp <= duration:
                 raise RuntimeError("笔记时间不能超过录音时长")
+            made = []
+            if content is None:
+                new = (text or "").strip()
+                if not new:
+                    raise RuntimeError("笔记内容不能为空")
+                if len(new) > 5000:
+                    raise RuntimeError("笔记太长了（上限 5000 字）")
+                normalized = None
+            else:
+                try:
+                    normalized, made = self._materialize_note_content(d, content, assets)
+                    new = self._note_content_text(normalized)
+                    has_image = any(node.get("type") == "image" for node in normalized)
+                    if not new and not has_image:
+                        raise RuntimeError("笔记内容不能为空")
+                    if len(new) > 5000:
+                        raise RuntimeError("笔记太长了（上限 5000 字）")
+                except Exception:
+                    for target in made:
+                        try:
+                            target.unlink()
+                        except FileNotFoundError:
+                            pass
+                    raise
             item = {"t": round(timestamp, 1), "text": new}
+            if normalized is not None:
+                item["content"] = normalized
             notes = meta.setdefault("notes", [])
             notes.append(item)
             notes.sort(key=lambda note: float(note.get("t") or 0))
             sj.write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
             self._write_md(d, meta, meta.get("refinished", "") or "本地")
+            self._cleanup_note_assets(d, notes)
         return {"ok": True, "note": item, "notes": notes}
 
-    def update_transcript_note(self, sid, note_index, expected_t, expected_text, t, text):
+    def update_transcript_note(self, sid, note_index, expected_t, expected_text, t, text,
+                               content=None, assets=None):
         """编辑课后时间线笔记；用索引和原值快照阻止改错重复笔记。"""
         if not sid or ".." in sid or "/" in sid or "\\" in sid:
             raise RuntimeError("非法路径")
@@ -4691,11 +4870,6 @@ class App:
             raise RuntimeError("录制中不能修改课后笔记")
         if sid in self.progs:
             raise RuntimeError("该项目正在跑后台任务，等它结束再修改笔记")
-        new = (text or "").strip()
-        if not new:
-            raise RuntimeError("笔记内容不能为空")
-        if len(new) > 5000:
-            raise RuntimeError("笔记太长了（上限 5000 字）")
         try:
             idx = int(note_index)
             timestamp = float(t)
@@ -4722,11 +4896,38 @@ class App:
                 current_t = -1
             if current_t != expected_timestamp or current.get("text", "") != expected_text:
                 raise RuntimeError("笔记已变化，请重新打开后再试")
+            made = []
+            if content is None:
+                new = (text or "").strip()
+                if not new:
+                    raise RuntimeError("笔记内容不能为空")
+                if len(new) > 5000:
+                    raise RuntimeError("笔记太长了（上限 5000 字）")
+                normalized = None
+            else:
+                try:
+                    normalized, made = self._materialize_note_content(d, content, assets)
+                    new = self._note_content_text(normalized)
+                    has_image = any(node.get("type") == "image" for node in normalized)
+                    if not new and not has_image:
+                        raise RuntimeError("笔记内容不能为空")
+                    if len(new) > 5000:
+                        raise RuntimeError("笔记太长了（上限 5000 字）")
+                except Exception:
+                    for target in made:
+                        try:
+                            target.unlink()
+                        except FileNotFoundError:
+                            pass
+                    raise
             item = {**current, "t": round(timestamp, 1), "text": new}
+            if normalized is not None:
+                item["content"] = normalized
             notes[idx] = item
             notes.sort(key=lambda note: float(note.get("t") or 0))
             sj.write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
             self._write_md(d, meta, meta.get("refinished", "") or "本地")
+            self._cleanup_note_assets(d, notes)
         return {"ok": True, "note": item, "notes": notes}
 
     def delete_transcript_note(self, sid, note_index, expected_t, expected_text):
@@ -4762,6 +4963,7 @@ class App:
             removed = notes.pop(idx)
             sj.write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
             self._write_md(d, meta, meta.get("refinished", "") or "本地")
+            self._cleanup_note_assets(d, notes)
         return {"ok": True, "note": removed, "notes": notes}
 
     def set_spk_labels(self, sid, labels):
@@ -5322,6 +5524,23 @@ class Handler(BaseHTTPRequestHandler):
                 self.wfile.write(body)
             else:
                 self.send_error(404)
+        elif u.path.startswith("/note-image/"):
+            parts = unquote(u.path[len("/note-image/"):]).split("/", 1)
+            if len(parts) != 2:
+                self.send_error(404)
+                return
+            try:
+                image = APP.note_image_path(parts[0], f"{NOTE_IMAGE_DIR}/{parts[1]}")
+            except RuntimeError:
+                self.send_error(404)
+                return
+            body = image.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", NOTE_IMAGE_MIMES[image.suffix.lower()])
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-cache")
+            self.end_headers()
+            self.wfile.write(body)
         else:
             self.send_error(404)
 
@@ -5522,11 +5741,14 @@ class Handler(BaseHTTPRequestHandler):
             if u.path == "/api/timeline_note":
                 return self._json(APP.add_transcript_note(body.get("id", ""),
                                                           body.get("t"),
-                                                          body.get("text", "")))
+                                                          body.get("text", ""),
+                                                          body.get("content"),
+                                                          body.get("assets") or []))
             if u.path == "/api/timeline_note_update":
                 return self._json(APP.update_transcript_note(
                     body.get("id", ""), body.get("index"), body.get("expected_t"),
-                    body.get("expected_text", ""), body.get("t"), body.get("text", "")))
+                    body.get("expected_text", ""), body.get("t"), body.get("text", ""),
+                    body.get("content"), body.get("assets") or []))
             if u.path == "/api/timeline_note_delete":
                 return self._json(APP.delete_transcript_note(
                     body.get("id", ""), body.get("index"), body.get("expected_t"),
