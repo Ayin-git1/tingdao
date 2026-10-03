@@ -8,7 +8,7 @@
 
 听道适用于 macOS 与 Windows，可录制系统声音与麦克风声音。支持本地模型转写和远端api转写两套通路。支持生成笔记与文稿摘要。深度集成从听→学的知识掌握链路。听道服务于：咨询服务、会议记录、私密会话、网课学习等场景。
 
-当前版本：**v2.7.10**　·　[下载页面](https://github.com/Ayin-git1/tingdao/releases)　·　[PolyForm Noncommercial License](./LICENSE)
+当前版本：**v3.0**　·　[下载页面](https://github.com/Ayin-git1/tingdao/releases)　·　[PolyForm Noncommercial License](./LICENSE)
 
 <h2 id="download"><img src="./assets/readme/badges/download.svg" height="40" alt="下载与安装"></h2>
 
@@ -25,7 +25,7 @@
 - **录制与实时字幕**：系统声音、麦克风或混合录音；支持暂停、继续和实时字幕。
 - **本地转写**：macOS 使用 MLX Whisper，Windows 使用 faster-whisper / CTranslate2；支持录音精修和音视频导入。
 - **云端处理（可选）**：可选择上传音频转写，或只发送本地转写出的文字进行润色和摘要。上传前会再次确认。
-- **文稿整理**：逐句时间戳与回放、说话人标记、录音中与录音后的时间线笔记、热词模板、查找和快捷键。
+- **文稿整理**：逐句时间戳与回放、说话人标记、AI 摘要与章节目录、录音中与录音后的时间线笔记、热词模板、查找替换和快捷键。
 - **个性化**：浅色、深色和跟随系统外观；支持预设及自定义主题色。
 - **导出与管理**：导出 Markdown 和音频；历史项目支持搜索、排序、批量删除与在文件管理器中打开。删除内容先移入系统回收站。
 
@@ -70,7 +70,8 @@ Windows 安装版已包含 FFmpeg。安装 Python 后重开 PowerShell，并确�
 
 1. 采集系统声音和/或麦克风，生成实时字幕与本地录音母带。
 2. 按所选模式进行本地 Whisper 精修，或在用户确认后使用云端转写与后制作。
-3. 将逐句文稿、时间戳、笔记和音频保存在本地项目中，按需导出。
+3. 精修完成后可单独生成 AI 摘要与章节目录；目录会落到真实时间戳，用于文稿标题和右侧导航。
+4. 将逐句文稿、时间戳、笔记、摘要目录和音频保存在本地项目中，按需导出。
 
 内部服务仅监听 `127.0.0.1`；数据默认保存在 `~/Documents/transcripts/`（macOS）或 Windows 用户文档目录，可通过 `TINGDAO_DATA` 指定 macOS 数据目录。
 
@@ -90,7 +91,17 @@ Windows 安装版已包含 FFmpeg。安装 Python 后重开 PowerShell，并确�
 
 源码采用 [PolyForm Noncommercial License 1.0.0](./LICENSE)，仅限个人非商业使用；应表述为“源码公开”，不属于允许商业使用的 OSI 开源许可。第三方库、工具和模型各自遵循其上游许可，详见 [`THIRD-PARTY-NOTICES.md`](./THIRD-PARTY-NOTICES.md)。macOS 提供 DMG，Windows 提供 NSIS 安装包，源码 zip 作为备用方式。
 
-<h2 id="updates"><img src="./assets/readme/badges/updates.svg" height="40" alt="v2.7.10 更新"></h2>
+<h2 id="updates"><img src="./assets/readme/badges/updates.svg" height="40" alt="v3.0 更新"></h2>
+
+### v3.0
+
+- 将 AI 摘要从文稿精修中拆成独立任务：精修只负责修正文稿，旧摘要会在文稿变化后失效，用户可在项目页手动生成或重新生成摘要。
+- 新增摘要与章节目录专用模型设置：可为摘要/目录单独填写模型名、深度思考开关和补充提示词；留空时回退到文稿精修模型。
+- 摘要生成同步产出 H1/H2/H3 章节目录，并把模型时间戳重新对齐到真实文稿段；正文中插入章节标题，右侧锚点可展开目录导航。
+- 优化长文稿锚点：摘要目录存在时用章节结构驱动导航，录音中隐藏锚点避免误触，并补充滚动、层级、暗色模式和目录卡片测试。
+- 查找栏新增逐条替换：高亮每个命中项，替换当前命中后继续定位下一处，并复用现有逐句编辑接口。
+- 重做文稿精修/摘要状态卡：从悬浮胶囊改为正文顶部低对比卡片，摘要生成入口复用同一卡片，减少对阅读区的遮挡。
+- macOS 打包资源补入 `Assets.car`，确保正式包能携带图标变体资源。
 
 ### v2.7.10
 

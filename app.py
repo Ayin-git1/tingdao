@@ -656,9 +656,13 @@ def cloud_cfg():
         "model": (s.get("cloud_model") or "").strip(),
         # 课后笔记专用模型: 单独设一个, 空则回退到后处理模型(cloud_model)
         "note_model": (s.get("cloud_note_model") or s.get("cloud_model") or "").strip(),
+        # 摘要与目录共用专用模型; 留空则回退到后处理模型(cloud_model)
+        "summary_model": (s.get("cloud_summary_model") or s.get("cloud_model") or "").strip(),
         # 「深度思考」开关(默认开=提精度); 关掉才对该模型发关思考参数(且需它支持)
         "chat_think": bool(s.get("cloud_chat_think", True)),
         "note_think": bool(s.get("cloud_note_think", True)),
+        "summary_think": bool(s.get("cloud_summary_think", True)),
+        "summary_prompt": (s.get("cloud_summary_prompt") or "").strip(),
         "asr_model": (s.get("cloud_asr_model") or "").strip(),
         # 后处理提示词: 用户自定义的润色要求; 为空则用内置那段"逐字稿校对器"
         "prompt": (s.get("cloud_prompt") or "").strip(),
@@ -1497,6 +1501,130 @@ def fmt_ts(sec):
     m, s = divmod(int(sec), 60)
     h, m = divmod(m, 60)
     return f"{h:02d}:{m:02d}:{s:02d}" if h else f"{m:02d}:{s:02d}"
+
+
+def clean_uploaded_transcript(text):
+    """移除文稿包装层的标题、摘要和笔记，只保留正文上传给模型。"""
+    raw = (text or "").replace("\r\n", "\n").replace("\r", "\n")
+    if not raw.strip():
+        return ""
+    lines, saw_timestamp = [], False
+    for line in raw.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            if lines:
+                lines.append("")
+            continue
+        timestamped = re.match(
+            r"^\s*\[\d{1,2}:\d{2}(?::\d{2})?\]\s+(.*)$", stripped)
+        payload = timestamped.group(1).strip() if timestamped else stripped
+        if re.match(
+                r"^#{1,6}\s*(?:AI\s*)?(?:摘要|总结|summary|outline|时间线笔记)\b",
+                payload, re.I):
+            break
+        if not saw_timestamp:
+            if re.match(r"^#{1,6}\s+\S", payload) or \
+                    re.match(r"^-\s*开始[:：]", payload):
+                continue
+            if timestamped:
+                saw_timestamp = True
+        lines.append(line.rstrip())
+    return "\n".join(lines).strip()
+
+
+def summary_transcript(segs):
+    """给摘要模型的带时间稿；标题只能引用这些真实时间点。"""
+    lines = []
+    for seg in segs:
+        if not seg.get("text"):
+            continue
+        spk = f"{seg['spk']}｜" if seg.get("spk") else ""
+        lines.append(f"[{fmt_ts(seg.get('t', 0))}] {spk}{seg['text']}")
+    return clean_uploaded_transcript("\n".join(lines))
+
+
+def parse_summary_outline(reply, segs):
+    """拆出摘要和 H1/H2/H3 导航，并把模型时间重新落到真实文稿段。"""
+    raw = (reply or "").strip()
+    summary_match = re.search(r"<summary>\s*(.*?)\s*</summary>", raw,
+                              re.I | re.S)
+    outline_match = re.search(r"<outline>\s*(.*?)\s*</outline>", raw,
+                              re.I | re.S)
+    summary = summary_match.group(1).strip() if summary_match else raw
+    if not summary:
+        return "", []
+
+    real_by_label, real_times = {}, []
+    for seg in segs:
+        if seg.get("text"):
+            t = float(seg.get("t", 0))
+            real_by_label.setdefault(fmt_ts(t), t)
+            real_times.append(t)
+
+    outline, used, has_l1, has_l2, last_t = [], set(), False, False, -1.0
+    outline_text = outline_match.group(1) if outline_match else raw
+    # Qwen 偶尔会遵守时间戳和 <outline>，但吞掉 H1/H2/H3 标记。只在有
+    # <outline> 包装且整段确实没有任何层级标记时兼容这种返回，避免把
+    # 普通摘要里的时间引用误当成目录；缩进仍可保留模型给出的层级。
+    has_explicit_level = bool(re.search(
+        r"(?i)(?:\bH[1-4]\b|\bL[1-3]\b|#{1,4}\s+|(?:一|二|三|四|1|2|3|4)级)",
+        outline_text))
+    implicit_levels = bool(outline_match and not has_explicit_level)
+    implicit_index = 0
+    for line in outline_text.splitlines():
+        leading = len(line) - len(line.lstrip())
+        line = line.rstrip(" `")
+        # 兼容模型偶尔把目录排成两列表格: | [00:00] | 标题 |。
+        # 只去掉表格边界和分隔符，不改变时间戳本身。
+        line = re.sub(r"^\s*\|\s*|\s*\|\s*$", "", line)
+        line = re.sub(r"^\s*(?:[-*+]\s+|\d+[.)]\s+)", "", line)
+        match = re.match(
+            r"^\s*(?P<pre>#{1,4})?\s*\[(\d{1,2}:\d{2}(?::\d{2})?)\]\s+"
+            r"(?:(?:H([1234])|L([123]))\s+|"
+            r"(?:(?:第)?([一二三四1234])级)\s+|(?P<post>#{1,4})\s+)?"
+            r"(.+?)\s*$",
+            line,
+        )
+        if not match:
+            continue
+        pre_level, label, old_level, level, cn_level, post_level, title = match.groups()
+        md_level = post_level or pre_level
+        if not old_level and not level and not cn_level and not md_level and not implicit_levels:
+            continue
+        # H1/H2/H3 是当前格式；H4 保留为旧格式的小节兼容。
+        level = (int(level) if level else
+                 (2 if old_level == "4" else int(old_level)) if old_level else
+                 ("一二三四".index(cn_level) + 1 if cn_level in "一二三四" else
+                  int(cn_level)) if cn_level else
+                 len(md_level) if md_level else
+                 min(3, 1 if implicit_index == 0 else max(2, leading // 2 + 1)))
+        title = title.strip(" |")
+        title = re.sub(r"^(?:\d+[.)]|[一二三四]+[、.)])\s*", "", title)
+        t = real_by_label.get(label)
+        if t is None:
+            parts = [int(part) for part in label.split(":")]
+            requested = (parts[0] * 3600 + parts[1] * 60 + parts[2]
+                         if len(parts) == 3 else parts[0] * 60 + parts[1])
+            nearest = min(real_times, key=lambda value: abs(value - requested), default=None)
+            edge_slack = 5 if real_times and (
+                requested < real_times[0] or requested > real_times[-1]) else 0
+            if nearest is not None and abs(nearest - requested) <= max(2, edge_slack):
+                t = nearest
+        if (t is None or t in used or t < last_t or
+                (level == 2 and not has_l1) or (level == 3 and not has_l2)):
+            continue
+        title = re.sub(r"^[#*\s]+|[#*\s]+$", "", title)[:40].strip()
+        if not title:
+            continue
+        outline.append({"t": t, "level": level, "title": title})
+        implicit_index += 1
+        used.add(t)
+        last_t = t
+        if level == 1:
+            has_l1, has_l2 = True, False
+        elif level == 2:
+            has_l2 = True
+    return summary, outline
 
 
 def list_audio_devices():
@@ -2463,9 +2591,9 @@ class App:
     def _job_begin(self, sid, kind, state="run"):
         with self.lock:
             self.progs[sid] = {"kind": kind, "state": state, "stage": "", "pct": None}
-        # refining 只表示"这份稿子正在被改写, 页面要锁"。云端转写和课后笔记都不改稿子
-        # (笔记另存 note.md), 所以这两类不参与 locking, 否则生成笔记会把整个页面锁死。
-        if state == "run" and kind not in ("cloud", "note"):
+        # refining 只表示"这份稿子正在被改写, 页面要锁"。云端转写、摘要和课后笔记都不改稿子
+        # (笔记另存 note.md, 摘要只写 summary), 所以这些任务不参与 locking。
+        if state == "run" and kind not in ("cloud", "summary", "note"):
             self.refining, self.refining_kind = sid, ("refine" if kind == "refine" else "import")
         self.emit(type="refinish_start", id=sid, kind=kind, state=state)
 
@@ -3944,8 +4072,9 @@ class App:
 
     # ---------- 云端增强: 文字后处理(录音不上传) ----------
     def cloud_refine(self, sid):
-        """把本地稿的纯文本交给云端大模型: 修错字/顺标点/理分段 + 全篇摘要。
-        音频永远不出本机; 原稿备份进 segments_pre_cloud, 可随时手动还原。"""
+        """把本地稿的纯文本交给云端大模型: 修错字/顺标点/理分段。
+        音频永远不出本机; 原稿备份进 segments_pre_cloud, 可随时手动还原。
+        摘要是独立的手动任务, 不在精修完成后自动生成。"""
         if not sid or ".." in sid or "/" in sid or "\\" in sid:
             raise RuntimeError("非法路径")
         if self.state in ("recording", "paused", "stopping"):
@@ -3975,6 +4104,31 @@ class App:
             raise RuntimeError("该项目文稿太少，无需云端精修")
         self._job_begin(sid, "cloud", state="wait")
         self._enqueue(sid, "cloud", lambda: self._cloud_refine_bg(d, cfg))
+        return {"ok": True, "id": sid}
+
+    def cloud_summary(self, sid, regenerate=False):
+        """只把当前文稿交给云端生成摘要, 不改写 segments, 不锁正文。"""
+        if not sid or ".." in sid or "/" in sid or "\\" in sid:
+            raise RuntimeError("非法路径")
+        if self.state in ("recording", "paused", "stopping"):
+            raise RuntimeError("录制中不能生成摘要")
+        if sid in self.progs:
+            raise RuntimeError("该项目已在后台处理")
+        cfg = cloud_cfg()
+        if not cfg["enable"]:
+            raise RuntimeError("云端未配置：请填 API 地址与 Key（设置 → 对话模式 → 云端）")
+        d = SESSIONS_DIR / sid
+        sj = d / "session.json"
+        if not sj.is_file():
+            raise RuntimeError("项目不存在或没有可读文稿")
+        meta = json.loads(sj.read_text(encoding="utf-8"))
+        segs = [s for s in (meta.get("segments") or []) if s.get("text")]
+        if len(segs) < 3:
+            raise RuntimeError("该项目文稿太少，不必生成摘要")
+        if meta.get("summary") and not regenerate:
+            raise RuntimeError("该项目已有 AI 摘要")
+        self._job_begin(sid, "summary", state="wait")
+        self._enqueue(sid, "cloud", lambda: self._cloud_summary_bg(d, cfg))
         return {"ok": True, "id": sid}
 
     # ---------- 课后笔记 ----------
@@ -4168,8 +4322,8 @@ class App:
                     results[futs[f]] = f.result()
                     done += 1
                     # 进度只在本(任务)线程里更新: stage() 靠线程局部 sid 路由,
-                    # 放进片线程会串到别的任务上去。留 5% 给摘要阶段。
-                    self.cloud_prog(frac=done / max(1, len(chunks)) * 0.95)
+                    # 放进片线程会串到别的任务上去。摘要已拆成单独的任务。
+                    self.cloud_prog(frac=done / max(1, len(chunks)))
                     self._ck(d.name)()      # 每收一片检查一次取消
             except BaseException:
                 # 取消/出错: 未开跑的片直接撤, 在途的片不陪等(否则停止要点好几分钟)
@@ -4181,37 +4335,14 @@ class App:
             ex.shutdown(wait=True)
             # 按片号原序拼回, 并行完成顺序不能影响稿子顺序
             refined = [x for i in sorted(results) for x in results[i]]
-            self.stage("生成摘要中")
-            # 摘要(用修正后的全文, 一次调用)。「深度思考」是用户开关、默认开(提精度);
-            # 只有用户把它关了、且这个后处理模型确实支持关, 才发关思考参数省 token。
-            full = " ".join(s["text"] for s in refined)[:15000]
-            summary = ""
-            summary_err = ""
-            SUM_INSTR = ("用中文为这段逐字稿写摘要。第一行固定输出一个概括全篇的大标题，"
-                         "用 Markdown 一级标题语法（以「# 」开头），不超过 20 字，"
-                         "不加书名号、引号或句号；标题单独占一行，其后空一行再写一句话主题，"
-                         "然后列 3-6 条要点（保留说话人区分与关键结论）。只输出摘要本身。" + MD_RULES)
-            sum_msgs = [{"role": "system", "content": SUM_INSTR},
-                        {"role": "user", "content": full}]
-            think_off = cloud_think_off_for(cfg["provider"], cfg["model"],
-                                            cfg.get("chat_think", True))
-            try:
-                summary = cloud_chat(cfg, sum_msgs, temperature=0.2, think_off=think_off)
-            except Exception as e:
-                summary_err = str(e)[:180]
-                print(f"[cloud] 摘要失败(正文已完成): {e}", flush=True)
-
             if not meta.get("segments_pre_cloud"):
                 meta["segments_pre_cloud"] = orig      # 一级备份, 可还原
             meta["segments"] = self._merge_segs(refined) if not any(
                 s.get("spk") for s in refined) else refined
-            meta["summary"] = summary
-            # 摘要失败以前只进日志，界面上只表现为"摘要凭空少了"；
-            # 现在留一条回执，前端据此挂横幅并给重试入口。成功则清掉旧回执。
-            if summary_err:
-                meta["summary_error"] = summary_err
-            else:
-                meta.pop("summary_error", None)
+            # 文稿发生变化后, 旧摘要不再可信; 摘要由项目页上的独立入口重新生成。
+            meta.pop("summary", None)
+            meta.pop("outline", None)
+            meta.pop("summary_error", None)
             meta["refinished"] = f"cloud:{cfg['model']}"
             meta["cloud_used"] = True        # 整段流程(转写+润色)跑完, 此刻才打「已上云」标
             sj.write_text(json.dumps(meta, ensure_ascii=False, indent=1),
@@ -4228,6 +4359,110 @@ class App:
             self.emit(type="refinish", id=d.name, kind="cloud", ok=False,
                       err=str(e)[:160])
         # jobs/refining 清理由队列 worker 的 finally 统一兜底
+
+    def _cloud_summary_bg(self, d, cfg):
+        sj = d / "session.json"
+        outline_reply = ""
+        try:
+            meta = json.loads(sj.read_text(encoding="utf-8"))
+            segs = [s for s in (meta.get("segments") or []) if s.get("text")]
+            scfg = dict(cfg)
+            scfg["model"] = cfg.get("summary_model") or cfg.get("model")
+            prompt_extra = cfg.get("summary_prompt") or ""
+            prompt_extra = ("\n补充要求（不得违反上方格式与事实约束）：" + prompt_extra
+                            if prompt_extra else "")
+            self.stage("生成 AI 摘要中")
+            full = " ".join(clean_uploaded_transcript(
+                "\n".join(s["text"] for s in segs)).splitlines()).strip()
+            sum_instr = ("用中文为这段逐字稿写摘要。第一行固定输出一个概括全篇的大标题，"
+                         "用 Markdown 一级标题语法（以「# 」开头），不超过 20 字，"
+                         "不加书名号、引号或句号；标题单独占一行，其后空一行再写一句话主题，"
+                         "然后列 3-6 条要点（保留说话人区分与关键结论）。只输出摘要本身。"
+                         + prompt_extra + MD_RULES)
+            think_off = cloud_think_off_for(scfg["provider"], scfg["model"],
+                                            cfg.get("summary_think", True))
+            summary = (cloud_chat(scfg, [
+                {"role": "system", "content": sum_instr},
+                {"role": "user", "content": full}],
+                temperature=0.2, think_off=think_off) or "").strip()
+            if not summary:
+                raise RuntimeError("模型没返回摘要内容")
+
+            self.stage("生成章节标题中")
+            outline_instr = (
+                "你是逐字稿结构化编辑。"
+                "分析输入的完整逐字稿，只生成知识导航，不写摘要，不补充原文没有的信息。"
+                "先通读全文直到结尾，再统一确定结构，不要边读边输出。"
+                "生成步骤：先找出全部 H1 候选；再确定 H1 边界并合并同一对象的内容；"
+                "然后确定每个 H1 的 H2;对于能显著帮助定位的关键知识点,再选择性生成 H3。"
+                "层级定义："
+                "H1 是可以独立命名、具有明确边界，并且有连续实质内容展开的知识对象或核心议题。"
+                "H2 是某个 H1 下的大知识点框架树,相当于枝干"
+                "H3 是某个 H2 下具体持续讨论的知识点、方法、解释、对比或案例。相当于枝干上的分叉"
+                "同一知识对象的定义、组成、属性、原理、象征、应用、比较和案例，统一归入同一个 H1。"
+                "只有当讨论对象或核心问题真正改变，并且新对象有连续实质内容时，才建立新的 H1。"
+                "短暂提及、过渡、重复、补充和单个例子，不建立新的 H1。"
+                "不要因为出现一个新术语、新属性或新例子就新建 H1。"
+                "每个 H1 都要继续展开稿件中出现的主要 H2;不要只保留一个 H2。"
+                "H3 是可选层级，只在它能帮助用户快速定位一个独立且重要的知识点、方法、解释、对比或案例时生成。"
+                "每个 H2 下可以生成多个 H3，也可以不生成，数量由知识结构和用户定位需要决定。"
+                "如果 H2 已经能概括内容，就不要为了凑层级生成 H3;不要把每个细节都变成 H3,"
+                "不要按句子、段落或时间点机械拆分，也不要逐条复述逐字稿。"
+                "不要只生成开头部分，必须继续处理到逐字稿结尾。"
+                "禁止生成 H4。" + prompt_extra +
+                "下面的输出是听道软件唯一可解析的目录协议，不是示例，必须逐字遵守。"
+                "只允许输出以下 XML 包装和目录行，不要输出解释、摘要、前言或结语。"
+                "每一条目录行都必须严格符合 [MM:SS] H1 标题、[MM:SS] H2 标题或"
+                "[MM:SS] H3 标题；时间戳必须使用半角方括号，H1/H2/H3 层级前缀必须保留，"
+                "不得省略、改成一级/二级或数字，也不得输出没有层级前缀的时间戳行。"
+                "严格按以下协议输出，不要加代码围栏：\n"
+                "<outline>\n[00:00] H1 标题\n[00:30] H2 标题\n"
+                "[01:00] H3 标题\n</outline>\n"
+                "第一条必须是 H1，后续 H2 必须归属于前面的 H1，"
+                "H3 必须归属于前面的 H2。"
+                "每个时间戳必须逐字选自输入稿，并按时间升序排列。"
+                "标题简短、准确，不加序号、书名号、引号或句号，最长 20 字。"
+                "只输出标题结构。")
+            outline_reply = (cloud_chat(scfg, [
+                {"role": "system", "content": outline_instr},
+                {"role": "user", "content": summary_transcript(segs)}],
+                temperature=0.2, think_off=think_off) or "").strip()
+            _, outline = parse_summary_outline(outline_reply, segs)
+            if not outline:
+                timestamp_rows = len(re.findall(
+                    r"\[\d{1,2}:\d{2}(?::\d{2})?\]", outline_reply))
+                level_marks = len(re.findall(
+                    r"(?i)(?:\bH[1-4]\b|\bL[1-3]\b|#{1,4}\s+)", outline_reply))
+                wrapped = bool(re.search(r"</?outline>", outline_reply, re.I))
+                shape = (f"回复 {len(outline_reply)} 字，时间戳 {timestamp_rows} 条，"
+                         f"层级标记 {level_marks} 个，outline 包装={'有' if wrapped else '无'}")
+                print(f"[summary] 目录回复格式: {shape}", flush=True)
+                raise RuntimeError("模型没返回有效章节标题（" + shape + "）")
+
+            meta["summary"] = summary
+            meta["outline"] = outline
+            meta.pop("summary_error", None)
+            sj.write_text(json.dumps(meta, ensure_ascii=False, indent=1),
+                          encoding="utf-8")
+            self._write_md(d, meta, f"AI 摘要 {scfg['model']}")
+            self.emit(type="refinish", id=d.name, kind="summary", ok=True)
+            print(f"[summary] 完成: {d.name}（{len(summary)} 字）", flush=True)
+        except Cancelled:
+            print(f"[summary] 已停止: {d.name}", flush=True)
+            self.emit(type="refinish", id=d.name, kind="summary",
+                      ok=False, cancelled=True)
+        except Exception as e:
+            err = str(e)[:180]
+            try:
+                meta = json.loads(sj.read_text(encoding="utf-8"))
+                meta["summary_error"] = err
+                sj.write_text(json.dumps(meta, ensure_ascii=False, indent=1),
+                              encoding="utf-8")
+            except Exception:
+                pass
+            print(f"[summary] 失败: {e}", flush=True)
+            self.emit(type="refinish", id=d.name, kind="summary", ok=False,
+                      err=err)
 
     def _import_cloud(self, d, src):
         """导入文件的云端转写: 直接上传原始文件(音质全信息), 换稿带时间戳。"""
@@ -5158,6 +5393,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"ok": True, "saved": bool(now), "hint": key_hint(now)})
             if u.path == "/api/cloud_refine":
                 return self._json(APP.cloud_refine(body.get("id", "")))
+            if u.path == "/api/cloud_summary":
+                return self._json(APP.cloud_summary(
+                    body.get("id", ""), bool(body.get("regenerate"))))
             if u.path == "/api/study_note":
                 return self._json(APP.study_note(body.get("id", ""), body.get("template", "")))
             if u.path == "/api/note_template":
@@ -5219,12 +5457,17 @@ class Handler(BaseHTTPRequestHandler):
                 # 首次遇到某模型时探一次它的「深度思考」能力(会思考可关/只会思考/不思考)并
                 # 缓存进 cloud_think_cap; 已测过的模型直接复用缓存, 不重复探测(省 token)。
                 note_model = (body.get("note_model") or "").strip()
+                summary_model = (body.get("summary_model") or "").strip()
                 out["note_model"] = note_model
+                out["summary_model"] = summary_model
                 if "chat" in out:
                     out["think_chat"] = cloud_think_probe(cfg, model)
                     out["think_note"] = (
                         None if not note_model or note_model == model
                         else cloud_think_probe(cfg, note_model))
+                    out["think_summary"] = (
+                        None if not summary_model or summary_model == model
+                        else cloud_think_probe(cfg, summary_model))
                 import requests as _rq
                 try:
                     if cfg["provider"] == "dashscope":
