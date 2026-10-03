@@ -15,13 +15,13 @@ test('completed transcript rows open the nonmodal paper note composer at their t
 test('composer constrains time to the loaded recording and posts the selected timestamp', () => {
   includes(/transcriptNoteDuration\s*=\s*Math\.max\(0,Math\.floor\(Number\(view\.duration\)\|\|0\)\)/);
   includes(/Math\.min\(transcriptNoteDuration,Math\.floor\(seconds\)\)/);
-  includes(/api\('\/api\/timeline_note',\{id:sid,t,text\}\)/);
+  includes(/api\('\/api\/timeline_note',\{id:sid,t,text:serialized\.text,content:serialized\.content,assets:serialized\.assets\}\)/);
   includes(/view\.notes=result\.notes\|\|\[\.\.\.\(view\.notes\|\|\[\]\),result\.note\];[\s\S]*?renderTimelineNotes\(\)/);
 });
 
 test('paper note and context menu have explicit dark appearance colors', () => {
   includes(/html\[data-appearance="dark"\] \.tn-card\{[^}]*background:#363225/);
-  includes(/html\[data-appearance="dark"\] \.tn-text\{[^}]*color:#f0e3bd/);
+  includes(/html\[data-appearance="dark"\] \.tn-editor\{[^}]*color:#f0e3bd/);
   includes(/html\[data-appearance="dark"\] \.tn-menu\{[^}]*background:rgba\(42,43,47/);
 });
 

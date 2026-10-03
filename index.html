@@ -1848,11 +1848,20 @@
   .tn-step{width:27px;height:27px;border:1px solid rgba(163,136,75,.3);border-radius:50%;
            background:rgba(255,253,240,.55);color:#806e4a;cursor:pointer;}
   .tn-step:hover{background:#fae8a2;}
-  .tn-text{width:100%;min-height:102px;max-height:calc(100vh - 32px);padding:7px 3px;resize:vertical;border:0;
-           border-top:1px solid rgba(163,136,75,.32);border-radius:0;outline:0;
-           background:transparent;color:#534a36;font:13px/1.8 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;}
-  .tn-text:focus{box-shadow:inset 2px 0 #b98a51;}
-  .tn-text::placeholder{color:#aa9d77;}
+  .tn-editor-tools{display:flex;justify-content:flex-end;margin:-2px 0 4px;}
+  .tn-image-button{padding:4px 8px;border:1px solid rgba(137,115,70,.24);border-radius:3px;
+                   background:rgba(255,253,240,.34);color:#786b4e;font-size:10px;cursor:pointer;}
+  .tn-image-button:hover{background:rgba(255,253,240,.62);}
+  .tn-editor{width:100%;min-height:102px;max-height:calc(100vh - 32px);overflow-y:auto;padding:7px 3px;
+             border-top:1px solid rgba(163,136,75,.32);border-radius:0;outline:0;
+             background:transparent;color:#534a36;font:13px/1.8 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;
+             white-space:pre-wrap;word-break:break-word;}
+  .tn-editor:focus{box-shadow:inset 2px 0 #b98a51;}
+  .tn-editor:empty::before{content:attr(data-placeholder);color:#aa9d77;pointer-events:none;}
+  .tn-image-node{display:block;width:fit-content;max-width:100%;margin:8px 0;padding:5px;
+                 border:1px solid rgba(163,136,75,.26);border-radius:5px;background:rgba(255,253,240,.3);}
+  .tn-image-node img{display:block;max-width:100%;height:auto;border-radius:3px;}
+  .tn-image-node:focus{outline:2px solid rgba(185,138,81,.55);outline-offset:2px;}
   .tn-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:13px;}
   .tn-hint{color:#998c6a;font-size:9px;}
   .tn-actions{display:flex;gap:7px;}
@@ -2088,9 +2097,11 @@
   html[data-appearance="dark"] .tn-time input:focus-visible{box-shadow:0 2px 0 #dec27c;}
   html[data-appearance="dark"] .tn-step{border-color:rgba(215,192,134,.28);background:rgba(255,255,255,.06);color:#e1cf9e;}
   html[data-appearance="dark"] .tn-step:hover{background:rgba(219,190,119,.18);}
-  html[data-appearance="dark"] .tn-text{border-color:rgba(215,192,134,.3);color:#f0e3bd;}
-  html[data-appearance="dark"] .tn-text::placeholder{color:#b4a779;}
-  html[data-appearance="dark"] .tn-text:focus{box-shadow:inset 2px 0 #dec27c;}
+  html[data-appearance="dark"] .tn-editor{border-color:rgba(215,192,134,.3);color:#f0e3bd;}
+  html[data-appearance="dark"] .tn-editor:empty::before{color:#b4a779;}
+  html[data-appearance="dark"] .tn-editor:focus{box-shadow:inset 2px 0 #dec27c;}
+  html[data-appearance="dark"] .tn-image-button,
+  html[data-appearance="dark"] .tn-image-node{border-color:rgba(215,192,134,.32);background:rgba(255,255,255,.06);color:#e0d2aa;}
   html[data-appearance="dark"] .tn-actions button{border-color:rgba(215,192,134,.32);background:rgba(255,255,255,.06);color:#e0d2aa;}
   html[data-appearance="dark"] .tn-actions .tn-save{border-color:#766747;background:#766747;color:#f4e8c5;}
   html[data-appearance="dark"] .tn-actions .tn-save:hover{background:#887655;}
@@ -2822,7 +2833,12 @@
       <div class="tn-stepper"><button class="tn-step" id="transcriptNoteMinus" aria-label="减少 5 秒">−</button><button class="tn-step" id="transcriptNotePlus" aria-label="增加 5 秒">+</button></div>
     </div>
     <label class="tn-label" for="transcriptNoteText">这时想到的事</label>
-    <textarea class="tn-text" id="transcriptNoteText" maxlength="5000" placeholder="写下此刻想到的内容…"></textarea>
+    <div class="tn-editor" id="transcriptNoteText" contenteditable="true" role="textbox" aria-multiline="true"
+         data-placeholder="写下此刻想到的内容…" spellcheck="true"></div>
+    <div class="tn-editor-tools">
+      <button class="tn-image-button" id="transcriptNoteImageButton" type="button">插入图片</button>
+      <input id="transcriptNoteImageInput" type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden>
+    </div>
     <footer class="tn-foot"><span class="tn-hint">Enter 保存 · Shift + Enter 换行</span><span class="tn-actions"><button id="transcriptNoteCancel">收起</button><button class="tn-save" id="transcriptNoteSave">贴进文稿</button></span></footer>
   </section>
   <div class="tn-tape" aria-hidden="true"></div>
@@ -5032,9 +5048,138 @@ let transcriptNoteTargetIndex = null;
 let transcriptNoteEditingIndex = null;
 let transcriptNoteOriginal = null;
 let transcriptNoteCloseEnd = null;
+let transcriptNoteAssets = new Map();
+let transcriptNoteSelection = null;
+const TRANSCRIPT_NOTE_IMAGE_MIMES = new Set(['image/png','image/jpeg','image/gif','image/webp']);
+const TRANSCRIPT_NOTE_MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 function hideTranscriptNoteMenu(){
   const menu=$('transcriptNoteMenu'); menu.hidden=true; menu.classList.remove('show');
 }
+function transcriptNoteAssetId(){
+  if(window.crypto && typeof window.crypto.randomUUID==='function')return window.crypto.randomUUID();
+  return `note-image-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+function saveTranscriptNoteSelection(){
+  const editor=$('transcriptNoteText'), selection=window.getSelection();
+  if(!selection||!selection.rangeCount||!editor.contains(selection.anchorNode))return;
+  transcriptNoteSelection=selection.getRangeAt(0).cloneRange();
+}
+function restoreTranscriptNoteSelection(){
+  const editor=$('transcriptNoteText'), selection=window.getSelection();
+  editor.focus();
+  if(transcriptNoteSelection&&editor.contains(transcriptNoteSelection.startContainer)){
+    selection.removeAllRanges(); selection.addRange(transcriptNoteSelection); return transcriptNoteSelection;
+  }
+  const range=document.createRange(); range.selectNodeContents(editor); range.collapse(false);
+  selection.removeAllRanges(); selection.addRange(range); transcriptNoteSelection=range.cloneRange(); return range;
+}
+function transcriptNoteImageNode(node){
+  const figure=document.createElement('figure');
+  figure.className='tn-image-node'; figure.contentEditable='false'; figure.tabIndex=0;
+  figure.dataset.noteAsset=String(node.asset||'');
+  figure.dataset.noteFile=String(node.file||'');
+  figure.dataset.noteName=String(node.name||'图片');
+  figure.dataset.noteMime=String(node.mime||'image/png');
+  figure.dataset.noteWidth=String(node.width||1);
+  figure.dataset.noteHeight=String(node.height||1);
+  figure.dataset.noteDisplayWidth=String(node.displayWidth||node.width||1);
+  figure.dataset.noteLayout=String(node.layout||'inline');
+  figure.dataset.notePosition=JSON.stringify(node.position||{mode:'flow',x:null,y:null});
+  const image=document.createElement('img');
+  image.alt=figure.dataset.noteName;
+  const pending=figure.dataset.noteAsset&&transcriptNoteAssets.get(figure.dataset.noteAsset);
+  if(pending)image.src=`data:${pending.mime};base64,${pending.data}`;
+  else if(figure.dataset.noteFile&&view&&view.id){
+    const filename=figure.dataset.noteFile.split('/').pop();
+    image.src=`/note-image/${encodeURIComponent(view.id)}/${encodeURIComponent(filename)}`;
+  }
+  const displayWidth=Number(figure.dataset.noteDisplayWidth);
+  if(Number.isFinite(displayWidth)&&displayWidth>0)image.style.width=`${displayWidth}px`;
+  figure.appendChild(image);
+  return figure;
+}
+function renderTranscriptNoteContent(content,legacyText){
+  const editor=$('transcriptNoteText'); editor.replaceChildren(); transcriptNoteSelection=null;
+  const nodes=Array.isArray(content)&&content.length?content:[{type:'text',text:legacyText||''}];
+  nodes.forEach(node=>{
+    if(!node||typeof node!=='object')return;
+    if(node.type==='text'&&node.text)editor.appendChild(document.createTextNode(String(node.text)));
+    if(node.type==='image')editor.appendChild(transcriptNoteImageNode(node));
+  });
+}
+function transcriptNoteImageRecord(figure){
+  let position={mode:'flow',x:null,y:null};
+  try{position=JSON.parse(figure.dataset.notePosition||'{}');}catch(e){}
+  const node={type:'image',name:figure.dataset.noteName||'图片',mime:figure.dataset.noteMime||'image/png',
+    width:Number(figure.dataset.noteWidth)||1,height:Number(figure.dataset.noteHeight)||1,
+    displayWidth:Number(figure.dataset.noteDisplayWidth)||1,layout:figure.dataset.noteLayout||'inline',position};
+  if(figure.dataset.noteAsset)node.asset=figure.dataset.noteAsset;
+  if(figure.dataset.noteFile)node.file=figure.dataset.noteFile;
+  return node;
+}
+function serializeTranscriptNoteContent(){
+  const content=[],assets=[];
+  const pushText=text=>{
+    if(!text)return;
+    const last=content[content.length-1];
+    if(last&&last.type==='text')last.text+=text; else content.push({type:'text',text});
+  };
+  const walk=node=>{
+    if(node.nodeType===Node.TEXT_NODE){pushText(node.nodeValue||'');return;}
+    if(node.nodeType!==Node.ELEMENT_NODE)return;
+    if(node.matches('.tn-image-node')){
+      const image=transcriptNoteImageRecord(node); content.push(image);
+      if(image.asset&&transcriptNoteAssets.has(image.asset))assets.push(transcriptNoteAssets.get(image.asset));
+      return;
+    }
+    if(node.tagName==='BR'){pushText('\n');return;}
+    const block=/^(DIV|P|LI)$/.test(node.tagName);
+    if(block&&content.length)pushText('\n');
+    [...node.childNodes].forEach(walk);
+    if(block)pushText('\n');
+  };
+  [...$('transcriptNoteText').childNodes].forEach(walk);
+  return {content,assets,text:content.filter(node=>node.type==='text').map(node=>node.text).join('').trim()};
+}
+function transcriptNoteReadFile(file){
+  return new Promise((resolve,reject)=>{
+    if(!TRANSCRIPT_NOTE_IMAGE_MIMES.has(file.type))return reject(new Error('仅支持 PNG、JPG、GIF、WebP 图片'));
+    if(file.size>TRANSCRIPT_NOTE_MAX_IMAGE_BYTES)return reject(new Error('图片不能超过 20 MB'));
+    const reader=new FileReader();
+    reader.onerror=()=>reject(new Error('读取图片失败'));
+    reader.onload=()=>{
+      const dataUrl=String(reader.result||''), data=dataUrl.split(',',2)[1]||'';
+      const image=new Image();
+      image.onload=()=>resolve({id:transcriptNoteAssetId(),name:file.name,mime:file.type,data,
+        width:image.naturalWidth||1,height:image.naturalHeight||1});
+      image.onerror=()=>reject(new Error(`无法读取图片：${file.name}`)); image.src=dataUrl;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+function insertTranscriptNoteImage(node){
+  const range=restoreTranscriptNoteSelection();
+  range.deleteContents();
+  const figure=transcriptNoteImageNode({...node,displayWidth:Math.min(node.width,260),position:{mode:'flow',x:null,y:null}});
+  range.insertNode(figure); range.setStartAfter(figure); range.collapse(true);
+  const selection=window.getSelection(); selection.removeAllRanges(); selection.addRange(range); saveTranscriptNoteSelection();
+}
+async function insertTranscriptNoteFiles(files){
+  const selected=[...files||[]]; if(!selected.length)return;
+  try{
+    const records=await Promise.all(selected.map(transcriptNoteReadFile));
+    records.forEach(record=>{
+      transcriptNoteAssets.set(record.id,record);
+      insertTranscriptNoteImage({...record,asset:record.id});
+    });
+    $('transcriptNoteImageInput').value='';
+    $('transcriptNoteText').focus();
+  }catch(error){toast(error.message||'图片插入失败');}
+}
+$('transcriptNoteText').addEventListener('mouseup',saveTranscriptNoteSelection);
+$('transcriptNoteText').addEventListener('keyup',saveTranscriptNoteSelection);
+$('transcriptNoteImageButton').onclick=()=>{saveTranscriptNoteSelection();$('transcriptNoteImageInput').click();};
+$('transcriptNoteImageInput').onchange=e=>insertTranscriptNoteFiles(e.target.files);
 function parseTranscriptNoteTime(value){
   const match=String(value).trim().match(/^(\d{1,4}):(\d{2})$/);
   if(!match || Number(match[2])>59) return null;
@@ -5072,7 +5217,9 @@ function openTranscriptNote(time,noteIndex=null){
   $('transcriptNoteDuration').textContent=fmt(transcriptNoteDuration);
   $('transcriptNoteTime').value=fmt(Math.min(Number(transcriptNoteOriginal?.t??transcriptNoteTargetTime),transcriptNoteDuration));
   $('transcriptNoteTime').title='';
-  $('transcriptNoteText').value=transcriptNoteOriginal?.text||'';
+  transcriptNoteAssets=new Map();
+  const note=transcriptNoteOriginal||{};
+  renderTranscriptNoteContent(note.content||[],note.text||'');
   hideTranscriptNoteMenu();
   const layer=$('transcriptNoteLayer'),card=layer.querySelector('.tn-card');
   layer.style.removeProperty('top'); transcriptNoteBaseTop=null;
@@ -5100,7 +5247,7 @@ function closeTranscriptNote(){
     layer.hidden=true;
     layer.style.removeProperty('top'); transcriptNoteBaseTop=null;
     card.classList.remove('tn-closing');
-    $('transcriptNoteText').value='';
+    $('transcriptNoteText').replaceChildren(); transcriptNoteAssets=new Map(); transcriptNoteSelection=null;
     transcriptNoteEditingIndex=null; transcriptNoteOriginal=null;
     $('transcriptNoteTitle').textContent='写一张便签';
     $('transcriptNoteSave').disabled=false;
@@ -5149,11 +5296,11 @@ let transcriptNoteBaseTop=null;
 function fitTranscriptNoteLayer(){
   const layer=$('transcriptNoteLayer');
   if(layer.hidden)return;
-  const textarea=$('transcriptNoteText');
-  const fixedHeight=transcriptNoteCard.scrollHeight-textarea.offsetHeight;
+  const editor=$('transcriptNoteText');
+  const fixedHeight=transcriptNoteCard.scrollHeight-editor.offsetHeight;
   const maxTextHeight=Math.max(48,innerHeight-32-fixedHeight);
-  textarea.style.maxHeight=`${maxTextHeight}px`;
-  textarea.style.minHeight=`${Math.min(102,maxTextHeight)}px`;
+  editor.style.maxHeight=`${maxTextHeight}px`;
+  editor.style.minHeight=`${Math.min(102,maxTextHeight)}px`;
   if(innerWidth<=760){layer.style.removeProperty('top');transcriptNoteBaseTop=null;return;}
   if(transcriptNoteBaseTop===null){
     transcriptNoteBaseTop=parseFloat(getComputedStyle(layer).top);
@@ -5215,8 +5362,9 @@ $('transcriptNoteText').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.sh
 $('transcriptNoteLayer').addEventListener('keydown',e=>{if(e.key==='Escape') closeTranscriptNote();});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){hideTranscriptNoteMenu();closeTranscriptNote();}});
 $('transcriptNoteSave').onclick=async()=>{
-  const text=$('transcriptNoteText').value.trim();
-  if(!text){$('transcriptNoteText').focus();return;}
+  const serialized=serializeTranscriptNoteContent();
+  const hasImage=serialized.content.some(node=>node.type==='image');
+  if(!serialized.text&&!hasImage){$('transcriptNoteText').focus();return;}
   if(!validateTranscriptNoteTime()){$('transcriptNoteTime').focus();return;}
   const t=parseTranscriptNoteTime($('transcriptNoteTime').value);
   const sid=view && view.id;
@@ -5224,9 +5372,9 @@ $('transcriptNoteSave').onclick=async()=>{
   const editingIndex=transcriptNoteEditingIndex, original=transcriptNoteOriginal;
   const save=$('transcriptNoteSave'); save.disabled=true; save.textContent=editingIndex===null?'正在贴入…':'正在保存…';
   const result=editingIndex===null
-    ? await api('/api/timeline_note',{id:sid,t,text})
+    ? await api('/api/timeline_note',{id:sid,t,text:serialized.text,content:serialized.content,assets:serialized.assets})
     : await api('/api/timeline_note_update',{id:sid,index:editingIndex,expected_t:original.t,
-        expected_text:original.text,t,text});
+        expected_text:original.text,t,text:serialized.text,content:serialized.content,assets:serialized.assets});
   if(result.error){save.disabled=false;save.textContent=editingIndex===null?'贴进文稿':'保存修改';toast(result.error);return;}
   if(view && view.id===sid){
     view.notes=result.notes||[...(view.notes||[]),result.note];
