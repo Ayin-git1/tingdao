@@ -22,7 +22,7 @@ test('composer constrains time to the loaded recording and posts the selected ti
 test('paper note and context menu have explicit dark appearance colors', () => {
   includes(/html\[data-appearance="dark"\] \.tn-card\{[^}]*background:#363225/);
   includes(/html\[data-appearance="dark"\] \.tn-editor\{[^}]*color:#f0e3bd/);
-  includes(/html\[data-appearance="dark"\] \.tn-menu\{[^}]*background:rgba\(42,43,47/);
+  includes(/html\[data-appearance="dark"\] \.tn-menu\{[^}]*background:var\(--material-rest-background\)/);
 });
 
 test('note Enter saves, Shift+Enter stays available for a newline, and hint explains both', () => {
@@ -49,8 +49,8 @@ test('right-clicking a note offers edit and delete and edit reuses the paper com
 });
 
 test('note mutations rerender note rows and outside pointer closes both surfaces', () => {
-  includes(/function renderTimelineNotes\(\)[\s\S]*?querySelectorAll\('\.seg\.note,\.transcript-note-card'\)/);
-  includes(/function renderTimelineNotes\(\)[\s\S]*?createTranscriptNoteCard\(/);
+  includes(/function renderTimelineNotes\(\)[\s\S]*?querySelectorAll\('\.seg\.note,\.transcript-note-card,\.transcript-note-image,\.transcript-image-divider'\)/);
+  includes(/function renderTimelineNotes\(\)[\s\S]*?createTranscriptNoteImage\(/);
   assert.doesNotMatch(html, /renderTranscriptCanvasImages\(\)/);
   includes(/document\.addEventListener\('pointerdown',[\s\S]*?closeTranscriptNote\(\)[\s\S]*?hideTranscriptNoteMenu\(\)/);
 });

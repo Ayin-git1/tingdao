@@ -3344,8 +3344,12 @@ dependencies = [
 
 [[package]]
 name = "tingdao-shell"
-version = "3.0.0"
+version = "3.1.0"
 dependencies = [
+ "block2",
+ "objc2",
+ "objc2-foundation",
+ "objc2-web-kit",
  "serde_json",
  "tauri",
  "tauri-build",

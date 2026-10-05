@@ -8,7 +8,7 @@
 
 听道适用于 macOS 与 Windows，可录制系统声音与麦克风声音。支持本地模型转写和远端api转写两套通路。支持生成笔记与文稿摘要。深度集成从听→学的知识掌握链路。听道服务于：咨询服务、会议记录、私密会话、网课学习等场景。
 
-当前版本：**v3.0.0**　·　[下载页面](https://github.com/Ayin-git1/tingdao/releases)　·　[PolyForm Noncommercial License](./LICENSE)
+当前版本：**v3.1.0**　·　[下载页面](https://github.com/Ayin-git1/tingdao/releases)　·　[PolyForm Noncommercial License](./LICENSE)
 
 <h2 id="download"><img src="./assets/readme/badges/download.svg" height="40" alt="下载与安装"></h2>
 
@@ -91,7 +91,17 @@ Windows 安装版已包含 FFmpeg。安装 Python 后重开 PowerShell，并确�
 
 源码采用 [PolyForm Noncommercial License 1.0.0](./LICENSE)，仅限个人非商业使用；应表述为“源码公开”，不属于允许商业使用的 OSI 开源许可。第三方库、工具和模型各自遵循其上游许可，详见 [`THIRD-PARTY-NOTICES.md`](./THIRD-PARTY-NOTICES.md)。macOS 提供 DMG，Windows 提供 NSIS 安装包，源码 zip 作为备用方式。
 
-<h2 id="updates"><img src="./assets/readme/badges/updates.svg" height="40" alt="v3.0.0 更新"></h2>
+<h2 id="updates"><img src="./assets/readme/badges/updates.svg" height="40" alt="v3.1.0 更新"></h2>
+
+### v3.1.0
+
+- 新增独立图片笔记：支持拖入、粘贴与录音中添加图片，文稿图片以双列布局展示，并可查看全部笔记、原位编辑文字笔记。
+- 更新顶部导航与左侧项目栏：加入最近项目、分组与收藏切换，完善拖动分组时的自动滚动及项目状态展示。
+- 完善归档流程与批量选择：项目可先归档，再从归档页选择删除。
+- 新增缓存管理：处理临时文件统一存入缓存目录，可查看占用和手动清理，并在到期后的启动时按月清理。
+- 新增回放临时 2 倍速加速，优化回放进度与继续播放提示。
+- 更新浅色、深色界面的玻璃材质、圆角与浮层阴影，优化录音控制区及弹出面板的滚动体验。
+- 整理应用菜单入口，优化 macOS 窗口与 WebView 缓存管理；同步 3.1.0 版本信息，并重绘 macOS 安装包背景。
 
 ### v3.0.0
 

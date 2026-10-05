@@ -24,7 +24,7 @@ test('refine status uses a quiet top card with fixed copy and three loading dots
 test('refine card adapts its surface to both appearances and respects reduced motion', () => {
   assert.match(html, /--refine-card:/);
   assert.match(html, /html\[data-appearance="dark"\]\s*\{[\s\S]*?--refine-card:/);
-  assert.match(html, /\.refine-card\{[^}]*border:0[^}]*border-radius:13px[^}]*box-shadow:none/);
+  assert.match(html, /\.refine-card\{[^}]*border:0[^}]*border-radius:var\(--radius-3\)[^}]*box-shadow:none/);
   assert.match(html, /\.refine-card::before[\s\S]*?\.refine-card::after/);
   assert.match(html, /@media\s*\(prefers-reduced-motion:\s*reduce\)[\s\S]*?\.refine-card\.is-busy::before[\s\S]*?animation:none/);
 });

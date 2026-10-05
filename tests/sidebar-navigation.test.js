@@ -33,11 +33,12 @@ test('sectionItems keeps archived projects out of documents and favorites', () =
   assert.deepEqual(sectionItems(items, 'archive').map(item => item.id), ['archived']);
 });
 
-test('rail and collection panel have independent navigation targets', () => {
+test('the app menu keeps archive navigation while favorites stay in sidebar tabs', () => {
   assert.match(html, /class="app-rail"/);
-  assert.match(html, /id="navDocuments"/);
-  assert.match(html, /id="navFavorites"/);
-  assert.match(html, /id="navArchive"/);
+  assert.doesNotMatch(html, /id="navDocuments"/);
+  assert.match(html, /id="appMenu"[\s\S]*?id="navArchive"/);
+  assert.doesNotMatch(html, /id="navFavorites"/);
+  assert.match(html, /id="sidebarTabFavorites"/);
   assert.match(html, /id="collectionPanel"/);
 });
 
@@ -55,7 +56,8 @@ test('goToDocumentsHome resets section and exits an open project', () => {
 });
 
 test('ordinary project menu archives instead of exposing real deletion', () => {
-  const menu = html.slice(html.indexOf('<div class="hmenu"'), html.indexOf('</div>', html.indexOf('<div class="hmenu"')) + 6);
+  const menuStart = html.indexOf('<div class="hmenu" id="hmenu"');
+  const menu = html.slice(menuStart, html.indexOf('</div>', menuStart) + 6);
   assert.match(menu, /data-act="favorite"/);
   assert.match(menu, /data-act="archive"/);
   assert.doesNotMatch(menu, /data-act="del"/);
@@ -82,20 +84,21 @@ test('setSessionFlags posts state changes and refreshes the collection', async (
   assert.equal(global.refreshed, true);
 });
 
-test('the drawer toolbar is an inset glass pill and the rail lives in the top chrome', () => {
+test('the drawer toolbar is transparent and the rail lives in the top chrome', () => {
   const topbar = html.slice(html.indexOf('<div class="topbar">'), html.indexOf('</div>', html.indexOf('<div class="topbar">')) + 6);
-  assert.match(topbar, /id="navFavorites"[\s\S]*?id="navArchive"[\s\S]*?id="navDocuments"[\s\S]*?id="btnHome"[\s\S]*?id="btnNoteTop"/);
+  assert.match(topbar, /id="btnAppMenu"[\s\S]*?id="btnHome"[\s\S]*?id="btnNoteTop"/);
+  assert.doesNotMatch(topbar, /id="navArchive"|id="navDocuments"|id="btnSet"/);
+  assert.doesNotMatch(html, /class="sbsearch"/);
   assert.match(html, /--rail-width:0px/);
   assert.doesNotMatch(html, /\.app-rail\{[^}]*border-right:/);
   const sidefoot = html.match(/\.sidefoot\{[^}]+\}/)?.[0] || '';
   assert.match(sidefoot, /left:10px/);
   assert.match(sidefoot, /right:10px/);
-  assert.match(sidefoot, /border-radius:999px/);
-  assert.match(sidefoot, /backdrop-filter:blur\(/);
+  assert.match(sidefoot, /background:transparent/);
+  assert.match(sidefoot, /backdrop-filter:none/);
+  assert.match(sidefoot, /-webkit-backdrop-filter:none/);
+  assert.match(sidefoot, /box-shadow:none/);
   assert.match(html, /\.sidehide \.sidebar\{margin-left:-291px;\}/);
-  assert.match(html, /\.app-rail \.rail-indicator\{/);
-  assert.match(html, /\.app-rail \.rail-btn\.active\{/);
-  assert.doesNotMatch(html, /html\[data-appearance="dark"\] \.app-rail \.rail-btn\.active\{/);
   assert.match(html, /id="btnSort"/);
   assert.match(html, /id="btnImport"/);
   assert.match(html, /id="sfMode"/);

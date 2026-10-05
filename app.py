@@ -10,6 +10,8 @@
 - 历史会话列表, 逐字稿搜索, 时间线笔记, 一键复制
 """
 import base64
+import calendar
+from datetime import datetime
 from collections import deque
 import json
 import getpass
@@ -36,7 +38,7 @@ from urllib.parse import urlparse, parse_qs, unquote
 import numpy as np
 import sherpa_onnx
 
-APP_VERSION = "3.0.0"
+APP_VERSION = "3.1.0"
 
 # Finder/Dock 启动的 GUI 进程 PATH 不含 homebrew, 主动补齐(ffmpeg/SwitchAudioSource 所在)
 for _p in ("/opt/homebrew/bin", "/usr/local/bin"):
@@ -94,6 +96,100 @@ DATA_DIR = (Path(os.environ["TINGDAO_DATA"]).expanduser()
             if os.environ.get("TINGDAO_DATA") else _documents_dir() / "transcripts")
 CACHE_DIR = DATA_DIR / ".cache"
 LOG_FILE = DATA_DIR / ".tingdao.log"
+
+
+def cache_temp_path(prefix, suffix):
+    """所有可丢弃的处理文件使用唯一名字，避免并行云端任务互相覆盖。"""
+    if CACHE_DIR.is_symlink():
+        raise RuntimeError("缓存目录不能是符号链接")
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    return CACHE_DIR / f"{prefix}-{uuid.uuid4().hex}{suffix}"
+
+
+def cache_info():
+    if CACHE_DIR.is_symlink():
+        raise RuntimeError("缓存目录不能是符号链接")
+    total = 0
+    errors = []
+    def onerror(error):
+        errors.append(str(error))
+    for root, dirs, files in os.walk(CACHE_DIR, followlinks=False, onerror=onerror):
+        for name in files:
+            path = Path(root) / name
+            try:
+                if not path.is_symlink() and path.is_file():
+                    total += path.stat().st_size
+            except OSError as error:
+                errors.append(str(error))
+    return {"bytes": total, "path": str(CACHE_DIR),
+            "last_cleared": load_setting("cache_last_cleared"), "errors": errors}
+
+
+def clear_cache(now=None):
+    if CACHE_DIR.is_symlink():
+        raise RuntimeError("缓存目录不能是符号链接")
+    errors = []
+    def onerror(error):
+        errors.append(str(error))
+    for root, dirs, files in os.walk(CACHE_DIR, topdown=False, followlinks=False, onerror=onerror):
+        for name in files + dirs:
+            path = Path(root) / name
+            try:
+                if path.is_symlink() or not path.is_dir():
+                    path.unlink()
+                else:
+                    path.rmdir()
+            except OSError as error:
+                errors.append(str(error))
+    if not errors:
+        save_setting("cache_last_cleared", (now or datetime.now()).isoformat(timespec="seconds"))
+    result = cache_info()
+    result["errors"] = errors + result["errors"]
+    result["ok"] = not result["errors"]
+    return result
+
+
+def migrate_legacy_cache():
+    """只迁移旧版确切的处理文件名，用户项目和图片不属于缓存。"""
+    if CACHE_DIR.is_symlink():
+        raise RuntimeError("缓存目录不能是符号链接")
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    if load_setting("cache_layout_migrated"):
+        return
+    names = {".pretreat.wav", ".whout.json"}
+    for fmt in ("m4a", "mp3", "wav", "ogg", "flac"):
+        names.update({f".up_{fmt}.{fmt}", f".ds_{fmt}.{fmt}"})
+    for project in SESSIONS_DIR.iterdir():
+        if project.is_symlink() or not project.is_dir() or project.name.startswith('.'):
+            continue
+        for path in project.iterdir():
+            chunk = path.name.removeprefix('.cloud_part').removesuffix('.m4a')
+            if (path.name in names or (path.name.startswith('.cloud_part')
+                    and path.name.endswith('.m4a') and chunk.isdigit())) and path.is_file() and not path.is_symlink():
+                path.replace(cache_temp_path('legacy', path.suffix))
+    old_mic = DATA_DIR / '.micapp'
+    if old_mic.is_dir() and not old_mic.is_symlink():
+        for path in old_mic.iterdir():
+            if not path.is_symlink() and path.name.split('.')[0] in ('pcm', 'pid', 'log', 'rate'):
+                path.replace(cache_temp_path('legacy-mic', '.tmp'))
+        if not any(old_mic.iterdir()):
+            old_mic.rmdir()
+    save_setting("cache_layout_migrated", True)
+
+
+def check_cache_on_startup(now=None):
+    """只由 main 在服务启动前调用一次；按日历月计算，到期后下次启动清理。"""
+    now = now or datetime.now()
+    try:
+        last = datetime.fromisoformat(load_setting("cache_last_cleared") or '')
+        year, month = (last.year + 1, 1) if last.month == 12 else (last.year, last.month + 1)
+        due = last.replace(year=year, month=month,
+                           day=min(last.day, calendar.monthrange(year, month)[1]))
+    except (ValueError, TypeError):
+        due = now
+    if now >= due:
+        return clear_cache(now)
+    return None
 
 
 class _Tee:
@@ -1156,7 +1252,7 @@ def _cloud_asr_openai(cfg, audio_path, timeout=1800, prog=None, cancel=None):
         if cancel:
             cancel()                    # 块边界 = 天然检查点
         blen = min(step, dur - st)
-        ck = p.parent / f".cloud_part{k}.m4a"
+        ck = cache_temp_path("cloud-part", ".m4a")
         r = subprocess.run(
             [ffmpeg_path(), "-y", "-hide_banner", "-loglevel", "error",
              "-ss", f"{st:.3f}", "-t", f"{blen:.3f}", "-i", str(p),
@@ -1261,7 +1357,7 @@ def _cloud_asr_dashscope(cfg, audio_path, timeout=1800, prog=None, cancel=None, 
     fmt = cfg.get("fmt") or asr_fmt()
     up = src
     if src.suffix.lower() != "." + fmt:
-        up = src.parent / f".ds_{fmt}.{fmt}"
+        up = cache_temp_path("ds-upload", f".{fmt}")
         to_upload(src, fmt, up)
     if prog:
         prog(f"上传音频中（{fmt}）", 0.01)
@@ -1416,7 +1512,7 @@ def _cloud_asr_once(cfg, audio_path, timeout=1800, prog=None):
     import requests
     src = Path(audio_path)
     fmt = cfg.get("fmt") or asr_fmt()
-    tmp = src.parent / f".up_{fmt}{('.' + fmt) if fmt != 'ogg' else '.ogg'}"
+    tmp = cache_temp_path("upload", f".{fmt}")
     if fmt == "m4a" and src.suffix.lower() == ".m4a":
         up = src                                   # 本来就是 m4a, 不折腾
     else:
@@ -2721,6 +2817,12 @@ class App:
                 "platform": platform.system(),
                 "elapsed": round(self.total_samples / SR, 1) if s else 0,
                 "session": s["name"] if s else "",
+                "recordingImages": [{"t": note["t"], "file": node["file"],
+                                     "name": node.get("name"), "asset": node.get("recordingAsset")}
+                                    for note in (s["notes"] if s else [])
+                                    for node in note.get("content") or []
+                                    if node.get("type") == "image" and node.get("file")]
+                                   if self.state in ("recording", "paused", "stopping") else [],
                 "dir": str(s["dir"]) if s else "",
                 "mode": s["mode"] if s else "",
                 "lang": s["lang"] if s else "",
@@ -2872,7 +2974,7 @@ class App:
         self.raw_f = open(self.session["dir"] / "raw.s16", "ab")
         self._sck_ready = threading.Event()
         self._sck_errbuf = []
-        tmp = DATA_DIR / ".micapp"
+        tmp = CACHE_DIR / "micapp"
         tmp.mkdir(parents=True, exist_ok=True)
         tag = f"{int(time.time() * 1000)}"
         fifo, pidf, logf, ratef = (tmp / f"pcm.{tag}", tmp / f"pid.{tag}",
@@ -3409,7 +3511,12 @@ class App:
                 lines.append(f"[{fmt_ts(seg['t'])}] {seg['text']}")
         if s["notes"]:
             lines += ["", "## 时间线笔记", ""]
-            lines += [f"- [{fmt_ts(n['t'])}] {n['text']}" for n in s["notes"]]
+            for note in s["notes"]:
+                lines.append(f"- [{fmt_ts(note['t'])}] {note['text']}")
+                for node in note.get("content") or []:
+                    if node.get("type") == "image" and node.get("file"):
+                        label = str(node.get("name") or "图片").replace("]", "")
+                        lines.append(f"  ![{label}]({node['file']})")
         (d / "transcript.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     @staticmethod
@@ -3508,7 +3615,7 @@ class App:
         - 转写本体跑在子进程(whisper_worker.py): mlx_whisper 没有回调参数,
           在主进程里跑就是一块拆不开的整砖, 停止按钮按不动; 子进程 SIGTERM 即死。"""
         audio_path = Path(audio)
-        tmp_wav = audio_path.parent / ".pretreat.wav"
+        tmp_wav = cache_temp_path("pretreat", ".wav")
         chain = None if pretreat is False else pretreat_chain()
         info = {"pretreat": "off", "error": "", "repeat_dropped": 0}
         if chain:
@@ -3604,11 +3711,7 @@ class App:
         wm = whisper_model()
         if wm is None:
             raise RuntimeError("未配置 Whisper 模型：设置 → 本地模型")
-        if platform.system() == "Windows":
-            CACHE_DIR.mkdir(parents=True, exist_ok=True)
-            out = CACHE_DIR / f"{Path(audio_path).parent.name}.whout.json"
-        else:
-            out = Path(audio_path).parent / ".whout.json"
+        out = cache_temp_path("whisper", ".json")
         worker = (WINDOWS_WORKER_PY if platform.system() == "Windows" else WORKER_PY)
         cmd = [sys.executable, worker, "--audio", str(audio_path),
                "--model", str(wm), "--total", str(total or 0),
@@ -3943,7 +4046,7 @@ class App:
         if source.suffix.lower() != ".wav" or chain in ("off", "failed"):
             return source, None
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        tmp = CACHE_DIR / f"{d.name}.cloud-source.wav"
+        tmp = cache_temp_path("cloud-source", ".wav")
         ff = subprocess.Popen(
             [ffmpeg_path(), "-y", "-hide_banner", "-loglevel", "error", "-i", str(source),
              "-af", chain, "-ar", str(SR), "-ac", "1", "-c:a", "pcm_s16le", str(tmp)],
@@ -4658,14 +4761,57 @@ class App:
         # refining/jobs 清理由队列 worker 的 finally 统一兜底
 
     # ---------- 笔记 / 重命名 ----------
-    def note(self, text):
+    def note(self, text, content=None, assets=None, t=None, sid=None):
         with self.lock:
             if self.state not in ("recording", "paused"):
                 raise RuntimeError("只能在录制过程中记笔记")
-            item = {"t": round(self.total_samples / SR, 1), "text": text.strip()}
+            if sid is not None and sid != self.session["dir"].name:
+                raise RuntimeError("录音项目已改变，请重新插入图片")
+            timestamp = self.total_samples / SR
+            if t is not None:
+                try:
+                    captured = float(t)
+                except (TypeError, ValueError):
+                    raise RuntimeError("图片时间无效") from None
+                if not 0 <= captured <= timestamp:
+                    raise RuntimeError("图片时间超出录音范围")
+                timestamp = captured
+            item = {"t": round(timestamp, 1), "text": text.strip()}
+            if content is not None:
+                normalized, _ = self._materialize_note_content(self.session["dir"], content, assets)
+                for node, original in zip(normalized, content):
+                    if node.get("type") == "image":
+                        node["recordingAsset"] = original.get("asset")
+                        node.update(layout="inline", displayWidth=86, anchorRowId=None, insertPosition="after",
+                                    position={"mode": "flow", "x": None, "y": None})
+                item["content"] = normalized
+                item["text"] = self._note_content_text(normalized)
             self.session["notes"].append(item)
-            self.emit(type="note", **item)
+            self.emit(type="note", id=self.session["dir"].name, **item)
             return item
+
+    def delete_recording_image(self, sid, filename):
+        with self.lock:
+            if self.state not in ("recording", "paused") or not self.session:
+                raise RuntimeError("只能在录制过程中删除图片")
+            if sid != self.session["dir"].name:
+                raise RuntimeError("录音项目已改变")
+            target = self.note_image_path(sid, filename)
+            found = False
+            for note in self.session["notes"]:
+                content = note.get("content") or []
+                kept = [node for node in content
+                        if not (node.get("type") == "image" and node.get("file") == filename)]
+                if len(kept) != len(content):
+                    note["content"] = kept
+                    found = True
+            if not found:
+                raise RuntimeError("图片已不存在")
+            self.session["notes"][:] = [note for note in self.session["notes"]
+                                         if note.get("text") or note.get("content")]
+            target.unlink(missing_ok=True)
+            self.emit(type="recording_image_deleted", id=sid, file=filename)
+            return {"ok": True}
 
     def _note_content_text(self, content):
         """取图文内容的纯文本投影；图片节点不进入投影。"""
@@ -4783,7 +4929,7 @@ class App:
                 file_size = target.stat().st_size
 
             layout = str(node.get("layout") or "inline")
-            if layout not in ("inline", "square", "top-bottom", "behind", "front"):
+            if layout not in ("inline", "square", "top-bottom", "behind", "front", "aside-left", "aside-right"):
                 raise RuntimeError("图片排版方式无效")
             position = node.get("position") if isinstance(node.get("position"), dict) else {}
             mode = "free" if position.get("mode") == "free" else "flow"
@@ -4807,6 +4953,8 @@ class App:
                 "type": "image", "file": rel, "name": name, "mime": mime,
                 "bytes": file_size, "width": width, "height": height,
                 "displayWidth": display_width, "layout": layout,
+                "anchorRowId": str(node.get("anchorRowId") or "")[:120] or None,
+                "insertPosition": "before" if node.get("insertPosition") == "before" else "after",
                 "position": {"mode": mode, "x": x, "y": y},
             })
         return normalized, made
@@ -5392,6 +5540,7 @@ APP = App()
 # ---------------- HTTP (内部回环, 供窗口加载与音频流) ----------------
 INDEX = Path(__file__).parent / "index.html"
 SOUNDS_DIR = Path(__file__).parent / "sounds"
+MATERIAL_PREVIEW_DIR = Path(__file__).parent / "assets"
 SOUND_FILES = {
     "task_complete_warm.mp3",
     "task_complete_distant.mp3",
@@ -5420,6 +5569,22 @@ class Handler(BaseHTTPRequestHandler):
             am = load_setting("appearance")
             if am not in ("light", "dark", "system"):
                 am = ""
+            material_mode = load_setting("material_mode")
+            if material_mode not in ("neutral", "enhanced", "mimetic"):
+                material_mode = "enhanced" if load_setting("enhanced_material") is True else "neutral"
+            material_options = {}
+            stored_options = load_setting("material_options")
+            for mode in ("enhanced", "mimetic"):
+                option = stored_options.get(mode, {}) if isinstance(stored_options, dict) else {}
+                option = option if isinstance(option, dict) else {}
+                material_options[mode] = {}
+                material_options[mode]["opticalEnhancement"] = mode == "mimetic" and option.get("opticalEnhancement") is True
+                material_options[mode]["svgRefraction"] = mode == "mimetic" and option.get("svgRefraction") is True
+                for key, default, maximum in (("blur", 4, 20), ("transparency", None, 100), ("shadowStrength", 50, 100), ("highlightStrength", 50, 100), ("highlightBloom", 0, 100)):
+                    value = option.get(key)
+                    material_options[mode][key] = (max(0, min(maximum, value))
+                        if isinstance(value, (int, float)) and math.isfinite(value) else default)
+            material_options_json = json.dumps(json.dumps(material_options))
             theme_color = load_setting("theme_color")
             try:
                 h = float(theme_color.get("h"))
@@ -5438,9 +5603,23 @@ class Handler(BaseHTTPRequestHandler):
                 "__TINGDAO_APPEARANCE__", am).replace(
                 "__TINGDAO_PLATFORM__", platform.system()).replace(
                 "__TINGDAO_THEME_COLOR__", theme_color_json).replace(
+                "__TINGDAO_MATERIAL_MODE__", material_mode).replace(
+                "__TINGDAO_MATERIAL_OPTIONS__", material_options_json).replace(
                 "__TINGDAO_VERSION__", f"v{APP_VERSION}").encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        elif u.path == "/material-preview/lakeside.png":
+            image = MATERIAL_PREVIEW_DIR / "material-preview-lakeside.png"
+            if not image.is_file():
+                self.send_error(404)
+                return
+            body = image.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "image/png")
+            self.send_header("Cache-Control", "public, max-age=31536000, immutable")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
@@ -5468,6 +5647,8 @@ class Handler(BaseHTTPRequestHandler):
         elif u.path == "/api/groups":
             # 分组顺序与折叠态; 成员关系在各项目 session.json 的 group 字段里
             self._json(load_groups())
+        elif u.path == "/api/cache":
+            self._json(cache_info())
         elif u.path == "/api/settings":
             s = load_settings()
             s["record_mode"] = recording_mode()
@@ -5574,7 +5755,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", NOTE_IMAGE_MIMES[image.suffix.lower()])
             self.send_header("Content-Length", str(len(body)))
-            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Cache-Control", "private, max-age=31536000, immutable")
             self.end_headers()
             self.wfile.write(body)
         else:
@@ -5594,6 +5775,11 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"ok": True})
                 SHUTDOWN_REQUEST.set()
                 return
+            if u.path == "/api/cache/clear":
+                with APP.lock:
+                    if APP.state != "idle" or APP.progs or APP._procs:
+                        return self._json({"ok": False, "error": "录音或处理任务进行中，请完成后清理"}, 409)
+                    return self._json(clear_cache())
             if u.path == "/api/start":
                 requested_mode = body.get("mode")
                 selected_mode = (requested_mode if requested_mode in RECORDING_MODES
@@ -5773,7 +5959,9 @@ class Handler(BaseHTTPRequestHandler):
             if u.path == "/api/volume":
                 return self._json(volume_set(body.get("pct", 0)))
             if u.path == "/api/note":
-                return self._json({"ok": True, "note": APP.note(body.get("text", ""))})
+                return self._json({"ok": True, "note": APP.note(body.get("text", ""), body.get("content"), body.get("assets"), body.get("t"), body.get("id")), "id": APP.session["dir"].name})
+            if u.path == "/api/recording_image_delete":
+                return self._json(APP.delete_recording_image(body.get("id"), body.get("file")))
             if u.path == "/api/read_note_image_file":
                 return self._json(APP.read_note_image_file(body.get("path", "")))
             if u.path == "/api/timeline_note":
@@ -5900,6 +6088,13 @@ def main():
     SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     setup_log()
+    try:
+        migrate_legacy_cache()
+        result = check_cache_on_startup()
+        if result and not result["ok"]:
+            print(f"[cache] 自动清理未完成: {result['errors']}")
+    except Exception as error:
+        print(f"[cache] 启动缓存检查失败: {error}")
     # 端口交给 OS 现挑(bind 端口 0 = 一个真正空闲的回环端口, 没有「探测到空闲→再占用」之间的抢端口竞态);
     # 绑好后从 socket 读回真实端口, 全进程(含回报给壳、喂给 pywebview)都用这一个值。
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
@@ -6019,7 +6214,7 @@ def main():
     # before_show 先应用一次(窗口还没上屏, 不会闪灰), loaded 再兜一次(幂等)
     win.events.before_show += apply_native_chrome
     win.events.loaded += apply_native_chrome
-    webview.start()
+    webview.start(private_mode=True)
     finish_up("窗口关闭")     # 与 headless 分支同一套收尾, 不再各写一份
 
 

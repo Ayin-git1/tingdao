@@ -750,6 +750,32 @@ fn apply_selfdrawn_frame(hwnd_raw: isize) {
     }
 }
 
+/// 切换到非持久化 WebView 时，清除旧版默认数据存储；完成回调后才记迁移标记。
+#[cfg(target_os = "macos")]
+fn clear_legacy_webview_cache(app: &tauri::App, window: &tauri::WebviewWindow) {
+    let Some(settings) = settings_file_path(app) else { return };
+    let Some(data) = settings.parent() else { return };
+    let marker = data.join(".webview-cache-migrated");
+    if marker.exists() { return; }
+    if let Err(error) = window.with_webview(move |_| {
+        let Some(mtm) = objc2::MainThreadMarker::new() else { return };
+        // 使用 WebKit 原生接口，避免猜测或直接删除系统管理的目录。
+        unsafe {
+            let store = objc2_web_kit::WKWebsiteDataStore::defaultDataStore(mtm);
+            let types = objc2_web_kit::WKWebsiteDataStore::allWebsiteDataTypes(mtm);
+            let date = objc2_foundation::NSDate::dateWithTimeIntervalSince1970(0.0);
+            let done = block2::RcBlock::new(move || {
+                if let Err(error) = std::fs::write(&marker, b"1") {
+                    eprintln!("无法保存旧 WebView 缓存清理标记: {error}");
+                }
+            });
+            store.removeDataOfTypes_modifiedSince_completionHandler(&types, &date, &done);
+        }
+    }) {
+        eprintln!("旧 WebView 缓存清理失败: {error}");
+    }
+}
+
 /// 用后端回报的端口, 在运行时把主窗口开起来。
 /// 窗口的尺寸/居中等写在这里而非 tauri.conf.json —— 因为 URL 现在带的是动态端口, 只能建窗时注入。
 fn open_main_window(app: &mut tauri::App, port: u16) -> tauri::Result<()> {
@@ -759,6 +785,8 @@ fn open_main_window(app: &mut tauri::App, port: u16) -> tauri::Result<()> {
     let url = WebviewUrl::External(url_str.parse().map_err(tauri::Error::InvalidUrl)?);
 
     let mut builder = WebviewWindowBuilder::new(app, "main", url)
+        // WKWebView 无法指定缓存目录，使用内存数据存储避免按动态端口积累磁盘缓存。
+        .incognito(true)
         .title("听道")
         .inner_size(1000.0, 640.0)
         .min_inner_size(760.0, 520.0)
@@ -815,6 +843,8 @@ fn open_main_window(app: &mut tauri::App, port: u16) -> tauri::Result<()> {
     }
 
     let window = builder.build()?;
+    #[cfg(target_os = "macos")]
+    clear_legacy_webview_cache(app, &window);
 
     // 关掉 DWM 圆角, 让 CSS 成为唯一的圆角来源(理由见上)。拖动/贴靠后会被重置, 故
     // on_window_event 里还会再摁。

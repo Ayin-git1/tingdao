@@ -46,7 +46,7 @@ test('summary panel reuses the original card surface without a green side rail',
   assert.doesNotMatch(html, /--summary-card:/);
   assert.match(styles, /\.summary-panel\{background:var\(--card\); border:1px solid var\(--line\); border-left:1px solid var\(--line\);/);
   assert.doesNotMatch(styles, /border-left:[^;]*var\(--g/);
-  assert.match(styles, /border-radius:14px; padding:16px 20px 18px; margin:2px 0 20px;/);
+  assert.match(styles, /border-radius:var\(--radius-3\); padding:16px 20px 18px; margin:2px 0 20px;/);
   assert.match(styles, /box-shadow:0 2px 10px rgba\(20,30,24,\.035\)/);
   assert.match(styles, /\.summary-label\{[\s\S]*font-size:var\(--fs-meta\)/);
 });

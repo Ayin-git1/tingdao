@@ -16,23 +16,22 @@ function functionSource(signature) {
   assert.fail(`${signature} should be complete`);
 }
 
-test('recent sidebar items are the latest three non-pending projects', () => {
+test('recent sidebar items include every ungrouped project in newest-first order', () => {
   const source = functionSource('function sidebarRecentItems(');
   const sidebarRecentItems = Function(`${source}; return sidebarRecentItems;`)();
   const items = [
-    {id: 'old', date: '2026-09-01 09:00'},
-    {id: 'newest', date: '2026-10-03 12:00'},
-    {id: 'pending', date: '2026-10-04 12:00', pending: true},
-    {id: 'middle', date: '2026-10-02 12:00'},
-    {id: 'recent', date: '2026-10-01 12:00'},
+    {id: 'old-loose', date: '2026-09-01 09:00'},
+    {id: 'newest-grouped', date: '2026-10-05 12:00', group: '重点'},
+    {id: 'new-loose', date: '2026-10-03 12:00'},
+    {id: 'pending-loose', date: '2026-10-04 12:00', pending: true},
   ];
 
   assert.deepEqual(sidebarRecentItems(items).map(item => item.id), [
-    'newest', 'middle', 'recent',
+    'pending-loose', 'new-loose', 'old-loose',
   ]);
 });
 
-test('sidebar group items keep saved order, count members, and retain empty groups', () => {
+test('sidebar group items keep saved order, count members, and exclude ungrouped projects', () => {
   const source = functionSource('function sidebarGroupItems(');
   const sidebarGroupItems = Function(`${source}; return sidebarGroupItems;`)();
   const items = [
@@ -47,10 +46,25 @@ test('sidebar group items keep saved order, count members, and retain empty grou
     order: ['重点', '空组'],
     colors: {重点: 'blue', 空组: 'red'},
   }), [
-    {name: '', count: 1, color: ''},
     {name: '重点', count: 2, color: 'blue'},
     {name: '空组', count: 0, color: 'red'},
     {name: '临时', count: 1, color: ''},
+  ]);
+});
+
+test('sectionize only returns named groups', () => {
+  const groupSource = functionSource('function sidebarGroupItems(');
+  const sidebarGroupItems = Function(`${groupSource}; return sidebarGroupItems;`)();
+  const sectionSource = functionSource('function sectionize(');
+  const sectionize = Function('groupMeta', 'sidebarGroupItems',
+    `${sectionSource}; return sectionize;`
+  )({order: ['重点'], collapsed: [], colors: {}}, sidebarGroupItems);
+
+  assert.deepEqual(sectionize([
+    {id: 'loose', group: ''},
+    {id: 'grouped', group: '重点'},
+  ]), [
+    {name: '重点', items: [{id: 'grouped', group: '重点'}]},
   ]);
 });
 
@@ -69,9 +83,24 @@ test('sidebar section headers expose distinct accessible SVG icons', () => {
 });
 
 test('recent and group sections are rendered inside the existing history list', () => {
-  assert.match(html, /const recent = q \? \[\] : sidebarRecentItems\(items\)/);
+  assert.match(html, /const recent = sidebarRecentItems\(items\)/);
   assert.match(html, /sidebarSectionIcon\('recent'\)/);
   assert.match(html, /sidebarSectionIcon\('groups'\)/);
-  assert.match(html, /recent\.forEach\(it=>recentItems\.appendChild\(mkHistItem\(it, '', 'recent'\)\)\)/);
-  assert.match(html, /function sectionize\(items\)[\s\S]*?sidebarGroupItems\(items, groupMeta\)/);
+  assert.match(html, /recent\.forEach\(it=>recentItems\.appendChild\(mkHistItem\(it, '', 'recent',\s*\n?\s*sidebarItemIsActive/);
+  assert.match(html, /for\(const it of sec\.items\) gi\.appendChild\(mkHistItem\(it, '', 'group',\s*\n?\s*sidebarItemIsActive/);
+  assert.match(html, /function sectionize\(items, includeEmpty=true\)[\s\S]*?sidebarGroupItems\(items, groupMeta\)/);
+});
+
+test('sort control sits left of group creation and the bottom bar has no glass blur', () => {
+  const refreshSource = html.slice(html.indexOf('async function refreshHistory()'));
+  assert.match(refreshSource, /我的分组[\s\S]*?id="btnSort"[\s\S]*?class="sbsection-add"/);
+  const sidefootStart = html.indexOf('<div class="sidefoot">');
+  const sidefoot = html.slice(sidefootStart, html.indexOf('</div>', sidefootStart) + 6);
+  assert.doesNotMatch(sidefoot, /id="btnSort"/);
+
+  const sidefootStyle = html.match(/\.sidefoot\{[\s\S]*?\}/)?.[0] || '';
+  assert.match(sidefootStyle, /background:transparent/);
+  assert.match(sidefootStyle, /backdrop-filter:none/);
+  assert.match(sidefootStyle, /-webkit-backdrop-filter:none/);
+  assert.match(sidefootStyle, /box-shadow:none/);
 });
