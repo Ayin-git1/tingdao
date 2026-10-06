@@ -574,6 +574,8 @@ test('chapter navigation does not start stale audio for a manuscript without aud
 test('clearing a project audio source unloads the previous media resource', () => {
   const source = functionSource('function clearPlayerSource(');
   const calls = [];
+  global.stopPlaybackBoost = () => calls.push('stopBoost');
+  global.syncPlayerUI = () => calls.push('syncUI');
   global.player = {
     pause() { calls.push('pause'); },
     removeAttribute(name) { calls.push(`remove:${name}`); },
@@ -583,7 +585,7 @@ test('clearing a project audio source unloads the previous media resource', () =
   const clearPlayerSource = Function(`${source}; return clearPlayerSource;`)();
   clearPlayerSource();
 
-  assert.deepEqual(calls, ['pause', 'remove:src', 'load']);
+  assert.deepEqual(calls, ['stopBoost', 'pause', 'remove:src', 'load', 'syncUI']);
   assert.match(functionSource('async function loadSession(sid, keepList)'), /clearPlayerSource\(\)/);
   assert.match(functionSource('function exitView()'), /clearPlayerSource\(\)/);
 });

@@ -1,3 +1,4 @@
+import os
 import re
 import subprocess
 import unittest
@@ -5,8 +6,9 @@ from pathlib import Path
 
 
 HELPER = Path(__file__).parents[1] / "TingdaoMic.app" / "Contents" / "MacOS" / "TingdaoMic"
-TEST_APP_HELPER = (Path("/Users/ayin/Applications/听道-测试版.app") / "Contents" / "Resources"
-                   / "TingdaoMic.app" / "Contents" / "MacOS" / "TingdaoMic")
+TEST_APP = Path(os.environ.get("TINGDAO_TEST_APP", str(Path(__file__).parents[1] /
+                "tauri-shell/target/release/bundle/macos/听道.app")))
+TEST_APP_HELPER = TEST_APP / "Contents/Resources/TingdaoMic.app/Contents/MacOS/TingdaoMic"
 
 
 class MicHelperDeploymentTests(unittest.TestCase):

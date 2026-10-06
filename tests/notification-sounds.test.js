@@ -37,8 +37,9 @@ test('persists warm completion sound by default and offers both completion choic
   assert.match(html, /key:'completion_sound', value:completionSound/);
 });
 
-test('plays completion and delete feedback at a quiet 14 percent volume', () => {
-  assert.match(html, /function playNotificationSound\(name\)[\s\S]*audio\.volume = 0\.14/);
+test('plays completion and delete feedback at the configured volume with a quiet default', () => {
+  assert.match(html, /let completionSoundVolume = 14/);
+  assert.match(html, /audio\.volume = completionSoundVolume \/ 100/);
   assert.match(html, /playNotificationSound\(`task_complete_\$\{completionSound\}\.mp3`\)/);
   assert.match(html, /toast\('录制完成，已加载完整文稿'\);[\s\S]*playCompletionSound\(\);/);
   assert.match(html, /else if\(e\.id\)\{[\s\S]*playCompletionSound\(\);/);

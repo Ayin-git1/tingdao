@@ -20,22 +20,20 @@ test('composer constrains time to the loaded recording and posts the selected ti
 });
 
 test('paper note and context menu have explicit dark appearance colors', () => {
-  includes(/html\[data-appearance="dark"\] \.tn-card\{[^}]*background:#363225/);
-  includes(/html\[data-appearance="dark"\] \.tn-editor\{[^}]*color:#f0e3bd/);
+  includes(/\.tn-card\{[^}]*background:var\(--note\)/);
+  includes(/\.tn-editor\{[^}]*color:var\(--noteink\)/);
   includes(/html\[data-appearance="dark"\] \.tn-menu\{[^}]*background:var\(--material-rest-background\)/);
 });
 
-test('note Enter saves, Shift+Enter stays available for a newline, and hint explains both', () => {
+test('note Enter saves and Shift+Enter stays available for a newline', () => {
   includes(/transcriptNoteText'\)\.addEventListener\('keydown',e=>\{if\(e\.key==='Enter'&&!e\.shiftKey\)\{e\.preventDefault\(\);\$\('transcriptNoteSave'\)\.click\(\);\}\}\)/);
-  includes(/<span class="tn-hint">Enter 保存 · Shift \+ Enter 换行<\/span>/);
+  includes(/id="transcriptNoteText"[^>]*contenteditable="true"[^>]*role="textbox" aria-multiline="true"/);
   assert.doesNotMatch(html, /可以调整，不能晚于录音结束|便签会按时间写入逐字稿/);
 });
 
-test('time controls are labeled and hold to repeat adjustment', () => {
-  includes(/>调整时间<\/label>/);
-  assert.doesNotMatch(html, /id="transcriptNoteRange"/);
-  includes(/function startTranscriptNoteStep\(button,delta\)[\s\S]*?setInterval\(\(\)=>stepTranscriptNoteTime\(delta\),100\)/);
-  includes(/\$\('transcriptNoteMinus'\),-5\);[\s\S]*?\$\('transcriptNotePlus'\),5\)/);
+test('composer keeps the selected row timestamp in a hidden field', () => {
+  includes(/id="transcriptNoteTime" type="hidden"/);
+  includes(/transcriptNoteTime'\)\.value=fmt\(Math\.min\(Number\(transcriptNoteOriginal\?\.t\?\?transcriptNoteTargetTime\),transcriptNoteDuration\)\)/);
 });
 
 test('right-clicking a note offers edit and delete and edit reuses the paper composer', () => {
@@ -44,7 +42,8 @@ test('right-clicking a note offers edit and delete and edit reuses the paper com
   includes(/openTranscriptNote\(transcriptNoteTargetTime,transcriptNoteTargetIndex\)/);
   includes(/transcriptNoteEditingIndex!==null[\s\S]*?api\('\/api\/timeline_note_update'/);
   includes(/api\('\/api\/timeline_note_delete'/);
-  includes(/confirm\('删除这条笔记吗？'\)/);
+  includes(/const images=\(note\.content\|\|\[\]\)\.filter\(node=>node\.type==='image'\)/);
+  includes(/expected_t:note\.t,expected_text:note\.text/);
   includes(/row\.classList\.contains\('note'\)/);
 });
 

@@ -202,7 +202,7 @@ class MicrophoneCapturePipelineTests(unittest.TestCase):
         source = APP.read_text(encoding="utf-8")
         self.assertIn('master = d / "audio.wav"', source)
         self.assertIn('LISTEN_FILE = "audio_listen.wav"', source)
-        self.assertIn("listen_rel = master.name", source)
+        self.assertIn('"audioMaster": master.name if master.exists() else None', source)
         self.assertIn('".wav": "audio/wav"', source)
         self.assertIn('d.glob("*.wav")', source)
         self.assertIn('"-c:a", "aac", "-b:a", "96k"', source)

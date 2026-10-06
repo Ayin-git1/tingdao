@@ -26,12 +26,10 @@ test('top navigation stays visible, follows the requested order, and shifts righ
   assert.ok(order.every((index, i) => index >= 0 && (i === 0 || index > order[i - 1])));
   assert.doesNotMatch(html, /body\.home[^}]*#appRail[^}]*display:none/);
   assert.doesNotMatch(html, /\.topbar \.app-rail\{position:absolute/);
-  assert.match(html, /function syncRailPlacement\(/);
-  assert.match(html, /const homeButton = \$\('btnHome'\)/);
-  assert.match(html, /const drawerButton = \$\('btnNoteTop'\)/);
-  assert.match(html, /getComputedStyle\(homeButton\)\.display === 'none'/);
-  assert.match(html, /getComputedStyle\(drawerButton\)\.display === 'none'/);
-  assert.match(html, /syncRailPlacement\(\);/);
+  assert.match(html, /function syncRailVisibility\(/);
+  assert.match(html, /home\.inert = homeHidden/);
+  assert.match(html, /note\.inert = !noteVisible/);
+  assert.match(html, /syncRailVisibility\(\);/);
 });
 
 test('settings and archive live in the app menu instead of the rail', () => {
@@ -43,11 +41,12 @@ test('settings and archive live in the app menu instead of the rail', () => {
   assert.doesNotMatch(html.slice(0, menuStart), /id="btnSet"/);
 });
 
-test('rail stays beside the visible home control instead of resetting to the left', () => {
-  assert.match(html, /const gap = parseFloat\(getComputedStyle\(topbar\)\.gap\)/);
-  assert.match(html, /const homeRect = homeButton && homeButton\.getBoundingClientRect\(\)/);
-  assert.match(html, /const railRect = rail\.getBoundingClientRect\(\)/);
-  assert.doesNotMatch(html, /if\(!homeControlsHidden\)\{\s*rail\.style\.setProperty\('\\-\\-rail\\-shift', '0px'\);\s*return;/);
+test('rail reserves space and collapses unavailable controls without layout reads', () => {
+  assert.match(html, /\.app-rail\{[^}]*margin-left:auto/);
+  assert.match(html, /body\.home \.app-rail\{width:30px/);
+  assert.match(html, /\.app-rail:not\(\.note-visible\)\{width:70px/);
+  assert.match(html, /home\.setAttribute\('aria-hidden', String\(homeHidden\)\)/);
+  assert.match(html, /note\.setAttribute\('aria-hidden', String\(!noteVisible\)\)/);
 });
 
 test('mac topbar controls share the traffic-light centerline', () => {

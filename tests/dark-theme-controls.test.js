@@ -14,7 +14,7 @@ test('dark theme gives the status hanger a visible cool-gray rope', () => {
 test('dark theme keeps the settings close X light on a medium hover surface', () => {
   assert.match(
     html,
-    /html\[data-appearance="dark"\] \.setclose:hover\s*\{\s*background:#5a5c63; border-color:#6a6c73; color:#fff;\s*\}/,
+    /html\[data-appearance="dark"\] \.setclose:hover\s*\{\s*background:color-mix\(in srgb, #5a5c63 60%, transparent\); border-color:#6a6c73; color:#fff;\s*\}/,
   );
 });
 
