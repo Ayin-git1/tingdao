@@ -5,9 +5,9 @@ const test = require('node:test');
 const html = fs.readFileSync('index.html', 'utf8');
 const includes = pattern => assert.ok(pattern.test(html), `missing image-note wiring: ${pattern}`);
 
-test('paper note uses a contenteditable image-aware editor and image picker', () => {
+test('inline note uses a contenteditable image-aware editor', () => {
   includes(/id="transcriptNoteText"[^>]*contenteditable="true"/);
-  includes(/id="transcriptNoteImageButton"/);
+  assert.ok(!html.includes('id="transcriptNoteImageButton"'));
   includes(/id="transcriptNoteImageInput"[^>]*type="file"[^>]*accept="image\/png,image\/jpeg,image\/gif,image\/webp"[^>]*multiple/);
   includes(/class="tn-editor"/);
 });
@@ -33,5 +33,5 @@ test('selected files are inserted in order and saved as content plus assets', ()
 
 test('editor keeps legacy Enter save and Shift+Enter newline behavior', () => {
   includes(/transcriptNoteText'\)\.addEventListener\('keydown',[\s\S]*?e\.key==='Enter'&&!e\.shiftKey/);
-  includes(/<span class="tn-hint">Enter 保存 · Shift \+ Enter 换行<\/span>/);
+  assert.ok(!html.includes('<span class="tn-hint">'));
 });

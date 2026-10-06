@@ -368,6 +368,54 @@ fn request_microphone_modes(port: u16) -> Result<(), String> {
     }
 }
 
+fn recording_exit_message(response: &str) -> Option<&'static str> {
+    let (_, body) = response.split_once("\r\n\r\n")?;
+    let status: serde_json::Value = serde_json::from_str(body).ok()?;
+    match status.get("state")?.as_str()? {
+        "recording" => Some("正在录制中，退出后项目将自动保存"),
+        "paused" => Some("录制已暂停，退出后项目将自动保存"),
+        _ => None,
+    }
+}
+
+fn confirm_recording_exit() -> bool {
+    let Some(port) = *BACKEND_PORT.lock().unwrap() else { return true };
+    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    let Ok(mut stream) = TcpStream::connect_timeout(&addr, Duration::from_secs(2)) else { return true };
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
+    let _ = stream.set_write_timeout(Some(Duration::from_secs(2)));
+    if stream.write_all(b"GET /api/status HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n").is_err() {
+        return true;
+    }
+    let mut response = String::new();
+    if stream.read_to_string(&mut response).is_err() { return true; }
+    let Some(message) = recording_exit_message(&response) else { return true };
+    #[cfg(target_os = "macos")]
+    {
+        let script = format!("button returned of (display alert \"退出听道\" message {:?} buttons {{\"取消\", \"退出并保存\"}} default button \"取消\" cancel button \"取消\")", message);
+        return Command::new("osascript").args(["-e", &script]).output()
+            .map(|output| exit_dialog_confirmed(output.status.success(), &String::from_utf8_lossy(&output.stdout)))
+            .unwrap_or(false);
+    }
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        let title: Vec<u16> = std::ffi::OsStr::new("退出听道").encode_wide().chain(Some(0)).collect();
+        let message: Vec<u16> = std::ffi::OsStr::new(message).encode_wide().chain(Some(0)).collect();
+        #[link(name = "user32")]
+        extern "system" {
+            fn MessageBoxW(hwnd: *mut std::ffi::c_void, text: *const u16, caption: *const u16, kind: u32) -> i32;
+        }
+        return unsafe { MessageBoxW(std::ptr::null_mut(), message.as_ptr(), title.as_ptr(), 0x141) == 1 };
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    false
+}
+
+fn exit_dialog_confirmed(success: bool, button: &str) -> bool {
+    success && button.trim() == "退出并保存"
+}
+
 fn request_shutdown(port: u16) {
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
     if let Ok(mut stream) = TcpStream::connect_timeout(&addr, Duration::from_secs(2)) {
@@ -750,6 +798,32 @@ fn apply_selfdrawn_frame(hwnd_raw: isize) {
     }
 }
 
+/// 切换到非持久化 WebView 时，清除旧版默认数据存储；完成回调后才记迁移标记。
+#[cfg(target_os = "macos")]
+fn clear_legacy_webview_cache(app: &tauri::App, window: &tauri::WebviewWindow) {
+    let Some(settings) = settings_file_path(app) else { return };
+    let Some(data) = settings.parent() else { return };
+    let marker = data.join(".webview-cache-migrated");
+    if marker.exists() { return; }
+    if let Err(error) = window.with_webview(move |_| {
+        let Some(mtm) = objc2::MainThreadMarker::new() else { return };
+        // 使用 WebKit 原生接口，避免猜测或直接删除系统管理的目录。
+        unsafe {
+            let store = objc2_web_kit::WKWebsiteDataStore::defaultDataStore(mtm);
+            let types = objc2_web_kit::WKWebsiteDataStore::allWebsiteDataTypes(mtm);
+            let date = objc2_foundation::NSDate::dateWithTimeIntervalSince1970(0.0);
+            let done = block2::RcBlock::new(move || {
+                if let Err(error) = std::fs::write(&marker, b"1") {
+                    eprintln!("无法保存旧 WebView 缓存清理标记: {error}");
+                }
+            });
+            store.removeDataOfTypes_modifiedSince_completionHandler(&types, &date, &done);
+        }
+    }) {
+        eprintln!("旧 WebView 缓存清理失败: {error}");
+    }
+}
+
 /// 用后端回报的端口, 在运行时把主窗口开起来。
 /// 窗口的尺寸/居中等写在这里而非 tauri.conf.json —— 因为 URL 现在带的是动态端口, 只能建窗时注入。
 fn open_main_window(app: &mut tauri::App, port: u16) -> tauri::Result<()> {
@@ -759,6 +833,8 @@ fn open_main_window(app: &mut tauri::App, port: u16) -> tauri::Result<()> {
     let url = WebviewUrl::External(url_str.parse().map_err(tauri::Error::InvalidUrl)?);
 
     let mut builder = WebviewWindowBuilder::new(app, "main", url)
+        // WKWebView 无法指定缓存目录，使用内存数据存储避免按动态端口积累磁盘缓存。
+        .incognito(true)
         .title("听道")
         .inner_size(1000.0, 640.0)
         .min_inner_size(760.0, 520.0)
@@ -815,6 +891,8 @@ fn open_main_window(app: &mut tauri::App, port: u16) -> tauri::Result<()> {
     }
 
     let window = builder.build()?;
+    #[cfg(target_os = "macos")]
+    clear_legacy_webview_cache(app, &window);
 
     // 关掉 DWM 圆角, 让 CSS 成为唯一的圆角来源(理由见上)。拖动/贴靠后会被重置, 故
     // on_window_event 里还会再摁。
@@ -848,7 +926,8 @@ fn main() {
         // 占着麦克风。这里把"关窗"直接等价于"退出", 退出再触发下面的 stop_backend。
         .on_window_event(|window, event| {
             match event {
-                tauri::WindowEvent::CloseRequested { .. } => {
+                tauri::WindowEvent::CloseRequested { api, .. } => {
+                    api.prevent_close();
                     window.app_handle().exit(0);
                 }
                 // 拖动/贴靠/改尺寸后 DWM 会重置圆角属性, 再摁一次(见 apply_selfdrawn_frame)
@@ -889,8 +968,40 @@ fn main() {
         });
 
     app.run(|_handle, event| {
-        if let tauri::RunEvent::Exit { .. } = event {
-            stop_backend();
+        match event {
+            tauri::RunEvent::ExitRequested { api, .. } => {
+                if !confirm_recording_exit() {
+                    api.prevent_exit();
+                }
+            },
+            tauri::RunEvent::Exit { .. } => stop_backend(),
+            _ => {}
         }
     });
+}
+
+#[cfg(test)]
+mod recording_exit_tests {
+    #[test]
+    fn only_explicit_save_confirmation_exits() {
+        assert!(super::exit_dialog_confirmed(true, "退出并保存\n"));
+        for button in ["取消", "", "好"] {
+            assert!(!super::exit_dialog_confirmed(true, button));
+        }
+        assert!(!super::exit_dialog_confirmed(false, "退出并保存"));
+    }
+    #[test]
+    fn active_recording_and_pause_show_save_notice() {
+        for state in ["recording", "paused"] {
+            let response = format!("HTTP/1.1 200 OK\r\n\r\n{{\"state\":\"{state}\"}}");
+            assert!(super::recording_exit_message(&response).unwrap().contains("退出后项目将自动保存"));
+        }
+    }
+    #[test]
+    fn idle_stopping_and_invalid_responses_do_not_show_notice() {
+        for body in ["{\"state\":\"idle\"}", "{\"state\":\"stopping\"}", "{}", "invalid"] {
+            assert_eq!(super::recording_exit_message(&format!("HTTP/1.1 200 OK\r\n\r\n{body}")), None);
+        }
+        assert_eq!(super::recording_exit_message(""), None);
+    }
 }

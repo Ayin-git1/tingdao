@@ -120,13 +120,13 @@ class MicrophoneCapturePipelineTests(unittest.TestCase):
                         if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)]
         self.assertNotIn("_feed", [node.func.attr for node in reader_calls])
         self.assertIn("_decode_loop", methods)
-        self.assertIn("_pcm_q", ast.unparse(methods["_read_loop"]))
+        self.assertIn("pcm_q", ast.unparse(methods["_read_loop"]))
         self.assertIn("self.capture_lock", ast.unparse(methods["_read_loop"]))
 
     def test_pcm_reader_keeps_pending_stop_tail(self):
         """SIGINT 后仍要排空已进入命名管道的 PCM，不能截掉结尾。"""
         source = ast.unparse(ast.parse(APP.read_text(encoding="utf-8")))
-        reader_start = source.index("def _read_loop(self):")
+        reader_start = source.index("def _read_loop(self, ff, pcm_q, generation):")
         reader_end = source.index("def _decode_loop", reader_start)
         body = source[reader_start:reader_end]
         self.assertIn("self._pending_ff is not ff", body)

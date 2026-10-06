@@ -29,7 +29,7 @@ class TimelineNoteImageTests(unittest.TestCase):
 
     def make_app(self, sessions_dir):
         names = (
-            "add_transcript_note", "update_transcript_note",
+            "note", "add_transcript_note", "update_transcript_note",
             "delete_transcript_note", "_write_md", "note_image_path",
             "read_note_image_file",
             "_note_content_text", "_materialize_note_content",
@@ -37,8 +37,10 @@ class TimelineNoteImageTests(unittest.TestCase):
         )
         if any(name not in self.methods for name in names):
             return None
+        if "delete_recording_image" in self.methods:
+            names += ("delete_recording_image",)
         namespace = {
-            "SESSIONS_DIR": sessions_dir,
+            "SESSIONS_DIR": sessions_dir, "SR": 16000,
             "json": json,
             "threading": threading,
             "fmt_ts": fmt_ts,
@@ -61,6 +63,52 @@ class TimelineNoteImageTests(unittest.TestCase):
         app.progs = {}
         app.lock = threading.RLock()
         return app
+
+    def test_recording_image_note_uses_live_time_and_fixed_layout(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            app = self.make_app(root)
+            directory = self.make_session(root)
+            app.session = {"dir": directory, "notes": []}
+            app.total_samples = 32000
+            events = []
+            app.emit = lambda **event: events.append(event)
+            for state in ("recording", "paused"):
+                app.state = state
+                content = self.image_content(state)
+                content[1]["layout"] = "aside-right"
+                note = app.note("", content, self.assets(state))
+                self.assertEqual(note["t"], 2)
+                self.assertEqual(note["content"][1]["layout"], "inline")
+                self.assertTrue((directory / note["content"][1]["file"]).is_file())
+                self.assertEqual(events[-1]["id"], directory.name)
+            self.assertEqual(len(app.session["notes"]), 2)
+            app.state = "stopping"
+            with self.assertRaises(RuntimeError):
+                app.note("", self.image_content("stop"), self.assets("stop"))
+
+    def test_recording_image_keeps_captured_time_and_deletion(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            app = self.make_app(root)
+            directory = self.make_session(root)
+            app.session = {"dir": directory, "notes": []}
+            app.state = "recording"
+            app.total_samples = 160000
+            events = []
+            app.emit = lambda **event: events.append(event)
+            note = app.note("", self.image_content("capture"), self.assets("capture"),
+                            t=5, sid=directory.name)
+            self.assertEqual(note["t"], 5)
+            self.assertEqual(note["content"][1]["displayWidth"], 86)
+            image = note["content"][1]["file"]
+            app.delete_recording_image(directory.name, image)
+            self.assertFalse(any(node.get("type") == "image" for node in note["content"]))
+            self.assertFalse((directory / image).exists())
+            with self.assertRaises(RuntimeError):
+                app.note("", self.image_content("wrong"), self.assets("wrong"), t=5, sid="other")
+            with self.assertRaises(RuntimeError):
+                app.note("", self.image_content("future"), self.assets("future"), t=999, sid=directory.name)
 
     def make_session(self, root):
         session_dir = root / "interview-01"
@@ -95,6 +143,42 @@ class TimelineNoteImageTests(unittest.TestCase):
             "id": asset_id, "name": f"{asset_id}.png",
             "mime": "image/png", "data": encoded,
         } for asset_id in asset_ids]
+
+    def test_aside_anchor_and_inline_position_survive_saved_session(self):
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            session_dir = self.make_session(root)
+            app = self.make_app(root)
+            for layout in ("aside-left", "aside-right", "inline"):
+                content = self.image_content("asset-1")
+                content[1].update(layout=layout, anchorRowId="segment-2", insertPosition="before")
+                result = app.add_transcript_note("interview-01", 34, "", content, self.assets("asset-1"))
+                image = result["note"]["content"][1]
+                self.assertEqual(image["layout"], layout)
+                self.assertEqual(image["anchorRowId"], "segment-2")
+                self.assertEqual(image["insertPosition"], "before")
+                saved = json.loads((session_dir / "session.json").read_text(encoding="utf-8"))
+                self.assertEqual(saved["notes"][-1]["content"][1], image)
+
+    def test_moving_existing_image_persists_new_anchor_without_reupload(self):
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            session_dir = self.make_session(root)
+            app = self.make_app(root)
+            created = app.add_transcript_note(
+                "interview-01", 34, "", self.image_content("asset-1"), self.assets("asset-1"))
+            note = created["note"]
+            content = note["content"]
+            original_file = content[1]["file"]
+            content[1].update(layout="aside-right", anchorRowId="segment-5", insertPosition="after")
+            app.update_transcript_note(
+                "interview-01", 0, note["t"], note["text"], note["t"], note["text"], content, [])
+            saved = json.loads((session_dir / "session.json").read_text(encoding="utf-8"))
+            image = saved["notes"][0]["content"][1]
+            self.assertEqual(image["anchorRowId"], "segment-5")
+            self.assertEqual(image["layout"], "aside-right")
+            self.assertEqual(image["file"], original_file)
+            self.assertTrue((session_dir / original_file).is_file())
 
     def test_add_note_materializes_multiple_images_and_preserves_mixed_order(self):
         with TemporaryDirectory() as temp:

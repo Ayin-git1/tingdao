@@ -99,6 +99,18 @@ function syncAnchorRecording() {
   return {rail, sync};
 }
 
+function functionSource(signature) {
+  const start = html.indexOf(signature);
+  assert.notEqual(start, -1, `${signature} should exist`);
+  const bodyStart = html.indexOf('{', start);
+  let depth = 0;
+  for (let index = bodyStart; index < html.length; index += 1) {
+    if (html[index] === '{') depth += 1;
+    if (html[index] === '}' && --depth === 0) return html.slice(start, index + 1);
+  }
+  assert.fail(`${signature} should be complete`);
+}
+
 test('anchors appear only after five minutes and divide the recording into five-minute slices', () => {
   // A wrong threshold, a missing last partial slice, or an incorrect slice edge must fail this test.
   const slices = anchorSlices();
@@ -183,18 +195,28 @@ test('outline hierarchy indents L2 and L3 while L1 keeps the transcript heading 
   assert.match(html, /\.transcript-outline-item\.level-3\{[^}]*padding-left:[^;}]+;/);
 });
 
-test('chapter outline card stays compact and rises above the reading toolbar', () => {
-  assert.match(html, /\.transcript-outline-card\{[^}]*right:32px;[^}]*width:min\(260px,/);
+test('chapter outline card stays above reading tools but below global popup windows', () => {
+  assert.match(html, /\.feedzone\{[^}]*--reading-edge-gap:26px;/);
+  assert.match(html, /\.feedwrap\{[^}]*padding:16px var\(--reading-edge-gap\) 20px;/);
+  assert.match(html, /\.transcript-anchors\{[^}]*right:14px;/);
+  assert.match(html, /\.transcript-outline-card\{[^}]*right:calc\(var\(--reading-edge-gap\) - 14px\);[^}]*width:min\(260px,/);
   assert.match(html, /\.transcript-outline-card\{[^}]*max-height:min\(420px,/);
-  assert.match(html, /\.transcript-anchors\.has-outline\{[^}]*z-index:var\(--z-tip\);/);
+  assert.match(html, /\.transcript-anchors\.has-outline\{[^}]*z-index:var\(--z-float\);/);
+  assert.match(html, /--z-selbar:46;/);
+  assert.match(html, /--z-float:50;/);
+  assert.match(html, /--z-setpop:55;/);
+  assert.match(html, /--z-pop-lift:57;/);
 });
 
-test('chapter outline card keeps a fully opaque themed surface', () => {
+test('chapter outline card uses the shared neutral material surface', () => {
   const card = html.match(/\.transcript-outline-card\{[^}]*\}/);
   assert.ok(card, 'the outline card style must exist');
   const scroll = html.match(/\.transcript-outline-scroll\{[^}]*\}/);
   assert.ok(scroll, 'the outline card scroll surface must exist');
-  assert.match(scroll[0], /background:var\(--card\)/);
+  assert.match(scroll[0], /background:var\(--material-rest-background\)/);
+  assert.match(scroll[0], /backdrop-filter:var\(--material-rest-backdrop-filter\)/);
+  assert.match(scroll[0], /-webkit-backdrop-filter:var\(--material-rest-backdrop-filter\)/);
+  assert.match(scroll[0], /box-shadow:var\(--material-shadow-level-2\)/);
   assert.doesNotMatch(scroll[0], /background:rgba\(/);
   assert.match(card[0], /pointer-events:none/);
 });
@@ -204,8 +226,12 @@ test('chapter outline backdrop is a standalone card layer and reaches the app sh
   assert.ok(backdrop, 'the standalone outline backdrop must exist');
   assert.match(backdrop[0], /position:absolute/);
   assert.match(backdrop[0], /z-index:0/);
-  // The card is 46px from the shell edge (14px rail inset + 32px card inset).
-  assert.match(backdrop[0], /inset:-84px -46px -84px -260px/);
+  // Extend past the viewport top without clipping at the feed boundary.
+  assert.match(html, /\.feedzone\.has-transcript-anchors\{overflow:visible;\}/);
+  assert.match(html, /\.topbar\{[^}]*z-index:var\(--z-topbar\)/);
+  assert.match(html, /--z-topbar:53;/);
+  // The 46px backdrop extension covers the 26px gap (14px rail inset + 12px card inset).
+  assert.match(backdrop[0], /inset:-100vh -46px -84px -260px/);
   assert.match(backdrop[0], /pointer-events:none/);
   assert.match(backdrop[0], /background:rgba\(255,255,255,\.08\)/);
   assert.match(backdrop[0], /backdrop-filter:blur\(18px\) saturate\(\.82\)/);
@@ -230,8 +256,7 @@ test('dark mode keeps chapter outline backdrop and shadow black', () => {
   assert.ok(backdrop, 'dark outline backdrop override must exist');
   assert.ok(scroll, 'dark outline scroll override must exist');
   assert.match(backdrop[0], /background:rgba\(0,0,0,\.28\)/);
-  assert.match(scroll[0], /box-shadow:0 18px 42px rgba\(0,0,0,\.42\), 0 0 24px rgba\(0,0,0,\.28\)/);
-  assert.doesNotMatch(scroll[0], /rgba\(255,255,255/);
+  assert.match(scroll[0], /box-shadow:var\(--material-shadow-level-2\)/);
 });
 
 test('chapter outline backdrop fades first and faster than the directory surface', () => {
@@ -258,11 +283,48 @@ test('chapter outline does not install a reading-area or full-page fog element',
 });
 
 test('the playing anchor also marks the matching outline title', () => {
-  const active = html.match(/function setTranscriptAnchorActiveIndex\(active\)\{[\s\S]*?\n\}/);
-  assert.ok(active, 'the active transcript anchor updater must exist');
-  assert.match(active[0], /\.transcript-outline-item/);
-  assert.match(active[0], /classList\.toggle\('active',current\)/);
-  assert.match(active[0], /aria-current/);
+  const active = functionSource('function setTranscriptAnchorActiveIndex(');
+  assert.match(active, /updateTranscriptOutlineActive\(time\)/);
+});
+
+test('directory position follows third-level timestamps independently of chapter anchors', () => {
+  const items = [0, 30, 45, 60, 100].map(start => ({
+    dataset: {anchorStart:String(start)}, active:false,
+    classList:{toggle(name,value){ items.find(item=>item.classList===this).active=value; }},
+    setAttribute(name,value){ this[name]=value; },
+  }));
+  const update = Function('document', `${functionSource('function updateTranscriptOutlineActive(')}; return updateTranscriptOutlineActive;`)({querySelectorAll(){return items;}});
+  for(const [time,index] of [[0,0],[30,1],[45,2],[59,2],[60,3],[105,4],[35,1]]){
+    update(time);
+    assert.deepEqual(items.map(item=>item.active), items.map((_,i)=>i===index));
+    assert.equal(items[index]['aria-current'],'true');
+  }
+});
+
+test('scrolling updates directory position even within the same chapter anchor', () => {
+  const harness = Function(`
+    const transcriptAnchorState=[{start:0,end:100}], transcriptAnchorActiveIndex=0;
+    const player={paused:true,ended:false};
+    const segEls=[{dataset:{t:'0'},getBoundingClientRect(){return {top:0};}},
+      {dataset:{t:'45'},getBoundingClientRect(){return {top:80};}}];
+    function $(){return {clientHeight:250,getBoundingClientRect(){return {top:0};}};}
+    let position=-1;
+    function updateTranscriptOutlineActive(time){position=time;}
+    function setTranscriptAnchorActiveIndex(){throw new Error('chapter anchor did not change');}
+    ${functionSource('function transcriptAnchorCanFollowScroll(')}
+    ${functionSource('function transcriptAnchorIndex(')}
+    ${functionSource('function transcriptAnchorScrollIndex(')}
+    ${functionSource('function updateTranscriptAnchorFromScroll(')}
+    return {update:updateTranscriptAnchorFromScroll,position:()=>position};
+  `)();
+  harness.update();
+  assert.equal(harness.position(),45);
+});
+
+test('current directory title uses an inset theme dot without an active background', () => {
+  assert.doesNotMatch(html, /\.transcript-outline-item\.active\{[^}]*background:/);
+  assert.match(html, /\.transcript-outline-item\.active::before\{[^}]*width:6px;[^}]*border-radius:50%;[^}]*background:var\(--g\);/);
+  assert.match(html, /\.transcript-outline-item\.level-3\.active::before\{left:36px;/);
 });
 
 test('only L1 and L2 headings are inserted before transcript text at the same timestamp', () => {
@@ -372,7 +434,7 @@ test('scrolling the transcript selects the anchor at the reading position', () =
   assert.equal(atScroll(219, segments, slices), 0);
   assert.equal(atScroll(220, segments, slices), 1);
   assert.equal(atScroll(500, segments, slices), 2);
-  assert.match(html, /\$\('feedwrap'\)\.addEventListener\('scroll',updateTranscriptAnchorFromScroll/);
+  assert.match(html, /\$\('feedwrap'\)\.addEventListener\('scroll',scrollFrameUpdate\(updateTranscriptAnchorFromScroll\)/);
 });
 
 test('scroll position cannot replace the playback anchor while audio is playing', () => {
@@ -439,4 +501,160 @@ test('recording anchor styling disables pointer interaction in the lower layer',
     html,
     /\.transcript-anchors\.recording\{[^}]*z-index:var\(--z-inset\);[^}]*pointer-events:none;[^}]*visibility:hidden;/,
   );
+});
+
+test('exiting a manuscript clears the transcript anchor rail and its state', () => {
+  const source = html.match(/function clearTranscriptAnchors\(\)\{[\s\S]*?\n\}/);
+  assert.ok(source, 'the transcript anchor cleanup helper must exist');
+  assert.match(functionSource('function exitView()'), /clearTranscriptAnchors\(\)/);
+  const harness = Function(`
+    let transcriptAnchorState = [{start: 0}];
+    let transcriptAnchorActiveIndex = 2;
+    let transcriptAnchorRenderArgs = [300];
+    let transcriptAnchorHoverIndex = 1;
+    let transcriptAnchorFocusIndex = 3;
+    const rail = {
+      hidden: false,
+      replaced: false,
+      removed: [],
+      classList: {remove(...names){ this.removed = names; }},
+      replaceChildren(){ this.replaced = true; },
+      removeAttribute(name){ this.removedAttribute = name; },
+    };
+    const feedzone = {classList: {removed: [], remove(...names){ this.removed = names; }}};
+    function $(id){ return id === 'transcriptAnchors' ? rail : feedzone; }
+    ${source[0]}
+    return {
+      clear: clearTranscriptAnchors,
+      rail,
+      feedzone,
+      state: () => ({transcriptAnchorState, transcriptAnchorActiveIndex,
+        transcriptAnchorRenderArgs, transcriptAnchorHoverIndex, transcriptAnchorFocusIndex}),
+    };
+  `)();
+
+  harness.clear();
+
+  assert.equal(harness.rail.hidden, true);
+  assert.equal(harness.rail.replaced, true);
+  assert.deepEqual(harness.rail.classList.removed, ['has-outline', 'recording']);
+  assert.equal(harness.rail.removedAttribute, 'data-anchor-window');
+  assert.deepEqual(harness.feedzone.classList.removed, ['has-transcript-anchors']);
+  assert.deepEqual(harness.state(), {
+    transcriptAnchorState: [],
+    transcriptAnchorActiveIndex: -1,
+    transcriptAnchorRenderArgs: null,
+    transcriptAnchorHoverIndex: -1,
+    transcriptAnchorFocusIndex: -1,
+  });
+});
+
+test('chapter navigation does not start stale audio for a manuscript without audio', () => {
+  const source = functionSource('function jumpToTranscriptAnchor(');
+  let played = 0;
+  let currentTime = 17;
+  global.view = {id: 'text-only', audioUrl: ''};
+  global.player = {
+    get currentTime() { return currentTime; },
+    set currentTime(value) { currentTime = value; },
+    getAttribute() { return '/audio/previous-project.wav'; },
+    play() { played += 1; },
+  };
+  global.posDirty = false;
+  global.hideResume = () => {};
+  global.updateTranscriptAnchorActive = () => {};
+
+  const jumpToTranscriptAnchor = Function(`${source}; return jumpToTranscriptAnchor;`)();
+  jumpToTranscriptAnchor(120);
+
+  assert.equal(played, 0);
+  assert.equal(currentTime, 17);
+});
+
+test('clearing a project audio source unloads the previous media resource', () => {
+  const source = functionSource('function clearPlayerSource(');
+  const calls = [];
+  global.player = {
+    pause() { calls.push('pause'); },
+    removeAttribute(name) { calls.push(`remove:${name}`); },
+    load() { calls.push('load'); },
+  };
+
+  const clearPlayerSource = Function(`${source}; return clearPlayerSource;`)();
+  clearPlayerSource();
+
+  assert.deepEqual(calls, ['pause', 'remove:src', 'load']);
+  assert.match(functionSource('async function loadSession(sid, keepList)'), /clearPlayerSource\(\)/);
+  assert.match(functionSource('function exitView()'), /clearPlayerSource\(\)/);
+});
+
+test('paused media updates preserve reading navigation and playback immediately takes over', () => {
+  const source = functionSource('function updateTranscriptAnchorActive(time)');
+  const indexSource = functionSource('function transcriptAnchorIndex(time,slices)');
+  const harness = Function(`
+    const player = {paused:true, ended:false};
+    const transcriptAnchorState = [{start:0,end:100},{start:100,end:200}];
+    let active = -1;
+    function setTranscriptAnchorActiveIndex(index){ active = index; }
+    function updateTranscriptAnchorFromScroll(){ active = 0; }
+    ${functionSource('function transcriptAnchorCanFollowScroll(')}
+    ${indexSource}
+    ${source}
+    return {player, update:updateTranscriptAnchorActive, active:()=>active};
+  `)();
+  harness.update(150);
+  assert.equal(harness.active(), 0);
+  harness.player.paused = false;
+  harness.update(150);
+  assert.equal(harness.active(), 1);
+  harness.player.ended = true;
+  harness.update(200);
+  assert.equal(harness.active(), 0);
+});
+
+test('play, pause and initial render synchronize directory navigation with their position source', () => {
+  assert.match(html.match(/player.onplay = .*;/)[0], /updateTranscriptAnchorActive\(player.currentTime\)/);
+  assert.match(html.match(/player.onpause = .*;/)[0], /updateTranscriptAnchorFromScroll\(\)/);
+  const render = functionSource('function renderTranscriptAnchors(');
+  assert.match(render, /if\(!Number.isInteger\(activeOverride\)\) updateTranscriptAnchorFromScroll\(\)/);
+});
+
+test('opening the outline centers the title for playback or the visible reading position', () => {
+  const source = functionSource('function centerTranscriptOutline(');
+  const buttons = [0, 100, 150].map(t => ({dataset:{anchorStart:String(t)}, offsetHeight:30,
+    getBoundingClientRect(){return {top:300+t,height:30};}}));
+  const scroll = {clientHeight:200, scrollHeight:500, offsetHeight:202, scrollTop:0, style:{},
+    querySelectorAll(){return buttons;}, getBoundingClientRect(){return {top:200};}};
+  const harness = Function('scroll','buttons', `
+    const player={paused:false,ended:false,currentTime:160};
+    const segEls=[{dataset:{t:'0'},getBoundingClientRect(){return {top:0};}},
+      {dataset:{t:'110'},getBoundingClientRect(){return {top:100};}}];
+    const wrap={clientHeight:500,getBoundingClientRect(){return {top:0};}};
+    const rail={querySelector(){return scroll;}};
+    function $(id){return id==='feedwrap'?wrap:rail;}
+    function updateTranscriptAnchorActive(){}
+    ${functionSource('function transcriptAnchorCanFollowScroll(')}
+    ${source}
+    return {player,center:centerTranscriptOutline};
+  `)(scroll,buttons);
+  harness.center();
+  assert.equal(scroll.scrollTop,165);
+  scroll.scrollTop=0;
+  harness.player.paused=true;
+  harness.center();
+  assert.equal(scroll.scrollTop,115);
+  harness.player.paused=false;
+  harness.player.currentTime=0;
+  buttons[0].getBoundingClientRect=()=>({top:210,height:30});
+  scroll.scrollTop=0;
+  harness.center();
+  assert.equal(scroll.scrollTop,0, 'the first title stays at the natural top');
+  harness.player.currentTime=160;
+  scroll.scrollHeight=300;
+  scroll.scrollTop=0;
+  harness.center();
+  assert.equal(scroll.scrollTop,100, 'the last title stops at the natural bottom');
+  assert.deepEqual(scroll.style, {}, 'centering must not add height or artificial padding');
+  assert.match(html, /addEventListener\('mouseenter',centerTranscriptOutline\)/);
+  assert.match(html, /addEventListener\('focusin'/);
 });

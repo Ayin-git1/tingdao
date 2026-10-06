@@ -90,7 +90,7 @@ test('drop and move indicators fall back to the editor end and clear outside it'
 
 test('saved timeline notes render text rows and image cards through the flow renderer', () => {
   includes(/function renderTimelineNoteText\(/);
-  includes(/function createTranscriptNoteCard\(/);
+  assert.doesNotMatch(html,/function createTranscriptNoteCard\(/);
   includes(/function createTranscriptNoteImage\(/);
   includes(/renderTimelineNotes\(\)/);
 });
@@ -101,7 +101,7 @@ test('saved note images render in a dedicated two-column container instead of a 
   assert.doesNotMatch(html, /transcript-canvas-image/);
   includes(/transcript-note-card/);
   includes(/transcript-note-media/);
-  includes(/border-radius:13px/);
+  includes(/border-radius:var\(--radius-3\)/);
   includes(/grid-template-columns:minmax\(0,1fr\) minmax\(180px/);
   assert.doesNotMatch(html, /div\.className\s*=\s*['"]seg note-image['"]/);
   assert.doesNotMatch(html, /querySelectorAll\(['"]\.seg\.note,\.seg\.note-image['"]\)/);

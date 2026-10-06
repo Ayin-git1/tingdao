@@ -219,10 +219,13 @@ func writeMasterS16(_ samples: [Float]) {
 
 func openMasterOutput() {
     guard !gMasterPath.isEmpty else { return }
-    FileManager.default.createFile(atPath: gMasterPath, contents: nil)
+    if !FileManager.default.fileExists(atPath: gMasterPath) {
+        FileManager.default.createFile(atPath: gMasterPath, contents: nil)
+    }
     guard let out = FileHandle(forWritingAtPath: gMasterPath) else {
         fail("无法创建高保真录音母带 \(gMasterPath)", 7)
     }
+    out.seekToEndOfFile() // 暂停后继续采集时保留此前的母带。
     gMasterOut = out
 }
 

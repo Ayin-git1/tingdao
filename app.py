@@ -10,7 +10,10 @@
 - 历史会话列表, 逐字稿搜索, 时间线笔记, 一键复制
 """
 import base64
+import calendar
+from datetime import datetime
 from collections import deque
+import copy
 import json
 import getpass
 import hashlib
@@ -26,6 +29,7 @@ import shutil
 import sys
 import subprocess
 import threading
+import tempfile
 import time
 import uuid
 import wave
@@ -36,7 +40,7 @@ from urllib.parse import urlparse, parse_qs, unquote
 import numpy as np
 import sherpa_onnx
 
-APP_VERSION = "3.0.0"
+APP_VERSION = "3.1.0"
 
 # Finder/Dock 启动的 GUI 进程 PATH 不含 homebrew, 主动补齐(ffmpeg/SwitchAudioSource 所在)
 for _p in ("/opt/homebrew/bin", "/usr/local/bin"):
@@ -94,6 +98,100 @@ DATA_DIR = (Path(os.environ["TINGDAO_DATA"]).expanduser()
             if os.environ.get("TINGDAO_DATA") else _documents_dir() / "transcripts")
 CACHE_DIR = DATA_DIR / ".cache"
 LOG_FILE = DATA_DIR / ".tingdao.log"
+
+
+def cache_temp_path(prefix, suffix):
+    """所有可丢弃的处理文件使用唯一名字，避免并行云端任务互相覆盖。"""
+    if CACHE_DIR.is_symlink():
+        raise RuntimeError("缓存目录不能是符号链接")
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    return CACHE_DIR / f"{prefix}-{uuid.uuid4().hex}{suffix}"
+
+
+def cache_info():
+    if CACHE_DIR.is_symlink():
+        raise RuntimeError("缓存目录不能是符号链接")
+    total = 0
+    errors = []
+    def onerror(error):
+        errors.append(str(error))
+    for root, dirs, files in os.walk(CACHE_DIR, followlinks=False, onerror=onerror):
+        for name in files:
+            path = Path(root) / name
+            try:
+                if not path.is_symlink() and path.is_file():
+                    total += path.stat().st_size
+            except OSError as error:
+                errors.append(str(error))
+    return {"bytes": total, "path": str(CACHE_DIR),
+            "last_cleared": load_setting("cache_last_cleared"), "errors": errors}
+
+
+def clear_cache(now=None):
+    if CACHE_DIR.is_symlink():
+        raise RuntimeError("缓存目录不能是符号链接")
+    errors = []
+    def onerror(error):
+        errors.append(str(error))
+    for root, dirs, files in os.walk(CACHE_DIR, topdown=False, followlinks=False, onerror=onerror):
+        for name in files + dirs:
+            path = Path(root) / name
+            try:
+                if path.is_symlink() or not path.is_dir():
+                    path.unlink()
+                else:
+                    path.rmdir()
+            except OSError as error:
+                errors.append(str(error))
+    if not errors:
+        save_setting("cache_last_cleared", (now or datetime.now()).isoformat(timespec="seconds"))
+    result = cache_info()
+    result["errors"] = errors + result["errors"]
+    result["ok"] = not result["errors"]
+    return result
+
+
+def migrate_legacy_cache():
+    """只迁移旧版确切的处理文件名，用户项目和图片不属于缓存。"""
+    if CACHE_DIR.is_symlink():
+        raise RuntimeError("缓存目录不能是符号链接")
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    if load_setting("cache_layout_migrated"):
+        return
+    names = {".pretreat.wav", ".whout.json"}
+    for fmt in ("m4a", "mp3", "wav", "ogg", "flac"):
+        names.update({f".up_{fmt}.{fmt}", f".ds_{fmt}.{fmt}"})
+    for project in SESSIONS_DIR.iterdir():
+        if project.is_symlink() or not project.is_dir() or project.name.startswith('.'):
+            continue
+        for path in project.iterdir():
+            chunk = path.name.removeprefix('.cloud_part').removesuffix('.m4a')
+            if (path.name in names or (path.name.startswith('.cloud_part')
+                    and path.name.endswith('.m4a') and chunk.isdigit())) and path.is_file() and not path.is_symlink():
+                path.replace(cache_temp_path('legacy', path.suffix))
+    old_mic = DATA_DIR / '.micapp'
+    if old_mic.is_dir() and not old_mic.is_symlink():
+        for path in old_mic.iterdir():
+            if not path.is_symlink() and path.name.split('.')[0] in ('pcm', 'pid', 'log', 'rate'):
+                path.replace(cache_temp_path('legacy-mic', '.tmp'))
+        if not any(old_mic.iterdir()):
+            old_mic.rmdir()
+    save_setting("cache_layout_migrated", True)
+
+
+def check_cache_on_startup(now=None):
+    """只由 main 在服务启动前调用一次；按日历月计算，到期后下次启动清理。"""
+    now = now or datetime.now()
+    try:
+        last = datetime.fromisoformat(load_setting("cache_last_cleared") or '')
+        year, month = (last.year + 1, 1) if last.month == 12 else (last.year, last.month + 1)
+        due = last.replace(year=year, month=month,
+                           day=min(last.day, calendar.monthrange(year, month)[1]))
+    except (ValueError, TypeError):
+        due = now
+    if now >= due:
+        return clear_cache(now)
+    return None
 
 
 class _Tee:
@@ -1156,7 +1254,7 @@ def _cloud_asr_openai(cfg, audio_path, timeout=1800, prog=None, cancel=None):
         if cancel:
             cancel()                    # 块边界 = 天然检查点
         blen = min(step, dur - st)
-        ck = p.parent / f".cloud_part{k}.m4a"
+        ck = cache_temp_path("cloud-part", ".m4a")
         r = subprocess.run(
             [ffmpeg_path(), "-y", "-hide_banner", "-loglevel", "error",
              "-ss", f"{st:.3f}", "-t", f"{blen:.3f}", "-i", str(p),
@@ -1261,7 +1359,7 @@ def _cloud_asr_dashscope(cfg, audio_path, timeout=1800, prog=None, cancel=None, 
     fmt = cfg.get("fmt") or asr_fmt()
     up = src
     if src.suffix.lower() != "." + fmt:
-        up = src.parent / f".ds_{fmt}.{fmt}"
+        up = cache_temp_path("ds-upload", f".{fmt}")
         to_upload(src, fmt, up)
     if prog:
         prog(f"上传音频中（{fmt}）", 0.01)
@@ -1416,7 +1514,7 @@ def _cloud_asr_once(cfg, audio_path, timeout=1800, prog=None):
     import requests
     src = Path(audio_path)
     fmt = cfg.get("fmt") or asr_fmt()
-    tmp = src.parent / f".up_{fmt}{('.' + fmt) if fmt != 'ogg' else '.ogg'}"
+    tmp = cache_temp_path("upload", f".{fmt}")
     if fmt == "m4a" and src.suffix.lower() == ".m4a":
         up = src                                   # 本来就是 m4a, 不折腾
     else:
@@ -2491,7 +2589,9 @@ class WinRec:
 class App:
     def __init__(self):
         self.lock = threading.RLock()
+        self.decode_lock = threading.RLock()  # VAD/推理串行，独立于状态锁
         self.capture_lock = threading.RLock()  # PCM 读写不能被识别/VAD 占住
+        self._history_cache = {}  # session.json 路径 -> (mtime_ns/size, 列表元数据)
         self._procs = {}        # sid -> Whisper 子进程 Popen(停止时 SIGTERM 它)
         self._cancel = set()    # 用户按过停止的 sid(云端链路在检查点自查)
         # 任务表: sid -> {kind,state,stage,pct}。批量导入后 refining 只是
@@ -2517,7 +2617,7 @@ class App:
         self._pending_ff = None
         self.total_samples = 0        # 已喂入 VAD 的总样本(=时间轴)
         self.vad_lang = "zh"
-        self.gen = 0                  # 会话代际号: stop/pause 递增, 迟到的 reader 数据作废
+        self.gen = 0                  # 采集代际号：新录音/恢复/暂停完成/停止完成时递增
         # 流式小块状态
         self.chunk_buf = []
         self._chunk_t0 = 0            # 当前小块的起始时间(样本)
@@ -2721,6 +2821,12 @@ class App:
                 "platform": platform.system(),
                 "elapsed": round(self.total_samples / SR, 1) if s else 0,
                 "session": s["name"] if s else "",
+                "recordingImages": [{"t": note["t"], "file": node["file"],
+                                     "name": node.get("name"), "asset": node.get("recordingAsset")}
+                                    for note in (s["notes"] if s else [])
+                                    for node in note.get("content") or []
+                                    if node.get("type") == "image" and node.get("file")]
+                                   if self.state in ("recording", "paused", "stopping") else [],
                 "dir": str(s["dir"]) if s else "",
                 "mode": s["mode"] if s else "",
                 "lang": s["lang"] if s else "",
@@ -2775,6 +2881,7 @@ class App:
                 raise RuntimeError("已有进行中的会话，请先停止")
             if ENGINE.engine_name == "sensevoice" and ENGINE._sv is None:
                 raise RuntimeError("未配置 SenseVoice 模型：设置 → 本地模型")
+            self.gen += 1
             self.session = self._new_session(name, mode, lang)
             self.total_samples = 0
             self.chunk_buf = []
@@ -2872,7 +2979,7 @@ class App:
         self.raw_f = open(self.session["dir"] / "raw.s16", "ab")
         self._sck_ready = threading.Event()
         self._sck_errbuf = []
-        tmp = DATA_DIR / ".micapp"
+        tmp = CACHE_DIR / "micapp"
         tmp.mkdir(parents=True, exist_ok=True)
         tag = f"{int(time.time() * 1000)}"
         fifo, pidf, logf, ratef = (tmp / f"pcm.{tag}", tmp / f"pid.{tag}",
@@ -3020,15 +3127,14 @@ class App:
         """PCM 读取优先于识别：管道必须持续排空，避免反压打乱录音时钟。"""
         self._pcm_q = queue.Queue()
         self.decoder_thread = threading.Thread(target=self._decode_loop,
-                                               args=(self._pcm_q,), daemon=True)
-        self.reader_thread = threading.Thread(target=self._read_loop, daemon=True)
+                                               args=(self._pcm_q, self.gen), daemon=True)
+        self.reader_thread = threading.Thread(target=self._read_loop,
+                                              args=(self.ffmpeg, self._pcm_q, self.gen), daemon=True)
         self.decoder_thread.start()
         self.reader_thread.start()
 
-    def _read_loop(self):
+    def _read_loop(self, ff, pcm_q, generation):
         """持续排空采集进程的 PCM 并立即落盘；识别交给独立线程。"""
-        ff = self.ffmpeg
-        pcm_q = self._pcm_q
         try:
             while True:
                 data = ff.stdout.read(2048)  # 1024 样本
@@ -3037,7 +3143,8 @@ class App:
                 with self.capture_lock:
                     # stop() 会先把活动引用移到 _pending_ff，再给助手发 SIGINT。
                     # 此时管道内已写出的尾部 PCM 仍应落盘；只有被 pause/新会话替换时才丢弃。
-                    if (self.ffmpeg is not ff and self._pending_ff is not ff) or self.raw_f is None:
+                    if (generation != self.gen or
+                            (self.ffmpeg is not ff and self._pending_ff is not ff) or self.raw_f is None):
                         break  # 已被 pause/stop 换掉
                     self.raw_f.write(data)
                     self.total_samples += len(data) // 2
@@ -3047,82 +3154,96 @@ class App:
         finally:
             pcm_q.put(None)
 
-    def _decode_loop(self, pcm_q):
-        """保持既有 VAD/识别节奏，但绝不阻塞 PCM 读端。"""
+    def _decode_loop(self, pcm_q, generation):
+        """PCM 读端独立；解码串行但不占用全局状态锁。"""
         while True:
             data = pcm_q.get()
             if data is None:
                 return
-            with self.lock:
+            with self.decode_lock:
+                with self.lock:
+                    if generation != self.gen:
+                        return
                 self._feed(np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0)
 
     def _feed(self, samples):
-        """喂 VAD(锁内调用); 断句即识别并广播; 同时按小块流式吐字"""
-        if self.state not in ("recording", "stopping"):
-            return  # 已停/暂停: 迟到数据作废, 防止重复识别
-        # ---- 电平采样: 供前端底部电平条(峰值保持 + 缓 decay) ----
-        try:
-            rms = float(np.sqrt(np.mean(samples * samples)))
-            self.level = max(rms, self.level * 0.80)
-        except Exception:
-            pass
-        # ---- 流式小块: 每 CHUNK 秒立即识别广播(前端即时显示) ----
-        n = int(CHUNK * SR)
-        self.chunk_buf.extend(samples)
-        if len(self.chunk_buf) >= n:
-            blk = np.array(self.chunk_buf[:n], dtype=np.float32)
-            del self.chunk_buf[:n]
-            self._emit_chunk(blk)
-        # ---- VAD 断句(正式句边界, 时间戳以此为准) ----
+        with self.lock:
+            if self.state not in ("recording", "stopping"):
+                return
+            session, generation, vad = self.session, self.gen, ENGINE.vad
+            try:
+                rms = float(np.sqrt(np.mean(samples * samples)))
+                self.level = max(rms, self.level * 0.80)
+            except Exception:
+                pass
+            n = int(CHUNK * SR)
+            self.chunk_buf.extend(samples)
+            blk = None
+            if len(self.chunk_buf) >= n:
+                blk = np.array(self.chunk_buf[:n], dtype=np.float32)
+                del self.chunk_buf[:n]
+        if blk is not None:
+            self._emit_chunk(blk, session, generation)
         for i in range(0, len(samples), VAD_WINDOW):
             c = samples[i:i + VAD_WINDOW]
             if len(c) < VAD_WINDOW:
                 c = np.pad(c, (0, VAD_WINDOW - len(c)))
-            ENGINE.vad.accept_waveform(c)
-            while not ENGINE.vad.empty():
-                self._decode_seg(ENGINE.vad.front)
-                ENGINE.vad.pop()
+            vad.accept_waveform(c)
+            while not vad.empty():
+                self._decode_seg(vad.front, session, generation)
+                vad.pop()
 
-    def _emit_chunk(self, blk):
-        """小块流式识别: 仅广播给前端即时显示, 不入正式 segments"""
-        # 静音小块跳过(能量门限), 避免空白字幕刷屏
+    def _emit_chunk(self, blk, session, generation):
         if float(np.sqrt(np.mean(blk * blk))) < 0.004:
             return
+        with self.lock:
+            if self.session is not session or self.gen != generation:
+                return
+            lang, t0 = session["lang"], self._chunk_t0
         try:
-            text = ENGINE.recognize(blk, self.session["lang"])
+            text = ENGINE.recognize(blk, lang)
         except Exception:
             return
-        if text:
-            self.emit(type="chunk", t=round(self._chunk_t0 / SR, 2), text=text)
+        with self.lock:
+            if self.session is not session or self.gen != generation:
+                return
+            if text:
+                self.emit(type="chunk", t=round(t0 / SR, 2), text=text)
             self._chunk_t0 += CHUNK
-        else:
-            self._chunk_t0 += CHUNK   # 无文字也推进时间轴
 
-    def _decode_seg(self, seg):
-        s = self.session
-        text = ENGINE.recognize(seg.samples, s["lang"])
+    def _decode_seg(self, seg, session, generation):
+        with self.lock:
+            if self.session is not session or self.gen != generation:
+                return
+            lang = session["lang"]
+        text = ENGINE.recognize(seg.samples, lang)
         item = {"t": round(seg.start / SR, 2),
-                "d": round(len(seg.samples) / SR, 2),
-                "text": text}
-        # 去重: 与上一段时间戳和时长完全一致时跳过(竞态下同段会被识别两次)
-        if s["segments"] and s["segments"][-1]["t"] == item["t"] \
-                and s["segments"][-1]["d"] == item["d"]:
-            return
-        s["segments"].append(item)
-        if text:
-            self.emit(type="line", **item)
+                "d": round(len(seg.samples) / SR, 2), "text": text}
+        with self.lock:
+            if self.session is not session or self.gen != generation:
+                return
+            if session["segments"] and session["segments"][-1]["t"] == item["t"] \
+                    and session["segments"][-1]["d"] == item["d"]:
+                return
+            session["segments"].append(item)
+            if text:
+                self.emit(type="line", **item)
 
-    def _drain_vad(self):
-        """flush 出口: 停止后把 VAD 里残余的语音段识别掉"""
-        if ENGINE.vad is None:
+    def _drain_vad(self, session, generation):
+        """调用方持有解码锁；固定 VAD，推理结果按会话代际提交。"""
+        with self.lock:
+            if self.session is not session or self.gen != generation:
+                return
+            vad = ENGINE.vad
+        if vad is None:
             return
         try:
-            ENGINE.vad.flush()
+            vad.flush()
         except Exception:
             pass
-        while not ENGINE.vad.empty():
-            self._decode_seg(ENGINE.vad.front)
-            ENGINE.vad.pop()
+        while not vad.empty():
+            self._decode_seg(vad.front, session, generation)
+            vad.pop()
 
     def _kill_ffmpeg(self):
         ff = self.ffmpeg
@@ -3154,14 +3275,19 @@ class App:
         with self.lock:
             if self.state != "recording":
                 raise RuntimeError("当前不在录音")
+            session, generation = self.session, self.gen
             self._stop_ffmpeg_noblock()
         # 无锁等待退出(与 reader 无死锁风险)
         self._kill_ffmpeg_sync()
+        with self.decode_lock:
+            self._drain_vad(session, generation)
         with self.lock:
-            self._drain_vad()
+            if self.session is not session or self.gen != generation or self.state != "recording":
+                return {"ok": True}
             ENGINE.new_vad()  # 重置, 恢复时继续(时间轴按样本数冻结)
             self.chunk_buf = []
             self._chunk_t0 = self.total_samples  # 流式块时间轴与暂停点对齐
+            self.gen += 1
             self.state = "paused"
             self.emit(type="status", **self.status())
         if platform.system() != "Windows" and self.session["mode"] not in ("mix", "system"):
@@ -3173,6 +3299,7 @@ class App:
             if self.state != "paused":
                 raise RuntimeError("当前不在暂停")
             mode = self.session["mode"]
+            self.gen += 1
             self._start_recorder(mode)
             self.state = "recording"
             self.emit(type="status", **self.status())
@@ -3188,9 +3315,10 @@ class App:
                 self._stop_ffmpeg_noblock()
             self.state = "stopping"
             self.emit(type="status", **self.status())
-            sid = self.session["dir"].name
+            session, generation = self.session, self.gen
+            sid = session["dir"].name
         # 收尾(杀线程/识别残余/编码音频)放后台, 不阻塞 HTTP 响应
-        threading.Thread(target=self._stop_bg, daemon=True).start()
+        threading.Thread(target=self._stop_bg, args=(session, generation), daemon=True).start()
         return {"ok": True, "id": sid}
 
     def _stop_ffmpeg_noblock(self):
@@ -3204,21 +3332,27 @@ class App:
             except Exception:
                 pass
 
-    def _stop_bg(self):
+    def _stop_bg(self, session, generation):
+        if self.session is not session or self.gen != generation:
+            return
         try:
             self._kill_ffmpeg_sync()
         finally:
-            if platform.system() != "Windows" and self.session["mode"] not in ("mix", "system"):
+            if platform.system() != "Windows" and session["mode"] not in ("mix", "system"):
                 switch_output(output_restore())   # SCK 方案不切系统输出, 无需恢复
+        if not self._finish(session, generation):
+            return
         with self.lock:
-            self._finish()
+            if self.session is not session or self.gen != generation:
+                return
+            self.gen += 1
             self.state = "idle"
             self.emit(type="status", **self.status())
         # 停录后的处理严格按模式走一条, 绝不双跑:
         # single→本地 Whisper | cloud→只发事件让前端弹窗问,
         # 用户点确认才会上传(POST /api/cloud_transcribe), 不点就停在实时字幕稿。
-        d = self.session["dir"] if self.session else None
-        lang = self.session["lang"] if self.session else "zh"
+        d = session["dir"]
+        lang = session["lang"]
         if d and ((d / "audio.m4a").exists() or (d / "audio.wav").exists()):
             mode = talk_mode()
             if mode == "cloud" and cloud_flow() == "local_post":
@@ -3235,9 +3369,9 @@ class App:
                 up = self._recording_audio_source(d, meta)
                 self.emit(type="cloud_confirm", id=d.name,
                           mb=round(up.stat().st_size / 2**20, 1),
-                          dur=round(float(self.session.get("total_samples", 0)) / SR, 1),
+                          dur=round(float(session.get("total_samples", 0)) / SR, 1),
                           flow=cloud_flow())
-                self.session["cloud_pending"] = True
+                session["cloud_pending"] = True
             else:
                 print(f"[refine] 对话模式={mode} → Whisper 本地精修", flush=True)
                 self._job_begin(d.name, "refine", state="wait")
@@ -3264,8 +3398,8 @@ class App:
         if dt:
             dt.join(timeout=6)
             self.decoder_thread = None
-        # raw_f 关闭放锁内, 与 reader 的写入互斥
-        with self.lock:
+        # 文件关闭只与 PCM 写入互斥，不占用全局状态锁。
+        with self.capture_lock:
             if self.raw_f:
                 try:
                     self.raw_f.close()
@@ -3278,9 +3412,17 @@ class App:
                 pass
         self._pending_ff = None
 
-    def _finish(self):
-        s = self.session
-        self._drain_vad()
+    def _finish(self, session, generation):
+        with self.lock:
+            if self.session is not session or self.gen != generation:
+                return False
+        with self.decode_lock:
+            self._drain_vad(session, generation)
+        with self.lock:
+            if self.session is not session or self.gen != generation:
+                return False
+            s = copy.deepcopy(session)
+            total_samples = self.total_samples
         d = s["dir"]
         # 编码音频 m4a
         raw = d / "raw.s16"
@@ -3386,7 +3528,7 @@ class App:
         (d / "session.json").write_text(json.dumps({
             "name": s["name"], "started": s["started"], "stamp": s["stamp"],
             "mode": s["mode"], "lang": s["lang"],
-            "duration": round(self.total_samples / SR, 1),
+            "duration": round(total_samples / SR, 1),
             "audio": audio_rel or (master.name if master.exists() else None),
             # 默认试听永远走未经频谱降噪的无损母带；audioListen 只是兼容副本，
             # 不能让算法处理在人声段制造金属感或颗粒声。
@@ -3403,14 +3545,20 @@ class App:
         # transcript.md
         lines = [f"# {s['name']}", "",
                  f"- 开始: {s['started']} | {MODE_LABELS.get(s['mode'], s['mode'])}"
-                 f" | 时长: {fmt_ts(self.total_samples / SR)}", ""]
+                 f" | 时长: {fmt_ts(total_samples / SR)}", ""]
         for seg in s["segments"]:
             if seg["text"]:
                 lines.append(f"[{fmt_ts(seg['t'])}] {seg['text']}")
         if s["notes"]:
             lines += ["", "## 时间线笔记", ""]
-            lines += [f"- [{fmt_ts(n['t'])}] {n['text']}" for n in s["notes"]]
+            for note in s["notes"]:
+                lines.append(f"- [{fmt_ts(note['t'])}] {note['text']}")
+                for node in note.get("content") or []:
+                    if node.get("type") == "image" and node.get("file"):
+                        label = str(node.get("name") or "图片").replace("]", "")
+                        lines.append(f"  ![{label}]({node['file']})")
         (d / "transcript.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return True
 
     @staticmethod
     def _is_hallucination(text, dur):
@@ -3508,7 +3656,7 @@ class App:
         - 转写本体跑在子进程(whisper_worker.py): mlx_whisper 没有回调参数,
           在主进程里跑就是一块拆不开的整砖, 停止按钮按不动; 子进程 SIGTERM 即死。"""
         audio_path = Path(audio)
-        tmp_wav = audio_path.parent / ".pretreat.wav"
+        tmp_wav = cache_temp_path("pretreat", ".wav")
         chain = None if pretreat is False else pretreat_chain()
         info = {"pretreat": "off", "error": "", "repeat_dropped": 0}
         if chain:
@@ -3604,11 +3752,7 @@ class App:
         wm = whisper_model()
         if wm is None:
             raise RuntimeError("未配置 Whisper 模型：设置 → 本地模型")
-        if platform.system() == "Windows":
-            CACHE_DIR.mkdir(parents=True, exist_ok=True)
-            out = CACHE_DIR / f"{Path(audio_path).parent.name}.whout.json"
-        else:
-            out = Path(audio_path).parent / ".whout.json"
+        out = cache_temp_path("whisper", ".json")
         worker = (WINDOWS_WORKER_PY if platform.system() == "Windows" else WORKER_PY)
         cmd = [sys.executable, worker, "--audio", str(audio_path),
                "--model", str(wm), "--total", str(total or 0),
@@ -3623,20 +3767,25 @@ class App:
         try:
             if out.exists():
                 out.unlink()
-            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                                    stderr=subprocess.PIPE, text=True,
-                                    env=dict(os.environ, PYTHONUNBUFFERED="1"))
-            if sid:
-                with self.lock:
-                    self._procs[sid] = proc
-            parser = WhisperStdout(self.pct, total) if total else None
-            for line in proc.stdout:
-                if parser:
-                    parser.write(line)
-                else:
-                    print(line, end="", flush=True)   # 无总时长: 段行进日志, 不出数字
-            err = (proc.stderr.read() or "").strip()
-            rc = proc.wait()
+            # stderr 写临时文件，避免先读 stdout 时另一条管道写满导致互相等待。
+            # stdout 仍逐行读取，保留实时进度；退出后只读取错误尾部，不占用整份日志的内存。
+            with tempfile.TemporaryFile(dir=out.parent) as stderr_file:
+                with subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                                      stderr=stderr_file, text=True,
+                                      env=dict(os.environ, PYTHONUNBUFFERED="1")) as proc:
+                    if sid:
+                        with self.lock:
+                            self._procs[sid] = proc
+                    parser = WhisperStdout(self.pct, total) if total else None
+                    for line in proc.stdout:
+                        if parser:
+                            parser.write(line)
+                        else:
+                            print(line, end="", flush=True)   # 无总时长: 段行进日志, 不出数字
+                    rc = proc.wait()
+                stderr_file.seek(0, os.SEEK_END)
+                stderr_file.seek(max(0, stderr_file.tell() - 4096))
+                err = stderr_file.read().decode(errors="replace").strip()
             if sid and self.is_cancelled(sid):
                 raise Cancelled("已停止")
             if rc != 0 or not out.exists():
@@ -3943,7 +4092,7 @@ class App:
         if source.suffix.lower() != ".wav" or chain in ("off", "failed"):
             return source, None
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        tmp = CACHE_DIR / f"{d.name}.cloud-source.wav"
+        tmp = cache_temp_path("cloud-source", ".wav")
         ff = subprocess.Popen(
             [ffmpeg_path(), "-y", "-hide_banner", "-loglevel", "error", "-i", str(source),
              "-af", chain, "-ar", str(SR), "-ac", "1", "-c:a", "pcm_s16le", str(tmp)],
@@ -4141,9 +4290,9 @@ class App:
         if not sj.is_file():
             raise RuntimeError("项目不存在或没有可读文稿")
         meta = json.loads(sj.read_text(encoding="utf-8"))
-        segs = [s for s in (meta.get("segments") or []) if s.get("text")]
-        if len(segs) < 3:
-            raise RuntimeError("该项目文稿太少，不必生成摘要")
+        segs = [s for s in (meta.get("segments") or []) if str(s.get("text") or "").strip()]
+        if not segs:
+            raise RuntimeError("该项目没有正文，无法生成摘要")
         if meta.get("summary") and not regenerate:
             raise RuntimeError("该项目已有 AI 摘要")
         self._job_begin(sid, "summary", state="wait")
@@ -4658,14 +4807,57 @@ class App:
         # refining/jobs 清理由队列 worker 的 finally 统一兜底
 
     # ---------- 笔记 / 重命名 ----------
-    def note(self, text):
+    def note(self, text, content=None, assets=None, t=None, sid=None):
         with self.lock:
             if self.state not in ("recording", "paused"):
                 raise RuntimeError("只能在录制过程中记笔记")
-            item = {"t": round(self.total_samples / SR, 1), "text": text.strip()}
+            if sid is not None and sid != self.session["dir"].name:
+                raise RuntimeError("录音项目已改变，请重新插入图片")
+            timestamp = self.total_samples / SR
+            if t is not None:
+                try:
+                    captured = float(t)
+                except (TypeError, ValueError):
+                    raise RuntimeError("图片时间无效") from None
+                if not 0 <= captured <= timestamp:
+                    raise RuntimeError("图片时间超出录音范围")
+                timestamp = captured
+            item = {"t": round(timestamp, 1), "text": text.strip()}
+            if content is not None:
+                normalized, _ = self._materialize_note_content(self.session["dir"], content, assets)
+                for node, original in zip(normalized, content):
+                    if node.get("type") == "image":
+                        node["recordingAsset"] = original.get("asset")
+                        node.update(layout="inline", displayWidth=86, anchorRowId=None, insertPosition="after",
+                                    position={"mode": "flow", "x": None, "y": None})
+                item["content"] = normalized
+                item["text"] = self._note_content_text(normalized)
             self.session["notes"].append(item)
-            self.emit(type="note", **item)
+            self.emit(type="note", id=self.session["dir"].name, **item)
             return item
+
+    def delete_recording_image(self, sid, filename):
+        with self.lock:
+            if self.state not in ("recording", "paused") or not self.session:
+                raise RuntimeError("只能在录制过程中删除图片")
+            if sid != self.session["dir"].name:
+                raise RuntimeError("录音项目已改变")
+            target = self.note_image_path(sid, filename)
+            found = False
+            for note in self.session["notes"]:
+                content = note.get("content") or []
+                kept = [node for node in content
+                        if not (node.get("type") == "image" and node.get("file") == filename)]
+                if len(kept) != len(content):
+                    note["content"] = kept
+                    found = True
+            if not found:
+                raise RuntimeError("图片已不存在")
+            self.session["notes"][:] = [note for note in self.session["notes"]
+                                         if note.get("text") or note.get("content")]
+            target.unlink(missing_ok=True)
+            self.emit(type="recording_image_deleted", id=sid, file=filename)
+            return {"ok": True}
 
     def _note_content_text(self, content):
         """取图文内容的纯文本投影；图片节点不进入投影。"""
@@ -4783,7 +4975,7 @@ class App:
                 file_size = target.stat().st_size
 
             layout = str(node.get("layout") or "inline")
-            if layout not in ("inline", "square", "top-bottom", "behind", "front"):
+            if layout not in ("inline", "square", "top-bottom", "behind", "front", "aside-left", "aside-right"):
                 raise RuntimeError("图片排版方式无效")
             position = node.get("position") if isinstance(node.get("position"), dict) else {}
             mode = "free" if position.get("mode") == "free" else "flow"
@@ -4807,6 +4999,8 @@ class App:
                 "type": "image", "file": rel, "name": name, "mime": mime,
                 "bytes": file_size, "width": width, "height": height,
                 "displayWidth": display_width, "layout": layout,
+                "anchorRowId": str(node.get("anchorRowId") or "")[:120] or None,
+                "insertPosition": "before" if node.get("insertPosition") == "before" else "after",
                 "position": {"mode": mode, "x": x, "y": y},
             })
         return normalized, made
@@ -5070,17 +5264,23 @@ class App:
             return self._rename_on_disk(target, name)
         # ---- 录音中改名(原逻辑) ----
         with self.lock:
+            if self.state == "stopping":
+                raise RuntimeError("项目正在保存，请保存完成后再改名")
             if name == self.session["name"]:
                 return {"ok": True, "name": name}
             s = self.session
+            session, generation = s, self.gen
             was_rec = self.state == "recording"
             if was_rec:
                 self._stop_ffmpeg_noblock()
         if was_rec:
             self._kill_ffmpeg_sync()
+            with self.decode_lock:
+                self._drain_vad(session, generation)
         with self.lock:
+            if self.state == "stopping":
+                raise RuntimeError("项目正在保存，请保存完成后再改名")
             if was_rec:
-                self._drain_vad()
                 ENGINE.new_vad()
             s = self.session
             new_dir = s["dir"].parent / f"{name}-{s['stamp']}"
@@ -5129,7 +5329,10 @@ class App:
 
     def history(self):
         items = []
+        cache = self._history_cache
+        next_cache = {}
         if not SESSIONS_DIR.exists():
+            self._history_cache = next_cache
             return items
         for d in sorted(SESSIONS_DIR.iterdir(), key=lambda x: x.stat().st_mtime, reverse=True):
             if not d.is_dir():
@@ -5137,10 +5340,17 @@ class App:
             sj = d / "session.json"
             if sj.exists():
                 try:
+                    stat = sj.stat()
+                    signature = (stat.st_mtime_ns, stat.st_size)
+                    cached = cache.get(sj)
+                    if cached and cached[0] == signature:
+                        next_cache[sj] = cached
+                        items.append(cached[1].copy())
+                        continue
                     meta = json.loads(sj.read_text(encoding="utf-8"))
                 except Exception:
                     continue
-                items.append({"id": d.name, "name": self._clean_title(meta.get("name", d.name)),
+                item = {"id": d.name, "name": self._clean_title(meta.get("name", d.name)),
                               "date": meta.get("started", ""),
                               "duration": meta.get("duration", 0),
                               "lines": sum(1 for s in meta.get("segments", []) if s.get("text")),
@@ -5150,7 +5360,14 @@ class App:
                               "group": str(meta.get("group") or ""),
                               "favorite": bool(meta.get("favorite")),
                               "archived": bool(meta.get("archived")),
-                              "notes": len(meta.get("notes", []))})
+                              "notes": len(meta.get("notes", []))}
+                try:
+                    after = sj.stat()
+                    if signature == (after.st_mtime_ns, after.st_size):
+                        next_cache[sj] = (signature, item)
+                except OSError:
+                    pass  # 读取期间删除的文件不进入缓存。
+                items.append(item.copy())
             elif (d / "transcript.md").exists():
                 # 旧版 whisper 会话
                 md = (d / "transcript.md").read_text(encoding="utf-8")
@@ -5172,6 +5389,8 @@ class App:
                               "duration": 0, "lines": 0,
                               "hasAudio": False, "cloud": False, "stopped": True,
                               "group": "", "notes": 0, "favorite": False, "archived": False})
+        # 每次扫描生成新快照，淘汰已删除/改名路径；并发请求不修改彼此的缓存字典。
+        self._history_cache = next_cache
         return items
 
     def session_flags(self, ids, favorite=None, archived=None):
@@ -5392,6 +5611,7 @@ APP = App()
 # ---------------- HTTP (内部回环, 供窗口加载与音频流) ----------------
 INDEX = Path(__file__).parent / "index.html"
 SOUNDS_DIR = Path(__file__).parent / "sounds"
+MATERIAL_PREVIEW_DIR = Path(__file__).parent / "assets"
 SOUND_FILES = {
     "task_complete_warm.mp3",
     "task_complete_distant.mp3",
@@ -5420,6 +5640,22 @@ class Handler(BaseHTTPRequestHandler):
             am = load_setting("appearance")
             if am not in ("light", "dark", "system"):
                 am = ""
+            material_mode = load_setting("material_mode")
+            if material_mode not in ("neutral", "enhanced", "mimetic"):
+                material_mode = "enhanced" if load_setting("enhanced_material") is True else "neutral"
+            material_options = {}
+            stored_options = load_setting("material_options")
+            for mode in ("enhanced", "mimetic"):
+                option = stored_options.get(mode, {}) if isinstance(stored_options, dict) else {}
+                option = option if isinstance(option, dict) else {}
+                material_options[mode] = {}
+                material_options[mode]["opticalEnhancement"] = mode == "mimetic" and option.get("opticalEnhancement") is True
+                material_options[mode]["svgRefraction"] = mode == "mimetic" and option.get("svgRefraction") is True
+                for key, default, maximum in (("blur", 4, 20), ("transparency", None, 100), ("shadowStrength", 50, 100), ("highlightStrength", 50, 100), ("highlightBloom", 0, 100)):
+                    value = option.get(key)
+                    material_options[mode][key] = (max(0, min(maximum, value))
+                        if isinstance(value, (int, float)) and math.isfinite(value) else default)
+            material_options_json = json.dumps(json.dumps(material_options))
             theme_color = load_setting("theme_color")
             try:
                 h = float(theme_color.get("h"))
@@ -5438,9 +5674,23 @@ class Handler(BaseHTTPRequestHandler):
                 "__TINGDAO_APPEARANCE__", am).replace(
                 "__TINGDAO_PLATFORM__", platform.system()).replace(
                 "__TINGDAO_THEME_COLOR__", theme_color_json).replace(
+                "__TINGDAO_MATERIAL_MODE__", material_mode).replace(
+                "__TINGDAO_MATERIAL_OPTIONS__", material_options_json).replace(
                 "__TINGDAO_VERSION__", f"v{APP_VERSION}").encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        elif u.path == "/material-preview/lakeside.png":
+            image = MATERIAL_PREVIEW_DIR / "material-preview-lakeside.png"
+            if not image.is_file():
+                self.send_error(404)
+                return
+            body = image.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "image/png")
+            self.send_header("Cache-Control", "public, max-age=31536000, immutable")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
@@ -5468,6 +5718,8 @@ class Handler(BaseHTTPRequestHandler):
         elif u.path == "/api/groups":
             # 分组顺序与折叠态; 成员关系在各项目 session.json 的 group 字段里
             self._json(load_groups())
+        elif u.path == "/api/cache":
+            self._json(cache_info())
         elif u.path == "/api/settings":
             s = load_settings()
             s["record_mode"] = recording_mode()
@@ -5550,14 +5802,58 @@ class Handler(BaseHTTPRequestHandler):
             parts = unquote(u.path[len("/audio/"):]).split("/")
             f = SESSIONS_DIR / parts[0] / parts[1]
             mime = {".m4a": "audio/mp4", ".wav": "audio/wav"}.get(f.suffix.lower())
-            if f.exists() and mime:
-                body = f.read_bytes()
-                self.send_response(200)
-                self.send_header("Content-Type", mime)
-                self.send_header("Content-Length", str(len(body)))
-                self.send_header("Accept-Ranges", "bytes")
-                self.end_headers()
-                self.wfile.write(body)
+            if f.is_file() and mime:
+                with f.open("rb") as audio:
+                    size = os.fstat(audio.fileno()).st_size
+                    start, end = 0, size - 1
+                    # 只支持单区间；无效、多区间或无法验证的 If-Range 回退完整响应。
+                    value = self.headers.get("Range", "").strip()
+                    match = re.fullmatch(r"bytes=([0-9]*)-([0-9]*)", value, re.I)
+                    if self.headers.get("If-Range") is not None:
+                        match = None
+                    if match:
+                        first, last = match.groups()
+                        try:
+                            first = int(first) if first else None
+                            last = int(last) if last else None
+                        except ValueError:
+                            match = None
+                        else:
+                            if (first is None and last is None) or (
+                                    first is not None and last is not None and last < first):
+                                match = None
+                    if match:
+                        if first is None:
+                            start = max(0, size - last)
+                        else:
+                            start = first
+                            end = min(last, size - 1) if last is not None else size - 1
+                        if start >= size:
+                            self.send_response(416)
+                            self.send_header("Content-Range", f"bytes */{size}")
+                            self.send_header("Content-Length", "0")
+                            self.send_header("Accept-Ranges", "bytes")
+                            self.end_headers()
+                            return
+                    length = max(0, end - start + 1)
+                    self.send_response(206 if match else 200)
+                    self.send_header("Content-Type", mime)
+                    self.send_header("Content-Length", str(length))
+                    self.send_header("Accept-Ranges", "bytes")
+                    if match:
+                        self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+                    self.end_headers()
+                    audio.seek(start)
+                    remaining = length
+                    while remaining:
+                        chunk = audio.read(min(64 * 1024, remaining))
+                        if not chunk:
+                            break
+                        try:
+                            self.wfile.write(chunk)
+                        except (BrokenPipeError, ConnectionResetError):
+                            return  # 播放器 seek/换项目取消旧请求时，立即结束传输。
+                        remaining -= len(chunk)
             else:
                 self.send_error(404)
         elif u.path.startswith("/note-image/"):
@@ -5574,7 +5870,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", NOTE_IMAGE_MIMES[image.suffix.lower()])
             self.send_header("Content-Length", str(len(body)))
-            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Cache-Control", "private, max-age=31536000, immutable")
             self.end_headers()
             self.wfile.write(body)
         else:
@@ -5591,9 +5887,17 @@ class Handler(BaseHTTPRequestHandler):
             if u.path == "/api/shutdown":
                 if not HEADLESS:
                     return self._json({"ok": False, "error": "关闭接口仅供桌面壳使用"}, 404)
-                self._json({"ok": True})
                 SHUTDOWN_REQUEST.set()
+                try:
+                    self._json({"ok": True})
+                except (BrokenPipeError, ConnectionResetError):
+                    pass  # 桌面壳已断开，退出收尾仍必须执行。
                 return
+            if u.path == "/api/cache/clear":
+                with APP.lock:
+                    if APP.state != "idle" or APP.progs or APP._procs:
+                        return self._json({"ok": False, "error": "录音或处理任务进行中，请完成后清理"}, 409)
+                    return self._json(clear_cache())
             if u.path == "/api/start":
                 requested_mode = body.get("mode")
                 selected_mode = (requested_mode if requested_mode in RECORDING_MODES
@@ -5773,7 +6077,9 @@ class Handler(BaseHTTPRequestHandler):
             if u.path == "/api/volume":
                 return self._json(volume_set(body.get("pct", 0)))
             if u.path == "/api/note":
-                return self._json({"ok": True, "note": APP.note(body.get("text", ""))})
+                return self._json({"ok": True, "note": APP.note(body.get("text", ""), body.get("content"), body.get("assets"), body.get("t"), body.get("id")), "id": APP.session["dir"].name})
+            if u.path == "/api/recording_image_delete":
+                return self._json(APP.delete_recording_image(body.get("id"), body.get("file")))
             if u.path == "/api/read_note_image_file":
                 return self._json(APP.read_note_image_file(body.get("path", "")))
             if u.path == "/api/timeline_note":
@@ -5900,6 +6206,13 @@ def main():
     SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     setup_log()
+    try:
+        migrate_legacy_cache()
+        result = check_cache_on_startup()
+        if result and not result["ok"]:
+            print(f"[cache] 自动清理未完成: {result['errors']}")
+    except Exception as error:
+        print(f"[cache] 启动缓存检查失败: {error}")
     # 端口交给 OS 现挑(bind 端口 0 = 一个真正空闲的回环端口, 没有「探测到空闲→再占用」之间的抢端口竞态);
     # 绑好后从 socket 读回真实端口, 全进程(含回报给壳、喂给 pywebview)都用这一个值。
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
@@ -6019,7 +6332,7 @@ def main():
     # before_show 先应用一次(窗口还没上屏, 不会闪灰), loaded 再兜一次(幂等)
     win.events.before_show += apply_native_chrome
     win.events.loaded += apply_native_chrome
-    webview.start()
+    webview.start(private_mode=True)
     finish_up("窗口关闭")     # 与 headless 分支同一套收尾, 不再各写一份
 
 

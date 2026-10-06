@@ -58,7 +58,7 @@ test('Command-K project selection marks the sidebar item before loading it', asy
   assert.equal(destination.scrolled, true);
 });
 
-test('Command-K group selection clears the sidebar title filter and reveals the group', async () => {
+test('Command-K group selection reveals the group without remounting the sidebar control', async () => {
   const source = functionSource('async function palOpenGroup(name)');
   const body = {classList: {contains: () => true}};
   const header = {
@@ -66,11 +66,12 @@ test('Command-K group selection clears the sidebar title filter and reveals the 
     getBoundingClientRect: () => ({top: 360}),
   };
   global.document = {querySelectorAll: () => [header]};
-  const sidebarSearch = {value: '旧搜索'};
   const historyList = {scrollTop: 320, getBoundingClientRect: () => ({top: 100})};
-  global.$ = id => ({sbSearchInput: sidebarSearch, histlist: historyList})[id];
-  global.histQuery = '旧搜索';
+  global.$ = id => ({histlist: historyList})[id];
   global.closePalette = () => { global.closed = true; };
+  global.sidebarTab = 'favorites';
+  global.syncSidebarTabs = () => { global.tabsSynced = true; };
+  global._histSig = 'stale';
   global.refreshHistory = async () => { global.refreshed = true; };
   global.toggleGroupCollapse = (...args) => { global.expanded = args; };
 
@@ -78,8 +79,9 @@ test('Command-K group selection clears the sidebar title filter and reveals the 
   await palOpenGroup('学习计划');
 
   assert.equal(global.closed, true);
-  assert.equal(global.histQuery, '');
-  assert.equal(global.$('sbSearchInput').value, '');
+  assert.equal(global.sidebarTab, 'projects');
+  assert.equal(global.tabsSynced, true);
+  assert.equal(global._histSig, '');
   assert.equal(global.refreshed, true);
   assert.deepEqual(global.expanded, ['学习计划', header, body]);
   assert.equal(historyList.scrollTop, 562);

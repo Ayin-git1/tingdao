@@ -83,3 +83,16 @@ test('drag auto-scroll re-hits after each frame and cancels when the pointer lea
   assert.deepEqual(cancelled, [2]);
   assert.equal(frames.size, 0);
 });
+
+test('holding an edge accelerates continuously and changing direction resets speed',()=>{
+ const {createSidebarAutoScroller}=autoScrollFunctions();
+ const list={scrollTop:5000,scrollHeight:20000,clientHeight:400},rect={left:0,right:300,top:0,bottom:400};
+ let callback;
+ const scroller=createSidebarAutoScroller(list,()=>rect,()=>{},fn=>{callback=fn;return 1;},()=>{});
+ scroller.update({clientX:100,clientY:390});callback(0);assert.equal(list.scrollTop,5008);
+ let speed=0;
+ for(let i=1;i<=100;i++){const before=list.scrollTop;callback(i*1000/60);speed=list.scrollTop-before;}
+ assert.ok(Math.abs(speed-24)<.01);
+ scroller.update({clientX:100,clientY:10});const before=list.scrollTop;callback(2000);assert.equal(list.scrollTop,before-8);
+ scroller.update({clientX:400,clientY:10});const stopped=list.scrollTop;callback(2017);assert.equal(list.scrollTop,stopped);
+});

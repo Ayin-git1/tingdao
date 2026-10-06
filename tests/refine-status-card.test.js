@@ -24,7 +24,7 @@ test('refine status uses a quiet top card with fixed copy and three loading dots
 test('refine card adapts its surface to both appearances and respects reduced motion', () => {
   assert.match(html, /--refine-card:/);
   assert.match(html, /html\[data-appearance="dark"\]\s*\{[\s\S]*?--refine-card:/);
-  assert.match(html, /\.refine-card\{[^}]*border:0[^}]*border-radius:13px[^}]*box-shadow:none/);
+  assert.match(html, /\.refine-card\{[^}]*border:0[^}]*border-radius:var\(--radius-3\)[^}]*box-shadow:none/);
   assert.match(html, /\.refine-card::before[\s\S]*?\.refine-card::after/);
   assert.match(html, /@media\s*\(prefers-reduced-motion:\s*reduce\)[\s\S]*?\.refine-card\.is-busy::before[\s\S]*?animation:none/);
 });
@@ -33,4 +33,25 @@ test('refine jobs toggle the card without exposing stage text or percentage in i
   const update = blockBetween('function updateRefineUI(){', '\n}\n\n/* 后台停止入口');
   assert.match(update, /\$\('refinewrap'\)\.classList\.toggle\('show', showing\)/);
   assert.doesNotMatch(update, /refineStageTxt|refineStageText\(|refinePct/);
+});
+
+test('completed short manuscripts show the summary action while empty or busy projects do not',()=>{
+ const vm=require('node:vm');
+ const source=blockBetween('function updateRefineUI(){','/* 后台停止入口');
+ for(const scenario of [
+  {segments:[{text:'一段正文'}],refinished:'whisper',show:true},
+  {segments:[{text:'第一段'},{text:'第二段'}],refinished:'whisper',show:true},
+  {segments:[],refinished:'whisper',show:false},
+  {segments:[{text:'正文'}],show:false},
+  {segments:[{text:'正文'}],refinished:'whisper',summary:'已有摘要',show:false},
+  {segments:[{text:'正文'}],refinished:'whisper',job:{state:'run',kind:'refine'},show:false},
+ ]){
+  const elements=new Map();const $=id=>{
+   if(!elements.has(id))elements.set(id,{style:{},classList:{toggle(){}},setAttribute(){}});
+   return elements.get(id);
+  };
+  const ctx=vm.createContext({$,view:{id:'s',...scenario},jobs:scenario.job?{s:scenario.job}:{},document:{querySelector:()=>$('topbar')}});
+  vm.runInContext(source,ctx);ctx.updateRefineUI();
+  assert.equal($('btnGenerateSummary').hidden,!scenario.show);
+ }
 });
