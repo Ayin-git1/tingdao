@@ -130,7 +130,7 @@ test('visual controls are hidden for neutral and remember each material independ
   assert.equal(f.elements.materialAdjustments.hidden,true);
   f.button.input({target:{value:'1'}});
   assert.equal(f.elements.materialAdjustments.hidden,false);
-  assert.equal(f.elements.materialTransparency.value,54);
+  assert.equal(f.elements.materialTransparency.value,10);
   f.elements.materialBlur.input({target:{value:'12'}});
   await f.elements.materialBlur.change();
   f.elements.materialTransparency.input({target:{value:'85'}});
@@ -138,8 +138,8 @@ test('visual controls are hidden for neutral and remember each material independ
   assert.equal(f.css['--material-custom-blur'],'12px');
   assert.equal(f.css['--material-custom-opacity'],'0.15');
   f.button.input({target:{value:'2'}});
-  assert.equal(f.elements.materialBlur.value,4);
-  assert.equal(f.elements.materialTransparency.value,76);
+  assert.equal(f.elements.materialBlur.value,6);
+  assert.equal(f.elements.materialTransparency.value,60);
   f.button.input({target:{value:'1'}});
   assert.equal(f.elements.materialBlur.value,12);
   assert.equal(f.elements.materialTransparency.value,85);
@@ -151,8 +151,8 @@ test('visual save failure restores saved values and reenables controls',async()=
   const f=fixture('enhanced','false',true);
   f.elements.materialBlur.input({target:{value:'18'}});
   await f.elements.materialBlur.change();
-  assert.equal(f.elements.materialBlur.value,4);
-  assert.equal(f.css['--material-custom-blur'],'4px');
+  assert.equal(f.elements.materialBlur.value,5);
+  assert.equal(f.css['--material-custom-blur'],'5px');
   assert.equal(f.elements.materialBlur.disabled,false);
   assert.equal(f.button.disabled,false);
 });
@@ -169,12 +169,12 @@ test('saved visual settings are applied before paint, including zero and full tr
 
 test('shadow concentration previews independently and persists for each material',async()=>{
   const f=fixture('enhanced','false');
-  assert.equal(f.elements.materialShadowStrength.value,50);
+  assert.equal(f.elements.materialShadowStrength.value,43);
   f.elements.materialShadowStrength.input({target:{value:'20'}});
   await f.elements.materialShadowStrength.change();
   assert.equal(f.css['--material-shadow-strength'],'0.4');
   f.button.input({target:{value:'2'}});
-  assert.equal(f.elements.materialShadowStrength.value,50);
+  assert.equal(f.elements.materialShadowStrength.value,17);
   f.elements.materialShadowStrength.input({target:{value:'0'}});
   await f.elements.materialShadowStrength.change();
   assert.equal(f.css['--material-shadow-strength'],'0');
@@ -190,11 +190,11 @@ test('inner highlight control is mimetic-only and changes independently of shado
   assert.equal(f.elements.materialHighlightRow.hidden,true);
   f.button.input({target:{value:'2'}});
   assert.equal(f.elements.materialHighlightRow.hidden,false);
-  assert.equal(f.elements.materialHighlightStrength.value,50);
+  assert.equal(f.elements.materialHighlightStrength.value,87);
   f.elements.materialHighlightStrength.input({target:{value:'0'}});
   await f.elements.materialHighlightStrength.change();
   assert.equal(f.css['--material-highlight-strength'],'0');
-  assert.equal(f.css['--material-shadow-strength'],'1');
+  assert.equal(f.css['--material-shadow-strength'],'0.34');
   assert.equal(f.saves.at(-1).value.mimetic.highlightStrength,0);
   f.button.input({target:{value:'0'}});
   assert.equal(f.elements.materialHighlightRow.hidden,true);
@@ -202,17 +202,17 @@ test('inner highlight control is mimetic-only and changes independently of shado
   f.button.input({target:{value:'2'}});
   assert.equal(f.elements.materialHighlightStrength.value,0);
 });
-test('inward bloom is opt-in, mimetic-only, saved independently of the highlight strip',async()=>{
+test('inward bloom is configurable, mimetic-only, saved independently of the highlight strip',async()=>{
   const f=fixture('enhanced','false');
   assert.equal(f.elements.materialHighlightBloomRow.hidden,true);
   f.button.input({target:{value:'2'}});
   assert.equal(f.elements.materialHighlightBloomRow.hidden,false);
-  assert.equal(f.elements.materialHighlightBloom.value,0);
+  assert.equal(f.elements.materialHighlightBloom.value,70);
   f.elements.materialHighlightBloom.input({target:{value:'75'}});
   await f.elements.materialHighlightBloom.change();
   assert.equal(f.css['--material-highlight-bloom-strength'],'0.75');
-  assert.equal(f.css['--material-highlight-strength'],'1');
-  assert.equal(f.css['--material-shadow-strength'],'1');
+  assert.equal(f.css['--material-highlight-strength'],'1.74');
+  assert.equal(f.css['--material-shadow-strength'],'0.34');
   assert.equal(f.saves.at(-1).value.mimetic.highlightBloom,75);
   const restored=fixture('mimetic','false',false,f.saves.at(-1).value);
   assert.equal(restored.elements.materialHighlightBloom.value,75);
@@ -226,21 +226,21 @@ test('inward bloom save failure restores the previous value',async()=>{
   const f=fixture('mimetic','false',true);
   f.elements.materialHighlightBloom.input({target:{value:'100'}});
   await f.elements.materialHighlightBloom.change();
-  assert.equal(f.elements.materialHighlightBloom.value,0);
+  assert.equal(f.elements.materialHighlightBloom.value,70);
   assert.equal(f.elements.materialHighlightBloom.disabled,false);
 });
 test('inner highlight save failure restores the previous value',async()=>{
   const f=fixture('mimetic','false',true);
   f.elements.materialHighlightStrength.input({target:{value:'100'}});
   await f.elements.materialHighlightStrength.change();
-  assert.equal(f.elements.materialHighlightStrength.value,50);
-  assert.equal(f.css['--material-highlight-strength'],'1');
+  assert.equal(f.elements.materialHighlightStrength.value,87);
+  assert.equal(f.css['--material-highlight-strength'],'1.74');
   assert.equal(f.elements.materialHighlightStrength.disabled,false);
 });
 
-test('optical enhancement is opt-in, mimetic-only, and restored before paint',async()=>{
+test('optical enhancement defaults on, mimetic-only, and restored before paint',async()=>{
   const f=fixture('mimetic','false');
-  assert.equal(f.elements.materialOptics.checked,false);
+  assert.equal(f.elements.materialOptics.checked,true);
   assert.equal(f.elements.materialOpticsRow.hidden,false);
   f.elements.materialOptics.input({target:{checked:true}});
   await f.elements.materialOptics.change();
@@ -263,10 +263,10 @@ test('optical enhancement is opt-in, mimetic-only, and restored before paint',as
 
 test('failed optical enhancement save rolls back the switch and material',async()=>{
   const f=fixture('mimetic','false',true);
-  f.elements.materialOptics.input({target:{checked:true}});
+  f.elements.materialOptics.input({target:{checked:false}});
   await f.elements.materialOptics.change();
-  assert.equal(f.root.dataset.glassOptics,'off');
-  assert.equal(f.elements.materialOptics.checked,false);
+  assert.equal(f.root.dataset.glassOptics,'on');
+  assert.equal(f.elements.materialOptics.checked,true);
   assert.equal(f.elements.materialOptics.disabled,false);
 });
 
@@ -276,7 +276,7 @@ test('SVG refraction is independent, saved, and limited to mimetic',async()=>{
   f.elements.materialRefraction.input({target:{checked:true}});
   await f.elements.materialRefraction.change();
   assert.equal(f.root.dataset.glassRefraction,'on');
-  assert.equal(f.root.dataset.glassOptics,'off');
+  assert.equal(f.root.dataset.glassOptics,'on');
   const restored=fixture('mimetic','false',false,f.saves.at(-1).value);
   assert.equal(restored.root.dataset.glassRefraction,'on');
   f.button.input({target:{value:'1'}});

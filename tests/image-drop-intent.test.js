@@ -59,7 +59,7 @@ test('headings overlapping an aside image reserve horizontal space on either sid
  for(const side of ['left','right']){
   const make=(top)=>({dataset:{},classList:{add(){},contains:()=>false},style:{setProperty(n,v){this[n]=v;}},getBoundingClientRect:()=>({top,width:800,height:60})});
   const text=make(0),h1=make(80),h2=make(160),below=make(300);
-  for(const heading of [h1,h2,below])heading.matches=selector=>selector==='.transcript-heading';
+  for(const heading of [h1,h2,below])heading.matches=selector=>selector.split(',').includes('.transcript-heading');
   const anchor={querySelector:()=>text};const rows=[anchor,h1,h2,below];
   const ctx=vm.createContext({$:()=>({querySelectorAll:()=>rows}),imageDropPreviewStyles:new Map()});
   runFunction('applyImageAsideFlow',ctx);ctx.applyImageAsideFlow(anchor,260,240,side);

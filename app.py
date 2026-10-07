@@ -5643,18 +5643,22 @@ class Handler(BaseHTTPRequestHandler):
             material_mode = load_setting("material_mode")
             if material_mode not in ("neutral", "enhanced", "mimetic"):
                 material_mode = "enhanced" if load_setting("enhanced_material") is True else "neutral"
+            material_defaults = {
+                "enhanced": {"blur": 5, "transparency": 10, "shadowStrength": 43, "highlightStrength": 50, "highlightBloom": 0, "opticalEnhancement": False, "svgRefraction": False},
+                "mimetic": {"blur": 6, "transparency": 60, "shadowStrength": 17, "highlightStrength": 87, "highlightBloom": 70, "opticalEnhancement": True, "svgRefraction": False},
+            }
             material_options = {}
             stored_options = load_setting("material_options")
             for mode in ("enhanced", "mimetic"):
                 option = stored_options.get(mode, {}) if isinstance(stored_options, dict) else {}
                 option = option if isinstance(option, dict) else {}
                 material_options[mode] = {}
-                material_options[mode]["opticalEnhancement"] = mode == "mimetic" and option.get("opticalEnhancement") is True
+                material_options[mode]["opticalEnhancement"] = mode == "mimetic" and option.get("opticalEnhancement", material_defaults[mode]["opticalEnhancement"]) is True
                 material_options[mode]["svgRefraction"] = mode == "mimetic" and option.get("svgRefraction") is True
                 for key, default, maximum in (("blur", 4, 20), ("transparency", None, 100), ("shadowStrength", 50, 100), ("highlightStrength", 50, 100), ("highlightBloom", 0, 100)):
                     value = option.get(key)
                     material_options[mode][key] = (max(0, min(maximum, value))
-                        if isinstance(value, (int, float)) and math.isfinite(value) else default)
+                        if isinstance(value, (int, float)) and math.isfinite(value) else material_defaults[mode][key])
             material_options_json = json.dumps(json.dumps(material_options))
             theme_color = load_setting("theme_color")
             try:

@@ -81,14 +81,14 @@ test('Command-B reuses the left sidebar toggle', () => {
   assert.equal(prevented, true);
 });
 
-test('Command-Option-B reuses the right drawer toggle', () => {
+test('Command-Shift-B reuses the right drawer toggle', () => {
   global.drawerToggled = false;
   const handler = shortcutHandler();
   let prevented = false;
 
   handler({
-    key: 'b', code: 'KeyB', metaKey: true, ctrlKey: false, shiftKey: false,
-    altKey: true, preventDefault: () => { prevented = true; },
+    key: 'B', code: 'KeyB', metaKey: true, ctrlKey: false, shiftKey: true,
+    altKey: false, preventDefault: () => { prevented = true; },
   });
 
   assert.equal(global.drawerToggled, true);

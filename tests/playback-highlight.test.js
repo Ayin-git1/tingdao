@@ -122,3 +122,18 @@ test('all four transcript reset paths reset the playback index', () => {
   assert.equal((html.match(/resetPlaybackSegments\(\);/g) || []).length, 4);
   assert.equal((html.match(/segEls\s*=\s*\[\]/g) || []).length, 2);
 });
+
+test('playback emphasizes color without scaling, reflow or glow', () => {
+  const focus = html.match(/#feed \.seg\.cur \.tx-focus\{([\s\S]*?)\n  \}/)?.[1] || '';
+  assert.match(focus, /color:color-mix/);
+  assert.match(focus, /-webkit-text-stroke:\.18px/);
+  assert.doesNotMatch(focus, /transform:|filter:|text-fill-color/);
+  assert.doesNotMatch(focus, /font-weight|letter-spacing|padding/);
+  assert.match(html, /\.tx-focus\{display:block;width:calc\(100% \/ 1\.04\)/);
+  assert.doesNotMatch(focus, /width:|font-size:|line-height:/);
+  assert.doesNotMatch(html, /#feed \.seg\.cur \.tx\.image-aside-text\{transform:none;\}/);
+  const {context, rows} = setup();
+  context.addSeg({t:0, text:'live words'}, true);
+  context.addSeg({t:5, text:'loaded words'}, false);
+  for(const row of rows) assert.match(row.innerHTML, /class="tx"><span class="tx-focus">/);
+});

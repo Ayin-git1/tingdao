@@ -298,7 +298,7 @@ test('aside text keeps every line in its column including long words and focused
   assert.match(html,/#feed \.seg \.tx\.image-aside-text\{box-sizing:border-box;padding-right:var\(--image-aside-space\);overflow-wrap:anywhere;\}/);
   assert.match(html,/\.tx\.image-aside-text\[data-image-side="left"\]\{padding-left:var\(--image-aside-space\);padding-right:0;\}/);
   assert.doesNotMatch(html,/\.tx\.image-aside-text::before/);
-  assert.match(html,/#feed \.seg\.cur \.tx\.image-aside-text\{transform:none;\}/);
+  assert.match(html,/#feed \.seg\.cur \.tx-focus\{/);
 });
 
 
