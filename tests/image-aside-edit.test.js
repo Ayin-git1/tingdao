@@ -8,8 +8,8 @@ test('editing and restoring keep the aside text container and image nodes',()=>{
   const tx={innerHTML:'',style:{paddingRight:'316px'}};
   const figure={},divider={};
   const row={dataset:{raw:'old'},querySelector:()=>tx,children:[tx,figure,divider]};
-  const ctx={spkBadge:()=>'<i>1</i>',esc:v=>v,fixDot:()=>'<i>edited</i>',refreshTranscriptImageAsideFlow(){}};
-  vm.createContext(ctx);vm.runInContext(source('renderSegmentText'),ctx);
+  const ctx={segOf:()=>null,spkBadge:()=>'<i>1</i>',esc:v=>v,fixDot:()=>'<i>edited</i>',refreshTranscriptImageAsideFlow(){}};
+  vm.createContext(ctx);vm.runInContext(source('transcriptMarkerInk')+source('transcriptHighlightColor')+source('transcriptFormatCSS')+source('transcriptFormattedHtml')+source('renderSegmentText'),ctx);
   ctx.renderSegmentText(row,'new',true);
   assert.match(tx.innerHTML,/contenteditable="true"/);
   assert.equal(tx.style.paddingRight,'316px');

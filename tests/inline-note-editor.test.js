@@ -14,7 +14,7 @@ test('opening a note attaches the editor directly after its selected row and foc
   $:id=>{if(!elements.has(id))elements.set(id,{});return elements.get(id);},
   transcriptNoteTargetRow:{isConnected:true,after(child){anchorChild=child;}},
   transcriptNoteCloseEnd:null,fmt:t=>'00:'+String(t).padStart(2,'0'),
-  renderTranscriptNoteContent(){},hideTranscriptNoteMenu(){},fitTranscriptNoteLayer(){},refreshTranscriptImageAsideFlow(){},requestAnimationFrame(){}});
+  setTranscriptNoteQuote(){},renderTranscriptNoteContent(){},hideTranscriptNoteMenu(){},fitTranscriptNoteLayer(){},refreshTranscriptImageAsideFlow(){},requestAnimationFrame(){}});
  vm.runInContext(source('openTranscriptNote')+'\nopenTranscriptNote(12);',context);
  assert.equal(anchorChild,layer);assert.equal(layer.hidden,false);assert.equal(focused,true);
  assert.equal(elements.get('transcriptNoteTime').value,'00:12');

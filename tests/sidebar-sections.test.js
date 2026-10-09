@@ -74,7 +74,7 @@ test('sidebar section headers expose distinct accessible SVG icons', () => {
   const recentIcon = sidebarSectionIcon('recent');
   const groupsIcon = sidebarSectionIcon('groups');
 
-  assert.match(recentIcon, /<svg[^>]+class="sbsection-icon"/);
+  assert.match(recentIcon, /<svg[^>]+class="ui-icon sbsection-icon"/);
   assert.match(recentIcon, /aria-hidden="true"/);
   assert.match(recentIcon, /<circle/);
   assert.match(groupsIcon, /<path/);

@@ -224,7 +224,10 @@ test('main image resizing calls the note update path with the selected node', as
   assert.equal(requests[0].body.content[1].position.mode,'flow');
   assert.equal(requests[0].body.content[1].position.x,null);
   assert.equal(requests[0].body.content[1].position.y,null);
-  assert.deepEqual(messages,['图片大小已保存']);
+  assert.deepEqual(messages,[]);
+  context.api=async()=>({error:'图片保存失败'});
+  assert.equal(await context.persistTranscriptMainImageResize(target,360),false);
+  assert.deepEqual(messages,['图片保存失败']);
 });
 
 test('aside drops save equal column width through the existing upload path',async()=>{
@@ -330,4 +333,23 @@ test('aside image width above 70 percent becomes inline and persists on resize',
   assert.equal(saved.at(-1).layout,'inline');assert.equal(saved.at(-1).displayWidth,351);
   assert.equal(saved.at(-1).anchorRowId,'segment-2');
  }
+});
+
+test('only double click opens original; drag release and resize do not',()=>{
+  let opened=0;
+  const row={dataset:{imageSessionId:'session',imageFile:'note-images/original.png'}};
+  const context=vm.createContext({transcriptImageReleaseClick:false,openTranscriptImage:target=>{assert.equal(target,row);opened++;}});
+  vm.runInContext(source('consumeTranscriptImageClick'),context);
+  vm.runInContext(source('handleTranscriptImageDoubleClick'),context);
+  const event={target:{closest:selector=>selector==='.transcript-note-image'?row:null},preventDefault(){},stopImmediatePropagation(){}};
+  context.consumeTranscriptImageClick(event);
+  assert.equal(opened,0);
+  context.handleTranscriptImageDoubleClick(event);
+  assert.equal(opened,1);
+  context.transcriptImageReleaseClick=true;
+  context.handleTranscriptImageDoubleClick(event);
+  assert.equal(opened,1);
+  context.transcriptImageReleaseClick=false;
+  context.handleTranscriptImageDoubleClick({...event,target:{closest:()=>row}});
+  assert.equal(opened,1);
 });

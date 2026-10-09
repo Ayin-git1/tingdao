@@ -635,11 +635,16 @@ test('opening the outline centers the title for playback or the visible reading 
     const rail={querySelector(){return scroll;}};
     function $(id){return id==='feedwrap'?wrap:rail;}
     function updateTranscriptAnchorActive(){}
+    let cleared=0,hidden=0;
+    function clearTranscriptTextSelection(){cleared++;}
+    function hideTranscriptFormatTools(){hidden++;}
     ${functionSource('function transcriptAnchorCanFollowScroll(')}
     ${source}
-    return {player,center:centerTranscriptOutline};
+    return {player,center:centerTranscriptOutline,get cleared(){return cleared;},get hidden(){return hidden;}};
   `)(scroll,buttons);
   harness.center();
+  assert.equal(harness.cleared,1);
+  assert.equal(harness.hidden,1);
   assert.equal(scroll.scrollTop,165);
   scroll.scrollTop=0;
   harness.player.paused=true;

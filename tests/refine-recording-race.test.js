@@ -11,7 +11,7 @@ test('delayed old refinement reload cannot replace a new recording view',async()
 });
 test('a late session HTTP response is discarded after recording entry',async()=>{
  let reply;const context=vm.createContext({view:{id:'old'},transcriptViewGeneration:0,posDirty:false,
- closeAllNotes(){},hideTranscriptImageDropIndicator(){},api:()=>new Promise(resolve=>reply=resolve),
+ hideTranscriptFormatTools(){},resetTranscriptNoteLayer(){},closeAllNotes(){},hideTranscriptImageDropIndicator(){},api:()=>new Promise(resolve=>reply=resolve),
  preloadNoteImages(){throw new Error('stale response must not render');},toast(){}});
  const source=html.slice(html.indexOf('async function loadSession('),html.indexOf('\nfunction exitView()'));
  vm.runInContext(source,context);const pending=context.loadSession('old');

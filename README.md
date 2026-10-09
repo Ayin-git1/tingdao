@@ -93,9 +93,20 @@ Windows 安装版已包含 FFmpeg。安装 Python 后重开 PowerShell，并确�
 
 <h2 id="updates"><img src="./assets/readme/badges/updates.svg" height="40" alt="v3.1.0 更新"></h2>
 
+### v3.1.0 增量更新 · 2026-10-09
+
+本次保持版本号不变。[下载本次 macOS Apple Silicon 安装包](https://github.com/Ayin-git1/tingdao/releases/download/v3.1.0/tingdao_3.1.0_20261009_aarch64.dmg)。
+
+- 新增文稿划词格式：支持文字颜色、背景标记、加粗和下划线，保存选区格式，并在正文改写后清除旧格式。
+- 支持将选中文稿作为引用加入文字笔记，引用随笔记保存并在 Markdown 导出中保留。
+- 支持双击文稿图片，用系统默认程序打开保存的原图，完善图片粘贴、旁排与拖动后的交互。
+- 优化侧栏拖动悬停反馈、右键菜单收起与项目切换后的文稿初始位置。
+- 调整以文稿阅读为中心的字号层级，设置页保持紧凑布局；侧栏加入 Folio 字样，字体内嵌以便随安装包分发。
+- 完善录音加载、逐句编辑和回放定位的交互细节。
+
 ### v3.1.0 增量更新 · 2026-10-07
 
-本次保持版本号不变。[下载本次 macOS Apple Silicon 安装包](https://github.com/Ayin-git1/tingdao/releases/download/v3.1.0/tingdao_3.1.0_20261007_aarch64.dmg)。
+本次保持版本号不变。[下载本次 macOS Apple Silicon 安装包](https://github.com/Ayin-git1/tingdao/releases/download/v3.1.0/tingdao_3.1.0_aarch64.dmg)。
 
 - 改进录音处理与项目切换：减少处理等待，避免旧任务影响当前项目，完善退出清理和音频读取；继续录音时追加主音频，避免覆盖已有录音。
 - 完善分组管理：支持在侧栏新建、原位重命名、删除和拖动排序，编辑前自动折叠分组，优化拖动反馈与自动滚动。

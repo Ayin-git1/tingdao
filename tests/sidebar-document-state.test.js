@@ -105,7 +105,8 @@ test('sidebar selection is released before the exit refresh runs', () => {
   assert.equal(released, true);
 });
 
-test('exitView defers history refresh until the sidebar selection transition is released', () => {
+for (const positionChanged of [false, true]) {
+test(`exitView defers history refresh until the sidebar selection transition is released (positionChanged=${positionChanged})`, () => {
   const source = functionSource('function exitView()');
   const resetSource = functionSource('function resetPlaybackSegments()');
   const exitView = Function(`${resetSource}\n${source}; return exitView;`)();
@@ -119,11 +120,16 @@ test('exitView defers history refresh until the sidebar selection transition is 
     ['findbar', {classList: {remove() {}}}],
   ]);
   let refreshCount = 0;
+  const savedPositions = [];
   let releaseExit = null;
   global.$ = id => elements.get(id);
   global.renameArmed = true;
   global.setConfirm = () => {};
   global.view = {id: 'project-a'};
+  global.posDirty = positionChanged;
+  global.savePos = force => savedPositions.push({force, id: global.view.id});
+  global.editBarOff = () => {};
+  global.resetTranscriptNoteLayer = () => {};
   global.spkOrder = ['speaker'];
   global.spkPop = () => {};
   global.player = {pause() {}, removeAttribute() {}};
@@ -147,6 +153,8 @@ test('exitView defers history refresh until the sidebar selection transition is 
 
   exitView();
 
+  assert.deepEqual(savedPositions, positionChanged ? [{force: true, id: 'project-a'}] : []);
+  assert.equal(global.view, null);
   assert.equal(global.segEls.length, 0);
   assert.equal(global.segTimes.length, 0);
   assert.equal(global.lastCurHit, -1);
@@ -155,3 +163,4 @@ test('exitView defers history refresh until the sidebar selection transition is 
   releaseExit();
   assert.equal(refreshCount, 1);
 });
+}

@@ -20,7 +20,7 @@ function sessionHarness(){
   $:id=>{if(!elements.has(id))elements.set(id,{style:{},classList:{add(){},remove(){}}});return elements.get(id);},
   api:async path=>({id:path.split('/').pop(),name:'稿件',segments:[{t:0,text:'正文'}],notes:[{content:[{type:'image',file:'slow.png'}]}]}),
   transcriptViewGeneration:0,view:null,posDirty:false,RATES:['1'],defaultRateIdx:0,spkOrder:[],player:{},
-  closeAllNotes(){},hideTranscriptImageDropIndicator(){},applyRate(){},hideResume(){},setConfirm(){},
+  hideTranscriptFormatTools(){},resetTranscriptNoteLayer(){},editBarOff(){},closeAllNotes(){},hideTranscriptImageDropIndicator(){},applyRate(){},hideResume(){},setConfirm(){},
   buildSpkOrder(){},updateNoteBtn(){},resetPlaybackSegments(){},
   transcriptContentItems:segments=>segments.map(segment=>({...segment,type:'seg'})),
   addSeg:segment=>rendered.push(segment.text),renderTimelineNotes(){},clearPlayerSource(){},

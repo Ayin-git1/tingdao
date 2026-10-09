@@ -36,7 +36,7 @@ function setup(times = []) {
   const playback = html.slice(start, html.indexOf('player.onplay =', start));
   vm.runInContext('let segEls = rows.slice(); let segTimes = times.slice(); let currentSegEl = null;'
     + source('curHit') + source('updatePlaybackHighlight') + source('resetPlaybackSegments')
-    + source('addSeg') + playback, context);
+    + source('transcriptMarkerInk')+source('transcriptHighlightColor')+source('transcriptFormatCSS') + source('transcriptFormattedHtml') + source('addSeg') + playback, context);
   return {context, rows, mutations, followed, datasetReads:()=>datasetReads};
 }
 

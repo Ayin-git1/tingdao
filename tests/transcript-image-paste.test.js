@@ -71,3 +71,35 @@ test('live image upload captures time, shows pending preview and marks it saved'
  assert.equal(calls[0].body.t,5);assert.equal(calls[0].body.id,'session');
  assert.equal(previews.length,1);assert.equal(previews[0].file,'note-images/a.png');
 });
+
+test('a closed recording note cannot intercept timeline image paste through a stale event target',()=>{
+ for(const state of ['recording','paused']){
+  const {ctx,event,inserted}=harness();ctx.state=state;ctx.view=null;
+  const noteInput={closest:()=>noteInput};const lookup=ctx.$;
+  ctx.$=id=>id==='noteInput'?noteInput:lookup(id);
+  ctx.notePopOpen=()=>false;event.target=noteInput;
+  ctx.handleTranscriptImagePaste(event);
+  assert.equal(inserted.length,1,state);assert.equal(event.prevented,true);
+  assert.equal(inserted[0].target.time,5);
+ }
+});
+
+test('an open recording note retains its own text editing and cannot paste timeline images',()=>{
+ const {ctx,event,inserted}=harness();ctx.state='recording';ctx.view=null;
+ const noteInput={closest:()=>noteInput};const lookup=ctx.$;
+ ctx.$=id=>id==='noteInput'?noteInput:lookup(id);
+ ctx.notePopOpen=()=>true;event.target=noteInput;
+ ctx.handleTranscriptImagePaste(event);
+ assert.equal(inserted.length,0);assert.equal(event.prevented,undefined);
+});
+
+test('closing recording notes releases its focus without moving focus from other controls',()=>{
+ const start=html.indexOf('function hideNotePop(');
+ for(const focused of [true,false]){
+  let blurred=0;const input={value:'draft',blur(){blurred++;}};
+  const ctx=vm.createContext({document:{activeElement:focused?input:{}},growNote(){},
+   $:id=>id==='noteInput'?input:{classList:{remove(){}},style:{}}});
+  vm.runInContext(html.slice(start,html.indexOf('\n}',start)+2),ctx);
+  ctx.hideNotePop();assert.equal(blurred,focused?1:0);assert.equal(input.value,'');
+ }
+});

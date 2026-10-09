@@ -11,6 +11,8 @@ function setup(state='idle'){
   let tick,requests=0,resolve,reject;
   const pending=new Promise((yes,no)=>{resolve=yes;reject=no;});
   const ctx={state,view:null,transcriptViewGeneration:0,selected:new Set(),mode:'mic',langSel:'zh',recordingImageStopping:false,recordingImageUploads:[],sessionName:'',
+    clearTranscriptTextSelection(){ctx.selectionCleared=true;},
+    hideTranscriptFormatTools(){element('transcriptFormatTools').hidden=true;element('transcriptFormatPalette').hidden=true;},
     document:{body:{children:[sibling,alreadyInert,element('recordLoading')]},activeElement:null},window:{addEventListener(){}},
     $:element,setInterval:fn=>{tick=fn;return 1;},clearInterval:()=>{tick=null;},Math,
     api:()=>{requests++;return pending;},defaultName:()=> 'test',renderSelState(){},toast(){},updateRefineUI(){},editBarOff(){},resetPlaybackSegments(){},updateChrome(){},
@@ -20,7 +22,11 @@ function setup(state='idle'){
 }
 test('loading rotates without immediate repeats and restores existing inert state',()=>{
   const t=setup();
+  t.element('transcriptFormatTools').hidden=false;t.element('transcriptFormatPalette').hidden=false;
   assert.equal(t.ctx.showRecordLoading('start'),true);
+  assert.equal(t.ctx.selectionCleared,true);
+  assert.equal(t.element('transcriptFormatTools').hidden,true);
+  assert.equal(t.element('transcriptFormatPalette').hidden,true);
   assert.equal(t.element('recordLoading').hidden,false);assert.equal(t.sibling.inert,true);
   for(let i=0;i<20;i++){const previous=t.element('recordLoadingText').textContent;t.tick();assert.notEqual(t.element('recordLoadingText').textContent,previous);}
   assert.equal(t.ctx.showRecordLoading('stop'),false);

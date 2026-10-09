@@ -3837,7 +3837,9 @@ class App:
             for note in notes:
                 body = []
                 for node in note.get("content") or []:
-                    if node.get("type") == "text":
+                    if node.get("type") == "quote":
+                        body.append("\n> " + str(node.get("text") or "").replace("\n", "\n> ") + "\n")
+                    elif node.get("type") == "text":
                         body.append(str(node.get("text") or ""))
                     elif node.get("type") == "image" and node.get("file"):
                         label = str(node.get("name") or "图片").replace("]", "")
@@ -4864,7 +4866,7 @@ class App:
         return "".join(
             str(node.get("text") or "")
             for node in (content or [])
-            if isinstance(node, dict) and node.get("type") == "text"
+            if isinstance(node, dict) and node.get("type") in ("text", "quote")
         ).strip()
 
     def note_image_path(self, sid, relative_name):
@@ -4885,6 +4887,16 @@ class App:
         if target.parent != root or not target.is_file():
             raise RuntimeError("图片不存在")
         return target
+
+    def open_note_image(self, sid, relative_name):
+        """用系统默认程序打开项目内保存的原图。"""
+        image = self.note_image_path(sid, relative_name)
+        system = platform.system()
+        if system == "Windows":
+            os.startfile(str(image))
+        else:
+            subprocess.Popen(["open" if system == "Darwin" else "xdg-open", str(image)])
+        return {"ok": True}
 
     def read_note_image_file(self, path):
         """读取 Tauri 原生拖放进来的图片路径，转换成前端可保存的资产。"""
@@ -4931,8 +4943,8 @@ class App:
             if not isinstance(node, dict):
                 raise RuntimeError("笔记内容无效")
             kind = node.get("type")
-            if kind == "text":
-                normalized.append({"type": "text", "text": str(node.get("text") or "")})
+            if kind in ("text", "quote"):
+                normalized.append({"type": kind, "text": str(node.get("text") or "")})
                 continue
             if kind != "image":
                 raise RuntimeError("笔记内容类型无效")
@@ -5204,6 +5216,51 @@ class App:
                        meta.get("refinished", "") or "本地")
         return {"ok": True, "labels": clean}
 
+    def format_transcript(self, sid, patches):
+        """Save plain text range formats; reject stale selections before writing any patch."""
+        if not sid or ".." in sid or "/" in sid or "\\" in sid:
+            raise RuntimeError("非法路径")
+        if self.state != "idle" or sid in self.progs:
+            raise RuntimeError("请等录制或后台任务结束后再设置格式")
+        if not isinstance(patches, list) or not patches:
+            raise RuntimeError("格式内容无效")
+        with self.lock:
+            path = SESSIONS_DIR / sid / "session.json"
+            if not path.is_file():
+                raise RuntimeError("项目不存在")
+            meta = json.loads(path.read_text(encoding="utf-8"))
+            updates = []
+            for patch in patches:
+                hit = next((seg for seg in meta.get("segments", [])
+                            if float(seg["t"]) == float(patch["t"])), None)
+                if hit is None or hit.get("text", "") != patch.get("text"):
+                    raise RuntimeError("文稿已变化，请重新划词")
+                length = len(hit["text"].encode("utf-16-le")) // 2
+                formats = []
+                last_end = 0
+                for item in patch.get("formats", []):
+                    start, end = item.get("start"), item.get("end")
+                    if type(start) is not int or type(end) is not int or not last_end <= start < end <= length:
+                        raise RuntimeError("文字范围无效")
+                    style = {}
+                    for key in ("color", "background"):
+                        color = item.get("style", {}).get(key)
+                        if color:
+                            if not re.fullmatch(r"#[0-9a-fA-F]{6}", str(color)):
+                                raise RuntimeError("颜色无效")
+                            style[key] = color
+                    for key in ("bold", "underline"):
+                        if item.get("style", {}).get(key) is True:
+                            style[key] = True
+                    if style:
+                        formats.append({"start": start, "end": end, "style": style})
+                    last_end = end
+                updates.append((hit, formats))
+            for hit, formats in updates:
+                hit["formats"] = formats
+            path.write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
+        return {"ok": True}
+
     def edit_segment(self, sid, t, text, undo=False):
         """就地改一句：按时间点定位，改 session.json 里那句的 text，并连带重写 transcript.md。
         撤销不需要后端存副本 —— 前端留着旧文字，再打一次这个接口回填即可。"""
@@ -5240,6 +5297,8 @@ class App:
             return {"ok": True, "t": hit["t"], "old": old, "text": new,
                     "ed": hit.get("ed"), "same": True}
         hit["text"] = new
+        if old != new:
+            hit.pop("formats", None)
         # 修订标记：界面上留一个小点，一眼看出哪句被手改过；撤销回填时把点抹掉
         if undo:
             hit.pop("ed", None)
@@ -6104,6 +6163,8 @@ class Handler(BaseHTTPRequestHandler):
             if u.path == "/api/spk_labels":
                 return self._json(APP.set_spk_labels(body.get("id", ""),
                                                      body.get("labels") or {}))
+            if u.path == "/api/transcript_format":
+                return self._json(APP.format_transcript(body.get("id", ""), body.get("patches")))
             if u.path == "/api/edit_segment":
                 return self._json(APP.edit_segment(body.get("id", ""),
                                                    body.get("t"), body.get("text", ""),
@@ -6121,6 +6182,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(APP.delete_audio(body.get("id", "")))
             if u.path == "/api/delete_session":
                 return self._json(APP.delete_session(body.get("id", ""), bool(body.get("full"))))
+            if u.path == "/api/note_image/open":
+                return self._json(APP.open_note_image(body.get("id", ""), body.get("file", "")))
             if u.path == "/api/reveal":
                 return self._json(APP.reveal(body.get("id", "")))
             if u.path == "/api/engine":
