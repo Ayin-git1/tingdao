@@ -2283,11 +2283,16 @@
          justify-content:center; opacity:0; transform:translateX(18px) scale(.7);
          pointer-events:none;
          transition:opacity .45s cubic-bezier(.16,1,.3,1), transform .55s cubic-bezier(.16,1,.3,1),
+                    display .55s allow-discrete,
                     background var(--hov), color var(--hov), border-color var(--hov), box-shadow var(--hov);}
+  /* 入场由 pushDockButtons() 用关键帧驱动(从胶囊下依次推出、领头刹车、后排挤压回弹);
+     圆钮从 display:none 出来时 CSS 过渡本就不会跑, 这里只负责终态。
+     退场仍走上面的过渡: display 的 allow-discrete 让它先缩淡回胶囊、再隐藏。 */
   .dockgrp.rec .rcbtn{opacity:1; transform:none; pointer-events:auto;}
-  .dockgrp.rec #btnNoteTool{transition-delay:.20s;}
-  .dockgrp.rec #btnVol{transition-delay:.13s;}
-  .dockgrp.rec #btnPause{transition-delay:.06s;}
+  /* 音量钮直接读数: 与来源钮的喇叭图标区分开, 不用点开就知道当前音量 */
+  #btnVol .volpct{font-size:var(--fs-meta); font-weight:600; letter-spacing:-.3px;
+                  font-variant-numeric:tabular-nums; line-height:1;}
+  #btnVol .volpct small{font-size:.72em; font-weight:500; margin-left:1px; color:var(--sub);}
   #btnPause.paused{color:var(--warn);}
   #btnPause.pending:disabled{opacity:1 !important; cursor:wait;}
   #btnPause .pause-spinner{color:var(--g); animation:record-loading-spin 1s linear infinite;}
@@ -2328,7 +2333,6 @@
   /* ============ 悬浮搜索窗：仿 Notion 搜索 —— 输入在上、命中列表在下、键盘走一遍 ============ */
   /* 录音来源: 圆钮显示当前来源, 点开向上逐个弹出三枚同款圆钮, 点哪个切哪个 */
   .srcwrap{position:relative; display:flex; flex:none;}
-  .dockgrp.rec #btnSrc{transition-delay:.165s;}
   #btnSrc.on{border-color:color-mix(in srgb, var(--g) 60%, transparent); color:var(--g-ink);}
   #btnSrc.switching svg{animation:src-pulse 1s ease-in-out infinite;}
   @keyframes src-pulse{50%{opacity:.35;}}
@@ -3741,9 +3745,7 @@
   <button class="rcbtn" id="btnNoteTool" title="记笔记">
     <svg class="ui-icon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20h4l10-10-4-4L4 16v4zM13.5 6.5l4 4"/></svg>
   </button>
-  <button class="rcbtn" id="btnVol" title="输出音量">
-    <svg class="ui-icon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/></svg>
-  </button>
+  <button class="rcbtn" id="btnVol" title="输出音量"><span class="volpct" id="volPct">—</span></button>
   <button class="rcbtn" id="btnPause" title="暂停 / 继续">
     <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
   </button>
@@ -4394,7 +4396,10 @@ function updateChrome(){
     $('pillHw').classList.remove('open');
   }
   // 右下按钮组: 录制中条状按钮展宽为停止键, 暂停+笔记从左侧滑入
+  const dockEntering = rec && !$('dockgrp').classList.contains('rec');
+  if(dockEntering) volRefresh();
   $('dockgrp').classList.toggle('rec', rec);
+  if(dockEntering) pushDockButtons();
   const fab = $('fab');
   fab.classList.toggle('rec', rec);
   fab.classList.toggle('stopping', state==='stopping');
@@ -4911,10 +4916,17 @@ async function volRefresh(){
     volVal = (d.volume == null) ? 0 : d.volume;
     $('volRange').value = volVal;
     $('volNum').textContent = d.volume == null ? '不可控' : volVal + '%';
+    paintVolButton(d.volume == null ? null : volVal);
     $('volDev').textContent = d.device || '';
     $('volpop').classList.toggle('novol', !d.writable);
   }catch(e){}
 }
+function paintVolButton(v){
+  $('volPct').innerHTML = v == null ? '—' : `${v}<small>%</small>`;
+  $('btnVol').title = v == null ? '输出音量（不可控）' : `输出音量 ${v}%`;
+}
+// 录音期间音量可能被键盘音量键改掉: 定时对一次读数(只在 dock 出现时)
+setInterval(()=>{ if(state==='recording'||state==='paused') volRefresh(); }, 4000);
 function volClose(){
   $('volpop').classList.remove('show');
   $('btnVol').classList.remove('on');
@@ -4933,6 +4945,7 @@ $('btnVol').onclick = (e)=>{
 $('volRange').addEventListener('input', e=>{
   volVal = +e.target.value;
   $('volNum').textContent = volVal + '%';
+  paintVolButton(volVal);
   clearTimeout(volTimer);
   volTimer = setTimeout(async ()=>{
     try{
@@ -5030,6 +5043,64 @@ $('fab').onclick = async ()=>{
       renderSelState();
       const name = defaultName();
       const d = await api('/api/start', {mode, lang:langSel, name});
+/* ---- 录音 dock 入场: 圆钮像一列被胶囊推出去的小车 ----
+   推出段: 整列按同一条位移曲线从胶囊底下向外滑, 每颗越过胶囊左缘才现身, 所以一颗跟着一颗冒出来;
+   到位时仍带一点速度(DOCK_PUSH.v0)。
+   刹车段: 一条小弹簧链 —— 领头(离胶囊最远)弹簧硬、先刹住, 动能把它往前拖出几像素并拉长;
+   后排弹簧软, 继续往前顶, 撞上前车(只推不拉的接触弹簧)被挤扁, 挤压一节节往后传, 再回到原位。
+   每 16ms 采一帧写成关键帧, 胶囊同时在展宽, 按钮跟着它的左缘一起被带出去。 */
+const DOCK_PUSH = (()=>{
+  const w = 2 * Math.PI / 220, kL = w * w;
+  return {T:300, settle:520, v0:.27, kL, cL:2 * .3 * w, kF:kL * .22, cF:2 * .85 * w * Math.sqrt(.22), kc:kL * .8, push:.35};
+})();
+function dockBrakeSim(n){
+  const P = DOCK_PUSH, y = Array(n).fill(0), v = Array(n).fill(P.v0), frames = [];
+  for(let t = 0; t <= P.settle; t++){
+    if(t % 16 === 0) frames.push(y.slice());
+    const f = y.map((yi, i)=> i === 0 ? -P.kL * yi - P.cL * v[i] : -P.kF * yi - P.cF * v[i]);
+    for(let i = 1; i < n; i++){                      // 后车追上前车才有力, 前车只被轻推一点
+      const g = y[i] - y[i - 1];
+      if(g > 0){ f[i] -= P.kc * g; f[i - 1] += P.kc * g * P.push; }
+    }
+    for(let i = 0; i < n; i++){ v[i] += f[i]; y[i] += v[i]; }
+  }
+  return frames;                                       // frames[k][i]: 第 i 颗越过原位的像素(向外为正)
+}
+function pushDockButtons(){
+  if(matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const P = DOCK_PUSH;
+  const fabLeft = $('fab').getBoundingClientRect().left;
+  const btns = [...$('dockgrp').querySelectorAll('.rcbtn')]
+    .filter(b => getComputedStyle(b).display !== 'none')
+    .map(b => { b.getAnimations().forEach(a => a.cancel()); return {b, d: fabLeft - b.getBoundingClientRect().left}; })
+    .sort((x, y) => y.d - x.d);                        // 领头 = 离胶囊最远
+  if(!btns.length) return;
+  const D = Math.abs(btns[0].d);
+  const a = Math.max(0, 1 - P.v0 * P.T / D);                       // s(u)=D(1-u)(1-au): 出发快、渐慢, 到位时速度恰为 v0
+  const brake = dockBrakeSim(btns.length);
+  const total = P.T + P.settle;
+  btns.forEach(({b, d}, i) => {
+    const dir = Math.sign(d) || 1, dist = Math.abs(d);
+    const frames = [];
+    for(let t = 0; t < P.T; t += 16){
+      const u = t / P.T, s = D * (1 - u) * (1 - a * u);
+      const vis = Math.min(1, Math.max(0, (dist - s) / 18)); // 越过胶囊左缘才现身
+      const k = .82 + .18 * vis;
+      frames.push({offset: t / total, opacity: vis, transform: `translateX(${(s * dir).toFixed(2)}px) scale(${k})`});
+    }
+    brake.forEach((y, k) => {
+      const yi = y[i];
+      let sx, sy;
+      if(i === 0){ sx = 1 + .013 * yi; sy = 1 - .009 * yi; }     // 领头: 被动能拖长
+      else{ const g = Math.max(0, yi - y[i - 1]); sx = 1 - .025 * g; sy = 1 + .016 * g; } // 后排: 被挤扁
+      frames.push({offset: (P.T + k * 16) / total, opacity: 1,
+                   transform: `translateX(${(-yi * dir).toFixed(2)}px) scale(${sx.toFixed(3)},${sy.toFixed(3)})`});
+    });
+    frames.push({offset: 1, opacity: 1, transform: 'none'});
+    b.animate(frames, {duration: total, fill: 'backwards'});
+  });
+}
+
 /* ---- 录音中切换来源: 停旧助手 → 拉起新来源, 约 1 秒空档; 起不来时后端退回原来源 ---- */
 const SOURCE_ICONS = {
   system:'<svg class="ui-icon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/></svg>',
