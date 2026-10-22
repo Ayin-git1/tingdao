@@ -14,14 +14,15 @@ class SummaryOutlineTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         tree = ast.parse(APP.read_text(encoding="utf-8"))
-        wanted = {"fmt_ts", "clean_uploaded_transcript",
-                  "summary_transcript", "parse_summary_outline"}
+        wanted = {"fmt_ts", "clean_uploaded_transcript", "summary_transcript",
+                  "outline_transcript", "parse_summary_outline"}
         nodes = [node for node in tree.body
                  if isinstance(node, ast.FunctionDef) and node.name in wanted]
         namespace = {"re": re, "clean_uploaded_transcript": lambda text: text}
         exec(compile(ast.Module(body=nodes, type_ignores=[]), str(APP), "exec"), namespace)
         cls.clean_uploaded_transcript = staticmethod(namespace["clean_uploaded_transcript"])
         cls.summary_transcript = staticmethod(namespace["summary_transcript"])
+        cls.outline_transcript = staticmethod(namespace["outline_transcript"])
         cls.parse_summary_outline = staticmethod(namespace["parse_summary_outline"])
 
         app_node = next(node for node in tree.body
@@ -37,6 +38,7 @@ class SummaryOutlineTests(unittest.TestCase):
             "json": json,
             "clean_uploaded_transcript": cls.clean_uploaded_transcript,
             "summary_transcript": cls.summary_transcript,
+            "outline_transcript": cls.outline_transcript,
             "parse_summary_outline": cls.parse_summary_outline,
             "cloud_think_off_for": lambda *_args, **_kwargs: None,
             "MD_RULES": "\n输出格式：只用 Markdown；不要 HTML 标签。",
@@ -114,7 +116,7 @@ class SummaryOutlineTests(unittest.TestCase):
         ])
 
         self.assertEqual(calls[0][1]["content"], "正文内容")
-        self.assertEqual(calls[1][1]["content"], "[00:05] 正文内容")
+        self.assertEqual(calls[1][1]["content"], "[1] 正文内容")
         self.assertNotIn("旧文稿标题", calls[0][1]["content"])
         self.assertNotIn("旧错误摘要", calls[1][1]["content"])
 
@@ -131,36 +133,21 @@ class SummaryOutlineTests(unittest.TestCase):
         self.assertIn("只输出摘要本身", summary_system)
         self.assertNotIn("L1", summary_system)
         self.assertEqual(calls[0][1]["content"], "开场 第二部分")
-        self.assertIn("H1", outline_system)
-        self.assertIn("H2", outline_system)
-        self.assertIn("H3", outline_system)
-        self.assertIn("唯一可解析的目录协议", outline_system)
-        self.assertIn("H1/H2/H3 层级前缀必须保留", outline_system)
-        self.assertIn("不得输出没有层级前缀的时间戳行", outline_system)
-        self.assertNotIn("L1", outline_system)
-        self.assertNotIn("L2", outline_system)
-        self.assertNotIn("L3", outline_system)
-        self.assertIn("H3 是可选层级", outline_system)
-        self.assertIn("帮助用户快速定位", outline_system)
-        self.assertIn("每个 H2 下可以生成多个 H3，也可以不生成", outline_system)
-        self.assertIn("不要把每个细节都变成 H3", outline_system)
-        self.assertNotIn("最多生成 1 个 H3", outline_system)
-        self.assertNotIn("H3 总数不超过 30 条", outline_system)
-        self.assertNotIn("逐一生成 H3", outline_system)
-        self.assertIn("知识对象或核心议题", outline_system)
-        self.assertIn("通读全文直到结尾", outline_system)
-        self.assertIn("同一知识对象的定义、组成、属性、原理、象征、应用、比较和案例", outline_system)
-        self.assertIn("不要只生成开头部分", outline_system)
-        self.assertNotIn("Shin", outline_system)
-        self.assertNotIn("Tav", outline_system)
+        self.assertIn("[行号] H1 标题", outline_system)
+        self.assertIn("[行号] H2 标题", outline_system)
+        self.assertIn("★", outline_system)
+        self.assertIn("第一行必须是 H1", outline_system)
+        self.assertIn("一直写到逐字稿最后一行", outline_system)
+        self.assertIn("[行号] H3 标题", outline_system)
+        self.assertIn("H3 写在 H2 下面", outline_system)
+        self.assertNotIn("分钟", outline_system)
         self.assertNotIn("塔罗", outline_system)
-        self.assertIn("第一条必须是 H1", outline_system)
-        self.assertIn("H3 必须归属于前面的 H2", outline_system)
         self.assertNotIn("一句话主题", outline_system)
         self.assertNotIn("不要 HTML 标签", outline_system)
+        self.assertLess(len(outline_system), 500)
         self.assertEqual(
             calls[1][1]["content"],
-            "[00:00] 开场\n[01:05] S02｜第二部分",
+            "[1] 开场\n[2] ★ S02｜第二部分",
         )
         self.assertEqual(saved["summary"], "# 全篇概括\n\n一句话主题\n\n- 关键结论")
         self.assertEqual(saved["outline"], [
@@ -420,6 +407,61 @@ class SummaryOutlineTests(unittest.TestCase):
             {"t": 0.0, "level": 1, "title": "新章节"},
             {"t": 70.0, "level": 2, "title": "旧小节"},
         ])
+
+    def test_outline_transcript_numbers_rows_and_marks_speaker_transitions(self):
+        text, times = self.outline_transcript([
+            {"t": 0, "text": "大家好"},
+            {"t": 0.6, "text": "今天我们讲背景\n顺带一句"},
+            {"t": 12, "text": ""},
+            {"t": 30.5, "text": "好，接下来我们讲方法"},
+        ])
+
+        self.assertEqual(text, "[1] 大家好\n[2] ★ 今天我们讲背景 顺带一句\n"
+                               "[3] ★ 好，接下来我们讲方法")
+        self.assertEqual(times, [0.0, 0.6, 30.5])
+
+    def test_parser_maps_line_numbers_to_exact_segment_times(self):
+        segments = [{"t": 0, "text": "开场"}, {"t": 0.6, "text": "背景"},
+                    {"t": 30.5, "text": "方法"}]
+        _text, times = self.outline_transcript(segments)
+
+        _summary, outline = self.parse_summary_outline(
+            "<outline>\n[1] H1 开场\n[2] H2 背景\n[3] H1 方法\n[9] H2 不存在的行\n</outline>",
+            segments, times)
+
+        self.assertEqual(outline, [
+            {"t": 0.0, "level": 1, "title": "开场"},
+            {"t": 0.6, "level": 2, "title": "背景"},
+            {"t": 30.5, "level": 1, "title": "方法"},
+        ])
+
+    def test_parser_ignores_bare_numbers_without_line_times(self):
+        _summary, outline = self.parse_summary_outline(
+            "<outline>\n[1] H1 开场\n</outline>", [{"t": 0, "text": "开场"}])
+
+        self.assertEqual(outline, [])
+
+    def test_parser_shifts_a_colliding_h1_instead_of_merging_its_section(self):
+        times = [0.0, 10.0, 20.0, 30.0]
+        _summary, outline = self.parse_summary_outline(
+            "<outline>\n[1] H1 第一章\n[2] H2 要点\n[2] H1 第二章\n"
+            "[3] H2 第二章要点\n</outline>",
+            [{"t": t, "text": "x"} for t in times], times)
+
+        self.assertEqual(outline, [
+            {"t": 0.0, "level": 1, "title": "第一章"},
+            {"t": 10.0, "level": 2, "title": "要点"},
+            {"t": 20.0, "level": 1, "title": "第二章"},
+            {"t": 30.0, "level": 2, "title": "第二章要点"},
+        ])
+
+    def test_parser_drops_children_of_an_ungrounded_h1(self):
+        times = [0.0, 10.0, 20.0]
+        _summary, outline = self.parse_summary_outline(
+            "<outline>\n[1] H1 第一章\n[99] H1 虚构章\n[3] H2 虚构章要点\n</outline>",
+            [{"t": t, "text": "x"} for t in times], times)
+
+        self.assertEqual(outline, [{"t": 0.0, "level": 1, "title": "第一章"}])
 
     def test_plain_markdown_response_still_becomes_a_summary_with_no_outline(self):
         self.assertEqual(

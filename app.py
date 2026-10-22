@@ -1651,8 +1651,36 @@ def summary_transcript(segs):
     return clean_uploaded_transcript("\n".join(lines))
 
 
-def parse_summary_outline(reply, segs):
-    """拆出摘要和 H1/H2/H3 导航，并把模型时间重新落到真实文稿段。"""
+def outline_transcript(segs):
+    """给目录模型的行号稿: [行号] 比 [MM:SS] 省 token，小模型也不容易抄错。
+    返回 (稿子, 每行真实时间)。讲者过渡语所在行加 ★，作为分章候选。"""
+    stamped = [s for s in segs if s.get("text")]
+    rows, times, i = [], [], 0
+    for line in summary_transcript(segs).splitlines():
+        m = re.match(r"^\[(\d{1,2}:\d{2}(?::\d{2})?)\]\s*(.*)$", line)
+        if m:
+            # 清洗只会删行不会改序，按顺序找回这一行对应的原始段
+            while i < len(stamped) and fmt_ts(stamped[i].get("t", 0)) != m.group(1):
+                i += 1
+            times.append(float(stamped[i].get("t", 0)) if i < len(stamped)
+                         else (times[-1] if times else 0.0))
+            i += 1
+            rows.append(m.group(2))
+        elif rows and line.strip():
+            rows[-1] += " " + line.strip()      # 一段里的换行并回同一行
+    cue = re.compile(
+        r"接下来|下面(?:我们)?(?:再)?(?:来)?(?:讲|看|说|聊|进入|介绍)|"
+        r"我们(?:再)?来(?:讲|看|说|聊)|换个话题|回到(?:刚才|前面|上面)|"
+        r"今天(?:我们)?(?:要)?(?:讲|聊|分享|学)|刚才(?:我们)?(?:讲|说)(?:了|完)|"
+        r"第[一二三四五六七八九十\d]+(?:部分|个(?:问题|话题|主题)|章|节|讲)")
+    text = "\n".join(f"[{n}] {'★ ' if cue.search(row) else ''}{row}"
+                     for n, row in enumerate(rows, 1))
+    return text, times
+
+
+def parse_summary_outline(reply, segs, line_times=None):
+    """拆出摘要和 H1/H2/H3 导航，并把模型时间重新落到真实文稿段。
+    给了 line_times 时也接受 [行号] 写法，行号直接换成该行真实时间。"""
     raw = (reply or "").strip()
     summary_match = re.search(r"<summary>\s*(.*?)\s*</summary>", raw,
                               re.I | re.S)
@@ -1669,6 +1697,7 @@ def parse_summary_outline(reply, segs):
             real_by_label.setdefault(fmt_ts(t), t)
             real_times.append(t)
 
+    anchors = sorted(set(line_times or real_times))
     outline, used, has_l1, has_l2, last_t = [], set(), False, False, -1.0
     outline_text = outline_match.group(1) if outline_match else raw
     # Qwen 偶尔会遵守时间戳和 <outline>，但吞掉 H1/H2/H3 标记。只在有
@@ -1687,7 +1716,7 @@ def parse_summary_outline(reply, segs):
         line = re.sub(r"^\s*\|\s*|\s*\|\s*$", "", line)
         line = re.sub(r"^\s*(?:[-*+]\s+|\d+[.)]\s+)", "", line)
         match = re.match(
-            r"^\s*(?P<pre>#{1,4})?\s*\[(\d{1,2}:\d{2}(?::\d{2})?)\]\s+"
+            r"^\s*(?P<pre>#{1,4})?\s*\[(\d{1,2}:\d{2}(?::\d{2})?|\d{1,5})\]\s+"
             r"(?:(?:H([1234])|L([123]))\s+|"
             r"(?:(?:第)?([一二三四1234])级)\s+|(?P<post>#{1,4})\s+)?"
             r"(.+?)\s*$",
@@ -1708,8 +1737,13 @@ def parse_summary_outline(reply, segs):
                  min(3, 1 if implicit_index == 0 else max(2, leading // 2 + 1)))
         title = title.strip(" |")
         title = re.sub(r"^(?:\d+[.)]|[一二三四]+[、.)])\s*", "", title)
-        t = real_by_label.get(label)
-        if t is None:
+        if ":" not in label:
+            # [行号] 只在行号稿模式下有效，否则可能是摘要里的脚注编号
+            n = int(label)
+            t = line_times[n - 1] if line_times and 1 <= n <= len(line_times) else None
+        else:
+            t = real_by_label.get(label)
+        if t is None and ":" in label:
             parts = [int(part) for part in label.split(":")]
             requested = (parts[0] * 3600 + parts[1] * 60 + parts[2]
                          if len(parts) == 3 else parts[0] * 60 + parts[1])
@@ -1718,8 +1752,14 @@ def parse_summary_outline(reply, segs):
                 requested < real_times[0] or requested > real_times[-1]) else 0
             if nearest is not None and abs(nearest - requested) <= max(2, edge_slack):
                 t = nearest
+        if t is not None and (t == last_t or (level == 1 and t < last_t)):
+            # 撞上一条的时间就顺延到下一个真实段；H1 倒序也顺延，别整章丢掉
+            t = next((x for x in anchors if x > last_t and x not in used), None)
         if (t is None or t in used or t < last_t or
                 (level == 2 and not has_l1) or (level == 3 and not has_l2)):
+            if level == 1:
+                # 丢掉的 H1 下属 H2/H3 一并丢，免得挂到上一章里
+                has_l1, has_l2 = False, False
             continue
         title = re.sub(r"^[#*\s]+|[#*\s]+$", "", title)[:40].strip()
         if not title:
@@ -4559,48 +4599,38 @@ class App:
                 raise RuntimeError("模型没返回摘要内容")
 
             self.stage("生成章节标题中")
+            # 目录模型通常很小: 规则写成编号短句; 分章候选(★)和
+            # 行号→时间都交给代码，模型只需判断和照抄行号。
             outline_instr = (
-                "你是逐字稿结构化编辑。"
-                "分析输入的完整逐字稿，只生成知识导航，不写摘要，不补充原文没有的信息。"
-                "先通读全文直到结尾，再统一确定结构，不要边读边输出。"
-                "生成步骤：先找出全部 H1 候选；再确定 H1 边界并合并同一对象的内容；"
-                "然后确定每个 H1 的 H2;对于能显著帮助定位的关键知识点,再选择性生成 H3。"
-                "层级定义："
-                "H1 是可以独立命名、具有明确边界，并且有连续实质内容展开的知识对象或核心议题。"
-                "H2 是某个 H1 下的大知识点框架树,相当于枝干"
-                "H3 是某个 H2 下具体持续讨论的知识点、方法、解释、对比或案例。相当于枝干上的分叉"
-                "同一知识对象的定义、组成、属性、原理、象征、应用、比较和案例，统一归入同一个 H1。"
-                "只有当讨论对象或核心问题真正改变，并且新对象有连续实质内容时，才建立新的 H1。"
-                "短暂提及、过渡、重复、补充和单个例子，不建立新的 H1。"
-                "不要因为出现一个新术语、新属性或新例子就新建 H1。"
-                "每个 H1 都要继续展开稿件中出现的主要 H2;不要只保留一个 H2。"
-                "H3 是可选层级，只在它能帮助用户快速定位一个独立且重要的知识点、方法、解释、对比或案例时生成。"
-                "每个 H2 下可以生成多个 H3，也可以不生成，数量由知识结构和用户定位需要决定。"
-                "如果 H2 已经能概括内容，就不要为了凑层级生成 H3;不要把每个细节都变成 H3,"
-                "不要按句子、段落或时间点机械拆分，也不要逐条复述逐字稿。"
-                "不要只生成开头部分，必须继续处理到逐字稿结尾。"
-                "禁止生成 H4。" + prompt_extra +
-                "下面的输出是听道软件唯一可解析的目录协议，不是示例，必须逐字遵守。"
-                "只允许输出以下 XML 包装和目录行，不要输出解释、摘要、前言或结语。"
-                "每一条目录行都必须严格符合 [MM:SS] H1 标题、[MM:SS] H2 标题或"
-                "[MM:SS] H3 标题；时间戳必须使用半角方括号，H1/H2/H3 层级前缀必须保留，"
-                "不得省略、改成一级/二级或数字，也不得输出没有层级前缀的时间戳行。"
-                "严格按以下协议输出，不要加代码围栏：\n"
-                "<outline>\n[00:00] H1 标题\n[00:30] H2 标题\n"
-                "[01:00] H3 标题\n</outline>\n"
-                "第一条必须是 H1，后续 H2 必须归属于前面的 H1，"
-                "H3 必须归属于前面的 H2。"
-                "每个时间戳必须逐字选自输入稿，并按时间升序排列。"
-                "标题简短、准确，不加序号、书名号、引号或句号，最长 20 字。"
-                "只输出标题结构。")
+                "任务：为下面的逐字稿写目录。逐字稿每行开头的 [数字] 是行号。\n"
+                "只输出下面这种格式，不要输出其他内容：\n"
+                "<outline>\n[行号] H1 标题\n[行号] H2 标题\n[行号] H3 标题\n</outline>\n"
+                "规则：\n"
+                "1. 行号从逐字稿里照抄，从小到大排列。\n"
+                "2. 讲者换到一个新话题时，写一行 H1。\n"
+                "3. 行号后面带 ★ 的行，讲者说了「接下来」「下面讲」这类话，"
+                "常常是新话题的开始。是新话题就写 H1，不是就跳过。\n"
+                "4. 每个 H1 下面写几行 H2，一般 2 到 5 行，"
+                "写这个话题里讲的几个要点。\n"
+                "5. H2 下面可以写 H3，标出讲到的具体例子、方法或对比，"
+                "方便跳转。没有值得标的就不写。\n"
+                "6. 第一行必须是 H1。H2 写在 H1 下面，H3 写在 H2 下面。\n"
+                "7. 每个标题不超过 15 个字，不加序号和标点。\n"
+                "8. 一直写到逐字稿最后一行。"
+                + prompt_extra +
+                "\n示例：\n<outline>\n[1] H1 开场介绍\n[3] H2 本次内容安排\n"
+                "[40] H1 第一个主题\n[42] H2 基本概念\n[57] H2 举例说明\n"
+                "[61] H3 第一个例子\n"
+                "</outline>")
+            numbered, line_times = outline_transcript(segs)
             outline_reply = (cloud_chat(scfg, [
                 {"role": "system", "content": outline_instr},
-                {"role": "user", "content": summary_transcript(segs)}],
+                {"role": "user", "content": numbered}],
                 temperature=0.2, think_off=think_off) or "").strip()
-            _, outline = parse_summary_outline(outline_reply, segs)
+            _, outline = parse_summary_outline(outline_reply, segs, line_times)
             if not outline:
                 timestamp_rows = len(re.findall(
-                    r"\[\d{1,2}:\d{2}(?::\d{2})?\]", outline_reply))
+                    r"\[\d{1,2}:\d{2}(?::\d{2})?\]|\[\d{1,5}\]", outline_reply))
                 level_marks = len(re.findall(
                     r"(?i)(?:\bH[1-4]\b|\bL[1-3]\b|#{1,4}\s+)", outline_reply))
                 wrapped = bool(re.search(r"</?outline>", outline_reply, re.I))
