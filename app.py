@@ -3009,7 +3009,8 @@ class App:
             except Exception:
                 pass
             self.raw_f = None
-            self._discard_fresh_session(self.session["dir"])
+            if not self.total_samples:
+                self._discard_fresh_session(self.session["dir"])
             raise RuntimeError(err or "音频助手起动超时（检查屏幕录制/麦克风权限）")
 
     def _spawn_mic_app(self):
@@ -3042,7 +3043,7 @@ class App:
                                 capture_output=True)
         if opened.returncode != 0:
             detail = opened.stderr.decode("utf-8", "replace").strip()
-            for p in (fifo, pidf, logf, ratef, master):
+            for p in (fifo, pidf, logf, ratef) + (() if self.total_samples else (master,)):
                 try:
                     os.unlink(str(p))
                 except OSError:
@@ -3057,7 +3058,7 @@ class App:
             except Exception:
                 time.sleep(0.1)
         if not pid:
-            for p in (fifo, pidf, logf, ratef, master):
+            for p in (fifo, pidf, logf, ratef) + (() if self.total_samples else (master,)):
                 try:
                     os.unlink(str(p))
                 except OSError:
@@ -3087,7 +3088,8 @@ class App:
             except Exception:
                 pass
             self.raw_f = None
-            self._discard_fresh_session(self.session["dir"])
+            if not self.total_samples:
+                self._discard_fresh_session(self.session["dir"])
             raise RuntimeError(err or "麦克风助手起动超时（检查麦克风权限）")
         try:
             rate = int(ratef.read_text(encoding="utf-8").strip())
@@ -3110,10 +3112,11 @@ class App:
             except Exception:
                 pass
             self.raw_f = None
-            try:
-                master.unlink()
-            except OSError:
-                pass
+            if not self.total_samples:
+                try:
+                    master.unlink()
+                except OSError:
+                    pass
             raise RuntimeError(f"高保真母带初始化失败：{e}")
 
     def _start_recorder(self, mode):
@@ -3345,6 +3348,55 @@ class App:
             self.emit(type="status", **self.status())
         return {"ok": True}
 
+    def switch_mode(self, mode):
+        """录音中切换来源: 停掉当前采集助手、清掉残余断句, 再按新来源拉起, 时间轴按样本数接续。
+        新来源起不来(最常见=缺屏幕录制权限)就退回原来源, 录音不能断在半路。暂停中只改来源, 继续时生效。"""
+        if mode not in RECORDING_MODES:
+            raise RuntimeError("未知的录音来源")
+        with self.lock:
+            if self.state not in ("recording", "paused"):
+                raise RuntimeError("当前没有进行中的录音")
+            session, old = self.session, self.session["mode"]
+            if mode == old:
+                return {"ok": True, "mode": mode}
+            if self.state == "paused":
+                t = round(self.total_samples / SR, 2)
+                session["mode"] = mode
+                session.setdefault("modeSwitches", []).append({"t": t, "from": old, "mode": mode})
+                self.emit(type="mode_switch", t=t, mode=mode, **{"from": old})
+                self.emit(type="status", **self.status())
+                return {"ok": True, "mode": mode, "t": t}
+            generation = self.gen
+            self._stop_ffmpeg_noblock()
+        self._kill_ffmpeg_sync()
+        with self.decode_lock:
+            self._drain_vad(session, generation)
+        with self.lock:
+            if self.session is not session or self.gen != generation or self.state != "recording":
+                return {"ok": True, "mode": session["mode"]}
+            ENGINE.new_vad()
+            self.chunk_buf = []
+            self._chunk_t0 = self.total_samples
+            self.gen += 1
+            t = round(self.total_samples / SR, 2)
+            session["mode"] = mode
+            try:
+                self._start_recorder(mode)
+            except Exception as e:
+                session["mode"] = old
+                try:
+                    self._start_recorder(old)
+                except Exception as e2:
+                    self.state = "paused"
+                    self.emit(type="status", **self.status())
+                    raise RuntimeError(f"切换失败，原来源也没能恢复，录音已暂停：{e2}")
+                self.emit(type="status", **self.status())
+                raise RuntimeError(f"{e}（仍在用原来源录音）")
+            session.setdefault("modeSwitches", []).append({"t": t, "from": old, "mode": mode})
+            self.emit(type="mode_switch", t=t, mode=mode, **{"from": old})
+            self.emit(type="status", **self.status())
+        return {"ok": True, "mode": mode, "t": t}
+
     def stop(self):
         with self.lock:
             if self.state == "idle":
@@ -3469,7 +3521,7 @@ class App:
         master_raw = d / MASTER_RAW_FILE
         master_rate = int(s.get("master_rate") or 0)
         master_source, master_source_rate = raw, SR
-        if (master_rate >= 8000 and master_raw.exists()
+        if (not s.get("modeSwitches") and master_rate >= 8000 and master_raw.exists()
                 and master_raw.stat().st_size > master_rate * 2):
             master_source, master_source_rate = master_raw, master_rate
         audio_rel = None
@@ -3581,6 +3633,7 @@ class App:
             "audio_pretreat": audio_proc,
             "pretreat": audio_proc,
             "segments": s["segments"], "notes": s["notes"],
+            "modeSwitches": s.get("modeSwitches") or [],
         }, ensure_ascii=False, indent=1), encoding="utf-8")
         # transcript.md
         lines = [f"# {s['name']}", "",
@@ -6009,6 +6062,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(APP.resume())
             if u.path == "/api/stop":
                 return self._json(APP.stop())
+            if u.path == "/api/switch_mode":
+                return self._json(APP.switch_mode(body.get("mode", "")))
             if u.path == "/api/import":
                 paths = body.get("paths") or ([body.get("path")] if body.get("path") else [])
                 talk = body.get("talk", "single")

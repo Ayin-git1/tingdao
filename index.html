@@ -2326,6 +2326,57 @@
   #btnNoteTool.note-on:hover{opacity:.3; filter:none;}
 
   /* ============ 悬浮搜索窗：仿 Notion 搜索 —— 输入在上、命中列表在下、键盘走一遍 ============ */
+  /* 录音来源: 圆钮显示当前来源, 点开向上逐个弹出三枚同款圆钮, 点哪个切哪个 */
+  .srcwrap{position:relative; display:flex; flex:none;}
+  .dockgrp.rec #btnSrc{transition-delay:.165s;}
+  #btnSrc.on{border-color:color-mix(in srgb, var(--g) 60%, transparent); color:var(--g-ink);}
+  #btnSrc.switching svg{animation:src-pulse 1s ease-in-out infinite;}
+  @keyframes src-pulse{50%{opacity:.35;}}
+  .srcfan{position:absolute; left:0; bottom:54px; width:44px; display:flex; flex-direction:column; gap:10px;
+          z-index:var(--z-volpop); pointer-events:none;}
+  .srcfan.show{pointer-events:auto;}
+  .srcopt{position:relative; display:flex; align-items:center; justify-content:flex-end; padding:0; border:0;
+          background:none; font:inherit; color:var(--txt); cursor:pointer;
+          opacity:0; transform:translateY(calc(18px * (3 - var(--i)))) scale(.7);
+          transition:opacity .2s ease, transform .3s cubic-bezier(.16,1,.3,1);}
+  .srcfan.show .srcopt{opacity:1; transform:none;
+          transition:opacity .25s ease calc((2 - var(--i)) * 45ms), transform .45s cubic-bezier(.16,1,.3,1) calc((2 - var(--i)) * 45ms);}
+  .srccirc{position:relative; width:44px; height:44px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+           border:1px solid var(--material-rest-border); background:var(--material-rest-background);
+           backdrop-filter:blur(14px) saturate(1.8); -webkit-backdrop-filter:blur(14px) saturate(1.8);
+           box-shadow:var(--material-shadow-level-3); color:var(--sub);
+           transition:color var(--hov), border-color var(--hov), background var(--hov);}
+  .srcico{display:flex;}
+  .srcopt:hover .srccirc,.srcopt:focus-visible .srccirc{color:var(--txt);}
+  .srcopt:focus-visible{outline:none;}
+  .srcopt:focus-visible .srccirc{outline:2px solid var(--g); outline-offset:2px;}
+  .srclab{position:absolute; right:54px; white-space:nowrap; font-size:var(--fs-meta); font-weight:600; padding:5px 10px;
+          border-radius:var(--radius-4); border:1px solid var(--material-rest-border);
+          background:color-mix(in srgb, var(--card) 88%, transparent);
+          backdrop-filter:blur(14px) saturate(1.8); -webkit-backdrop-filter:blur(14px) saturate(1.8);
+          color:var(--sub); box-shadow:var(--material-shadow-level-1);}
+  .srcopt.sel .srccirc{color:var(--g-ink); border-color:color-mix(in srgb, var(--g) 60%, transparent);
+          background:color-mix(in srgb, var(--g) 22%, var(--card));}
+  .srcopt.sel .srclab{color:var(--g-ink);}
+  .src-spin{position:absolute; inset:0; margin:auto; color:var(--g); opacity:0; animation:record-loading-spin 1s linear infinite;}
+  .srcopt.pend .srcico{opacity:0;}
+  .srcopt.pend .src-spin{opacity:1;}
+  .srcfan.busy .srcopt:not(.pend){opacity:.45; pointer-events:none;}
+  /* 时间线上的来源切换标记: 与逐字稿同一条时间槽, 绿色细线不抢正文 */
+  #feed .srcmark{display:grid; grid-template-columns:56px minmax(0,1fr); column-gap:10px; align-items:center;
+          padding:4px 8px; color:var(--g-ink); font-size:var(--fs-meta); animation:srcmark-in .5s cubic-bezier(.16,1,.3,1);}
+  #feed .srcmark .ts{font-variant-numeric:tabular-nums;}
+  #feed .srcmark .rule{display:flex; align-items:center; gap:8px;}
+  #feed .srcmark .rule::before,#feed .srcmark .rule::after{content:""; height:1px; background:color-mix(in srgb, var(--g) 35%, transparent);}
+  #feed .srcmark .rule::before{flex:0 0 14px;}
+  #feed .srcmark .rule::after{flex:1;}
+  #feed .srcmark svg{width:14px; height:14px; flex:none;}
+  #feed .srcmark .rule span{white-space:nowrap;}
+  @keyframes srcmark-in{from{opacity:0; transform:translateY(-4px);}to{opacity:1; transform:none;}}
+  @media (prefers-reduced-motion:reduce){
+    .srcopt,.srcfan.show .srcopt{transition:none;}
+    #feed .srcmark,#btnSrc.switching svg{animation:none;}
+  }
   .findbar{display:none; position:fixed; top:56px; right:26px; z-index:var(--z-float); width:400px;
            max-width:calc(100vw - 24px); flex-direction:column; overflow:hidden;
            background:var(--material-rest-background); backdrop-filter:var(--material-rest-backdrop-filter);
@@ -3771,6 +3822,10 @@
     <button id="transcriptFormatQuote" type="button" title="引用到笔记" aria-label="引用到笔记"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 4h16v14H9l-5 4Z"/><path d="M8 8h3v3l-2 2m5-5h3v3l-2 2"/></svg></button>
   </div>
   <div class="tf-palette" id="transcriptFormatPalette" hidden>
+  <div class="srcwrap">
+    <div class="srcfan" id="srcfan" role="menu" aria-label="录音来源"><button class="srcopt" role="menuitemradio" aria-checked="false" data-src="mic" style="--i:0"><span class="srclab">仅麦克</span><span class="srccirc"><i class="srcico"></i><svg class="src-spin" width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2.5" opacity=".2"/><path d="M12 3a9 9 0 0 1 9 9" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></span></button><button class="srcopt" role="menuitemradio" aria-checked="false" data-src="mix" style="--i:1"><span class="srclab">系统+麦</span><span class="srccirc"><i class="srcico"></i><svg class="src-spin" width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2.5" opacity=".2"/><path d="M12 3a9 9 0 0 1 9 9" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></span></button><button class="srcopt" role="menuitemradio" aria-checked="false" data-src="system" style="--i:2"><span class="srclab">仅系统</span><span class="srccirc"><i class="srcico"></i><svg class="src-spin" width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2.5" opacity=".2"/><path d="M12 3a9 9 0 0 1 9 9" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></span></button></div>
+    <button class="rcbtn" id="btnSrc" aria-haspopup="menu" aria-expanded="false" title="录音来源"></button>
+  </div>
     <h4>最近使用</h4><div class="tf-grid" id="transcriptFormatRecent"></div>
     <h4>文本颜色</h4><div class="tf-grid" id="transcriptFormatColors"></div>
     <h4>背景颜色</h4><div class="tf-grid" id="transcriptFormatBackgrounds"></div>
@@ -4607,6 +4662,9 @@ function handleEvent(e){
           loadSession(e.id);
           return;
         }
+  if(e.type === 'mode_switch' && view === null){
+    $('feed').appendChild(createSourceMark(e.t, e.mode)); ensureFeed(); anchorLive();
+  }
         // 云端失败(只有云端路径会带 err): 不自动跑本地, 给用户一个手动按钮
         if(e.kind === 'cloud' && e.err){
           toast('云端转写失败：' + e.err);
@@ -4919,7 +4977,9 @@ setInterval(()=>{
   }
 }, 90);
 
+  if(RECORD_MODES.includes(d.mode)) recMode = d.mode;
 let recordLoadingBusy=false, recordLoadingTimer=null, recordLoadingRestore=[];
+  syncSourceButton();
 let recordLoadingFocus=null;
 const recordLoadingMessages={
   start:['录音助手加载中','创建专属录音锁','正在唤醒录音助手','正在准备录音环境','正在连接音频设备','即将开始聆听'],
@@ -4970,6 +5030,79 @@ $('fab').onclick = async ()=>{
       renderSelState();
       const name = defaultName();
       const d = await api('/api/start', {mode, lang:langSel, name});
+/* ---- 录音中切换来源: 停旧助手 → 拉起新来源, 约 1 秒空档; 起不来时后端退回原来源 ---- */
+const SOURCE_ICONS = {
+  system:'<svg class="ui-icon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/></svg>',
+  mix:'<svg class="ui-icon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9v6h3l4 3.5V5.5L6 9H3z"/><rect x="15" y="3.5" width="5" height="9" rx="2.5"/><path d="M13 10.5a4.5 4.5 0 0 0 9 0M17.5 15v3"/></svg>',
+  mic:'<svg class="ui-icon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>',
+};
+const SOURCE_NAMES = {system:'仅系统', mix:'系统+麦', mic:'仅麦克'};
+let recMode = 'system';
+let sourcePending = '';
+let sourceIconState = '';
+$('srcfan').querySelectorAll('.srcopt').forEach(o=>{ o.querySelector('.srcico').innerHTML = SOURCE_ICONS[o.dataset.src]; });
+function syncSourceButton(){
+  const button = $('btnSrc');
+  button.disabled = !(state==='recording'||state==='paused');
+  if(button.disabled) sourceClose();
+  button.classList.toggle('switching', !!sourcePending);
+  button.title = '录音来源：' + SOURCE_NAMES[recMode];
+  button.setAttribute('aria-label', button.title);
+  if(sourceIconState !== recMode){ sourceIconState = recMode; button.innerHTML = SOURCE_ICONS[recMode]; }
+  $('srcfan').classList.toggle('busy', !!sourcePending);
+  $('srcfan').querySelectorAll('.srcopt').forEach(o=>{
+    const on = o.dataset.src === recMode;
+    o.classList.toggle('sel', on);
+    o.classList.toggle('pend', o.dataset.src === sourcePending);
+    o.setAttribute('aria-checked', String(on));
+  });
+}
+function sourceClose(){
+  if(sourcePending) return;
+  $('srcfan').classList.remove('show');
+  $('btnSrc').classList.remove('on');
+  $('btnSrc').setAttribute('aria-expanded', 'false');
+}
+function createSourceMark(t, src){
+  const div = document.createElement('div');
+  div.className = 'srcmark';
+  div.innerHTML = `<span class="ts">${fmt(t)}</span><span class="rule">${SOURCE_ICONS[src]||''}<span>切换为 ${esc(SOURCE_NAMES[src]||src)}</span></span>`;
+  return div;
+}
+$('btnSrc').onclick = e=>{
+  e.stopPropagation();
+  if($('srcfan').classList.contains('show')){ sourceClose(); return; }
+  volClose();
+  $('srcfan').classList.add('show');
+  $('btnSrc').classList.add('on');
+  $('btnSrc').setAttribute('aria-expanded', 'true');
+};
+$('srcfan').addEventListener('click', async e=>{
+  const o = e.target.closest('.srcopt'); if(!o || sourcePending) return;
+  const next = o.dataset.src;
+  if(next === recMode){ sourceClose(); return; }
+  sourcePending = next;
+  syncSourceButton();
+  try{
+    const d = await api('/api/switch_mode', {mode: next});
+    if(d.ok === false || d.error) toast(d.error || '切换失败，仍在用原来源录音');
+    else{
+      recMode = d.mode || next;
+      toast(state==='paused' ? `继续录音时改用 ${SOURCE_NAMES[recMode]}` : `已切换为 ${SOURCE_NAMES[recMode]}`);
+    }
+  }catch(err){ toast('切换失败：' + (err.message || '请重试')); }
+  finally{
+    sourcePending = '';
+    syncSourceButton();
+    sourceClose();
+    applyStatus(await fetchStatus());
+  }
+});
+document.addEventListener('click', e=>{
+  if(!e.target.closest('#srcfan') && !e.target.closest('#btnSrc')) sourceClose();
+});
+document.addEventListener('keydown', e=>{ if(e.key === 'Escape') sourceClose(); });
+
       if(!d.ok && d.error){ toast(d.error); return; }
       transcriptViewGeneration++;
       view = null; state = 'recording';
