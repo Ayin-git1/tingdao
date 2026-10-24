@@ -410,6 +410,92 @@ def save_setting(key, value):
                              encoding="utf-8")
 
 
+UPDATE_RELEASES_API = "https://api.github.com/repos/Ayin-git1/tingdao/releases?per_page=20"
+UPDATE_CACHE_SECONDS = 3600
+_update_cache = {"at": 0.0, "result": None}
+_update_lock = threading.Lock()
+# 两端安装包不是每次都一起发(v3.1.0 只有 dmg), 所以按本机平台各找各的「最新」
+UPDATE_PLATFORMS = {
+    "Darwin": {"label": "macOS", "exts": (".dmg",), "other": "Windows"},
+    "Windows": {"label": "Windows", "exts": (".exe", ".msi"), "other": "macOS"},
+}
+
+
+def version_tuple(v):
+    """'v3.1.0' -> (3, 1, 0); 非数字段截断, 解析不出时为空元组(视为最旧)。"""
+    out = []
+    for part in str(v or "").strip().lstrip("vV").split("."):
+        m = re.match(r"\d+", part)
+        if not m:
+            break
+        out.append(int(m.group()))
+    return tuple(out)
+
+
+def platform_release(releases, system):
+    """最近一个带本平台安装包的正式发布, 与其中最新上传的那个安装包。"""
+    exts = UPDATE_PLATFORMS[system]["exts"]
+    for rel in releases:
+        if rel.get("draft") or rel.get("prerelease"):
+            continue
+        assets = [a for a in rel.get("assets") or []
+                  if str(a.get("name", "")).lower().endswith(exts)]
+        if assets:
+            return rel, max(assets, key=lambda a: a.get("updated_at") or "")
+    return None, None
+
+
+def platform_notes(body, system):
+    """说明两端共用一份: 去掉只讲另一端的行(如 Windows 上不看 macOS 安装包怎么装)。"""
+    me, other = UPDATE_PLATFORMS[system]["label"], UPDATE_PLATFORMS[system]["other"]
+    keep = [line for line in str(body or "").replace("\r", "").split("\n")
+            if not (other.lower() in line.lower() and me.lower() not in line.lower())]
+    return "\n".join(keep).strip()
+
+
+def check_update(force=False):
+    """查 GitHub Release 里本平台的最新安装包。一小时内复用上次成功结果, 失败不缓存。
+    只比较标签版本号: 同版本号下的增量安装包不会被当成新版本。"""
+    with _update_lock:
+        cached = _update_cache["result"]
+        if cached and not force and time.time() - _update_cache["at"] < UPDATE_CACHE_SECONDS:
+            return cached
+        system = platform.system() if platform.system() in UPDATE_PLATFORMS else "Darwin"
+        base = {"current": APP_VERSION, "platform": UPDATE_PLATFORMS[system]["label"]}
+        import requests
+        try:
+            r = requests.get(UPDATE_RELEASES_API, timeout=8, headers={
+                "Accept": "application/vnd.github+json",
+                "User-Agent": f"tingdao/{APP_VERSION}"})
+            if r.status_code == 403:
+                raise RuntimeError("GitHub 访问次数受限，请稍后再试")
+            r.raise_for_status()
+            rel, asset = platform_release(r.json(), system)
+        except requests.RequestException:
+            return {**base, "ok": False, "error": "无法连接 GitHub，请检查网络"}
+        except Exception as e:
+            return {**base, "ok": False, "error": str(e) or "检查失败"}
+        if not rel:
+            return {**base, "ok": False, "error": f"还没有发布 {base['platform']} 安装包"}
+        latest = str(rel.get("tag_name") or "").lstrip("vV")
+        result = {
+            **base,
+            "ok": True,
+            "latest": latest,
+            "available": version_tuple(latest) > version_tuple(APP_VERSION),
+            "url": rel.get("html_url") or "https://github.com/Ayin-git1/tingdao/releases",
+            "download_url": asset.get("browser_download_url") or "",
+            "asset_name": asset.get("name") or "",
+            "asset_size": asset.get("size") or 0,
+            "name": rel.get("name") or "",
+            "notes": platform_notes(rel.get("body"), system)[:6000],
+            "published_at": rel.get("published_at") or "",
+            "checked_at": int(time.time()),
+        }
+        _update_cache.update(at=time.time(), result=result)
+        return result
+
+
 def recording_mode():
     """录音来源的全局选择；坏值/旧版本没有该键时回到仅系统声音。"""
     v = load_setting("record_mode")
@@ -5909,6 +5995,9 @@ class Handler(BaseHTTPRequestHandler):
             self._json(load_groups())
         elif u.path == "/api/cache":
             self._json(cache_info())
+        elif u.path == "/api/update":
+            force = parse_qs(u.query).get("force", ["0"])[0] == "1"
+            self._json(check_update(force))
         elif u.path == "/api/settings":
             s = load_settings()
             s["record_mode"] = recording_mode()

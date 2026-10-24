@@ -36,8 +36,13 @@ static BACKEND_PORT: LazyLock<Mutex<Option<u16>>> = LazyLock::new(|| Mutex::new(
 /// 已进入退出流程。窗口先于后端出现, 用户可能在后端起到一半时就退出: 此后不许再拉起后端。
 static EXITING: AtomicBool = AtomicBool::new(false);
 
+/// 仓库首页及其下的页面(Releases、Issues、LICENSE): 关于页与更新提示都只链到这里。
 fn is_repository_url(url: &str) -> bool {
-    url.trim_end_matches('/') == REPOSITORY_URL
+    let url = url.trim_end_matches('/');
+    url == REPOSITORY_URL
+        || url
+            .strip_prefix(REPOSITORY_URL)
+            .is_some_and(|rest| rest.starts_with('/') && !rest.contains(".."))
 }
 
 fn open_repository_url(url: &str) {
@@ -665,6 +670,9 @@ mod release_tests {
     fn repository_new_window_allows_only_the_official_repository_url() {
         assert!(super::is_repository_url("https://github.com/Ayin-git1/tingdao"));
         assert!(super::is_repository_url("https://github.com/Ayin-git1/tingdao/"));
+        assert!(super::is_repository_url("https://github.com/Ayin-git1/tingdao/releases/tag/v3.2.0"));
+        assert!(!super::is_repository_url("https://github.com/Ayin-git1/tingdao-evil"));
+        assert!(!super::is_repository_url("https://github.com/Ayin-git1/tingdao/../other"));
         assert!(!super::is_repository_url("https://github.com/Ayin-git1/other"));
         assert!(!super::is_repository_url("https://example.com"));
     }

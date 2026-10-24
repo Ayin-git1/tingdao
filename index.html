@@ -3044,6 +3044,110 @@ html:not([data-material="mimetic"]) #setBody #materialAdvanced{display:none;}
   @keyframes settingsPaneIn{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:translateY(0)}}
   @media(max-width:700px){#setNav{justify-content:flex-start;gap:2px;padding:0 10px;}#setNav button{padding:14px 10px;}#setBody{padding:18px;}#setpop .sethead .hs{display:none;}}
   @media(prefers-reduced-motion:reduce){#setBody > .ssec{animation:none;}#setNav button{transition:none;}}
+  /* 关于页: 字标沿用侧栏品牌(听道 + 手写 Folio), 更新面板按 data-state 切图标与展开说明 */
+  #setNav .nav-dot{position:absolute; top:13px; right:5px; width:6px; height:6px; border-radius:50%;
+    background:var(--g); box-shadow:0 0 0 2px var(--side); animation:navDotIn .32s cubic-bezier(.34,1.56,.64,1);}
+  #setNav .nav-dot[hidden]{display:none;}
+  @keyframes navDotIn{from{transform:scale(0)}to{transform:scale(1)}}
+  #setBody #sec-about{padding:28px 24px 20px;}
+  #sec-about .about-hero{padding:4px 4px 22px;}
+  #sec-about .about-mark{font-size:34px; font-weight:600; letter-spacing:-1.2px; line-height:1.1; color:var(--txt); display:flex; align-items:baseline;}
+  #sec-about .about-folio{margin-left:12px; font-family:"Tingdao Pinyon Script",cursive; font-size:30px; font-weight:400; letter-spacing:0; color:var(--gd); opacity:.8;}
+  #sec-about .about-lede{margin:10px 0 0; font-size:13px; line-height:1.6; color:var(--sub);}
+  #sec-about .about-meta{display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; font-size:12px; color:var(--sub); font-variant-numeric:tabular-nums;}
+  #sec-about .about-meta span{padding:3px 10px; border:1px solid var(--line); border-radius:var(--radius-4); background:var(--soft);}
+  #sec-about .about-meta b{font-weight:600; color:var(--txt);}
+  #sec-about .about-update{border:1px solid var(--line); border-radius:var(--radius-3); background:var(--soft); transition:border-color .2s ease, background .2s ease;}
+  #sec-about .about-update[data-state="available"]{border-color:rgba(var(--g-rgb),.45); background:var(--gsoft);}
+  #sec-about .au-head{display:flex; align-items:center; gap:12px; padding:14px 14px 14px 16px;}
+  #sec-about .au-icon{position:relative; flex:none; width:32px; height:32px; border-radius:50%; display:grid; place-items:center;
+    background:var(--card); color:var(--sub); border:1px solid var(--line); transition:background .2s ease, color .2s ease, border-color .2s ease;}
+  #sec-about .au-i{position:absolute; width:16px; height:16px; opacity:0; transform:scale(.6); transition:opacity .18s ease, transform .24s cubic-bezier(.34,1.56,.64,1);}
+  #sec-about [data-state="idle"] .au-i-idle,#sec-about [data-state="checking"] .au-i-idle,
+  #sec-about [data-state="latest"] .au-i-latest,#sec-about [data-state="available"] .au-i-available,
+  #sec-about [data-state="error"] .au-i-error{opacity:1; transform:scale(1);}
+  #sec-about [data-state="checking"] .au-i-idle{animation:auSpin .8s linear infinite;}
+  #sec-about [data-state="latest"] .au-icon{color:var(--gd); border-color:rgba(var(--g-rgb),.35); background:var(--gsoft);}
+  #sec-about [data-state="available"] .au-icon{color:var(--gd-on); border-color:var(--gd); background:var(--gd);}
+  #sec-about [data-state="error"] .au-icon{color:var(--warn); border-color:currentColor;}
+  @keyframes auSpin{to{transform:rotate(360deg)}}
+  #sec-about .au-text{flex:1; min-width:0;}
+  #sec-about .au-title{font-size:14px; font-weight:600; color:var(--txt); line-height:1.4;}
+  #sec-about .au-sub{font-size:12px; color:var(--sub); line-height:1.6; margin-top:1px; font-variant-numeric:tabular-nums;}
+  #sec-about .au-btn{flex:none; min-height:32px; padding:0 14px; border:1px solid var(--line); border-radius:var(--radius-3);
+    background:var(--card); color:var(--txt); font:inherit; font-size:13px; cursor:pointer; transition:background var(--hov), opacity var(--hov);}
+  #sec-about .au-btn:hover{background:var(--hover);}
+  #sec-about [data-state="available"] .au-btn{display:none;}
+  #sec-about .au-btn:disabled{opacity:.55; cursor:wait;}
+  #sec-about .au-btn:focus-visible,#sec-about .au-go:focus-visible,#sec-about .au-skip:focus-visible,#sec-about .about-links a:focus-visible{outline:2px solid var(--g); outline-offset:3px;}
+  #sec-about .au-release{display:grid; grid-template-rows:0fr; transition:grid-template-rows .32s cubic-bezier(.32,0,.14,1);}
+  #sec-about [data-state="available"] .au-release{grid-template-rows:1fr;}
+  #sec-about .au-release-in{min-height:0; overflow:hidden;}
+  #sec-about .au-notes{margin:0 16px; padding:12px 0 2px; border-top:1px solid rgba(var(--g-rgb),.25); max-height:200px; overflow-y:auto;
+    font-size:12.5px; line-height:1.7; color:var(--txt); overflow-wrap:anywhere;}
+  #sec-about .au-notes :is(h1,h2,h3,h4){font-size:13px; font-weight:600; margin:0 0 6px;}
+  #sec-about .au-notes p{margin:0 0 8px; color:var(--sub);}
+  #sec-about .au-notes ul,#sec-about .au-notes ol{margin:0 0 8px; padding-left:18px;}
+  #sec-about .au-notes li{margin:2px 0;}
+  #sec-about .au-notes code{font-size:11.5px; padding:0 4px; border-radius:var(--radius-1); background:var(--card);}
+  #sec-about .au-actions{display:flex; align-items:center; gap:8px; padding:12px 16px 0;}
+  #sec-about .au-asset{padding:8px 16px 14px; font-size:11.5px; color:var(--sub); font-variant-numeric:tabular-nums; overflow-wrap:anywhere;}
+  #sec-about .au-asset:empty{padding-bottom:6px;}
+  #sec-about .au-go{min-height:32px; padding:0 16px; display:inline-flex; align-items:center; border-radius:var(--radius-3);
+    background:var(--gd); color:var(--gd-on); font-size:13px; font-weight:600; text-decoration:none; transition:filter var(--hov);}
+  #sec-about .au-go::after{content:'↗'; margin-left:6px; font-weight:400;}
+  #sec-about .au-go:hover{filter:brightness(1.08);}
+  #sec-about .au-page{min-height:32px; padding:0 12px; display:inline-flex; align-items:center; border:1px solid var(--line); border-radius:var(--radius-3);
+    background:var(--card); color:var(--txt); font-size:13px; text-decoration:none; transition:background var(--hov);}
+  #sec-about .au-page:hover{background:var(--hover);}
+  #sec-about .au-page:focus-visible{outline:2px solid var(--g); outline-offset:3px;}
+  #sec-about .au-skip{margin-left:auto; min-height:32px; padding:0 10px; border:0; border-radius:var(--radius-3); background:none; color:var(--sub);
+    font:inherit; font-size:13px; cursor:pointer; transition:background var(--hov), color var(--hov);}
+  #sec-about .au-skip:hover{background:var(--hover); color:var(--txt);}
+  #sec-about .about-row{display:grid; grid-template-columns:minmax(0,1fr) 180px; gap:12px 18px; align-items:center; padding:18px 4px; border-bottom:1px solid var(--line);}
+  #sec-about .about-row .st{margin:0;}
+  #sec-about .about-row .st span{display:block; font-size:12px; font-weight:400; color:var(--sub); margin-top:3px;}
+  #sec-about .about-links{display:flex; flex-direction:column; padding:8px 0;}
+  #sec-about .about-links a{display:flex; align-items:center; gap:12px; min-height:40px; padding:0 8px 0 4px; border-radius:var(--radius-1);
+    color:var(--txt); font-size:13px; text-decoration:none; transition:background var(--hov);}
+  #sec-about .about-links a:hover{background:var(--hover);}
+  #sec-about .about-links a>span:first-child{flex:none; width:96px;}
+  #sec-about .about-links a>span:last-child{flex:1; min-width:0; color:var(--sub); font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  #sec-about .about-links a::after{content:'↗'; flex:none; color:var(--g); font-size:14px;}
+  #sec-about .about-foot{margin:8px 4px 0; font-size:12px; color:var(--sub);}
+  @media(max-width:700px){#sec-about .about-row{grid-template-columns:1fr;} #sec-about .au-head{flex-wrap:wrap;} #sec-about .au-btn{margin-left:44px;}}
+  @media(prefers-reduced-motion:reduce){#setNav .nav-dot{animation:none;} #sec-about .au-release,#sec-about .au-i{transition:none;} #sec-about [data-state="checking"] .au-i-idle{animation:none;}}
+
+  /* 侧栏新版本卡: 贴侧栏底部浮出, 有它时历史列表多让出底部空间 */
+  .update-card{position:absolute; left:10px; right:10px; bottom:12px; z-index:var(--z-sidefoot); padding:12px 12px 12px 14px;
+    font-size:var(--fs-caption); animation:updateCardIn .42s cubic-bezier(.32,0,.14,1);}
+  .update-card[hidden]{display:none;}
+  .update-card.leaving{animation:updateCardOut .2s ease forwards;}
+  @keyframes updateCardIn{from{opacity:0; transform:translateY(14px) scale(.98)}to{opacity:1; transform:none}}
+  @keyframes updateCardOut{to{opacity:0; transform:translateY(10px)}}
+  .sidebar.has-update .histlist{padding-bottom:190px;}
+  .update-card .uc-top{display:flex; align-items:center; gap:8px;}
+  .update-card .uc-badge{padding:1px 7px; border-radius:var(--radius-4); background:var(--gsoft); color:var(--g-ink); font-size:var(--fs-micro); font-weight:600;}
+  html[data-appearance="dark"] .update-card .uc-badge{color:var(--gd);}
+  .update-card .uc-ver{font-size:var(--fs-ctl); font-weight:700; color:var(--txt); font-variant-numeric:tabular-nums;}
+  .update-card .uc-date{color:var(--sub); font-size:var(--fs-meta); font-variant-numeric:tabular-nums;}
+  .update-card .uc-x{margin-left:auto; width:22px; height:22px; border:0; border-radius:50%; background:none; color:var(--sub);
+    display:grid; place-items:center; cursor:pointer; transition:background var(--hov), color var(--hov);}
+  .update-card .uc-x:hover{background:var(--hover); color:var(--txt);}
+  .update-card .uc-notes{margin:8px 0 0; padding:0; list-style:none; color:var(--sub); line-height:1.6;}
+  .update-card .uc-notes:empty{display:none;}
+  .update-card .uc-notes li{position:relative; padding-left:12px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;}
+  .update-card .uc-notes li+li{margin-top:2px;}
+  .update-card .uc-notes li::before{content:''; position:absolute; left:1px; top:.68em; width:4px; height:4px; border-radius:50%; background:var(--g);}
+  .update-card .uc-actions{display:flex; gap:6px; margin-top:10px;}
+  .update-card .uc-go{flex:1; min-height:30px; display:inline-flex; align-items:center; justify-content:center; border-radius:var(--radius-3);
+    background:var(--gd); color:var(--gd-on); font-size:var(--fs-ctl); font-weight:600; text-decoration:none; transition:filter var(--hov);}
+  .update-card .uc-go:hover{filter:brightness(1.08);}
+  .update-card .uc-more{min-height:30px; padding:0 12px; border:1px solid var(--line); border-radius:var(--radius-3); background:var(--card);
+    color:var(--txt); font:inherit; font-size:var(--fs-ctl); cursor:pointer; transition:background var(--hov);}
+  .update-card .uc-more:hover{background:var(--hover);}
+  .update-card :is(.uc-x,.uc-go,.uc-more):focus-visible{outline:2px solid var(--g); outline-offset:2px;}
+  @media(prefers-reduced-motion:reduce){.update-card,.update-card.leaving{animation:none;}}
   #setBody #sec-rec .two > div,#setBody #sec-talk .two > div{display:grid;grid-template-columns:180px minmax(0,1fr);gap:12px 18px;align-items:center;}
   #setBody #sec-rec .st,#setBody #sec-talk .st{margin:0;}
   #setBody #sec-rec .st span,#setBody #sec-talk .st span{display:block;font-size:12px;font-weight:400;line-height:1.6;margin-top:5px;}
@@ -3222,6 +3326,18 @@ html:not([data-material="mimetic"]) #setBody #materialAdvanced{display:none;}
     </div>
   </div>
   <div class="histlist" id="histlist" role="tabpanel" aria-labelledby="sidebarTabProjects"></div>
+  <!-- 新版本提示: 启动后静默检查, 有新版且未被跳过才出现; 内容由 paintUpdateCard 填 -->
+  <aside class="update-card info-card" id="updateCard" hidden aria-labelledby="ucTitle">
+   <div class="uc-top">
+    <span class="uc-badge">新版本</span><strong class="uc-ver" id="ucTitle">v—</strong><span class="uc-date" id="ucDate"></span>
+    <button type="button" class="uc-x" id="ucLater" title="稍后提醒" aria-label="稍后提醒"><svg class="ui-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+   </div>
+   <ul class="uc-notes" id="ucNotes"></ul>
+   <div class="uc-actions">
+    <a class="uc-go" id="ucGo" href="https://github.com/Ayin-git1/tingdao/releases" target="_blank" rel="noreferrer">下载更新</a>
+    <button type="button" class="uc-more" id="ucMore">查看详情</button>
+   </div>
+  </aside>
   <div class="sidefoot">
   </div>
 </div>
@@ -3253,6 +3369,7 @@ html:not([data-material="mimetic"]) #setBody #materialAdvanced{display:none;}
       <button type="button" role="tab" data-t="appearance" aria-selected="false">外观与阅读</button>
       <button type="button" role="tab" data-t="sound" aria-selected="false">声音与快捷键</button>
       <button type="button" role="tab" data-t="cache" aria-selected="false">存储</button>
+      <button type="button" role="tab" data-t="about" aria-selected="false">关于<i class="nav-dot" id="aboutDot" hidden aria-label="有新版本"></i></button>
     </nav>
     <div class="setbody" id="setBody">
 
@@ -3558,6 +3675,50 @@ html:not([data-material="mimetic"]) #setBody #materialAdvanced{display:none;}
 
      <div class="ssec" id="sec-key"><div class="sgh">快捷键</div>
       <div class="ptinfo" id="shortcutSummary" style="max-width:420px;margin:0">按 ⌘⇧R 开始录音 · ⌘/ 查看全部 · ⌘, 打开 / 收起设置 · Esc 关掉当前弹层</div>
+     </div>
+
+     <!-- 关于: 字标 + 版本更新 + 仓库链接。更新状态由 paintAboutUpdate 按 data-state 切换 -->
+     <div class="ssec" id="sec-about">
+      <div class="about-hero">
+       <div class="about-mark" aria-label="听道 Folio">听道<span class="about-folio">Folio</span></div>
+       <p class="about-lede">本地优先的录音、转写与复盘工具</p>
+       <div class="about-meta"><span>版本 <b id="aboutVersion">__TINGDAO_VERSION__</b></span><span id="aboutPlatform">macOS</span></div>
+      </div>
+      <div class="about-update" id="aboutUpdate" data-state="idle" aria-live="polite">
+       <div class="au-head">
+        <span class="au-icon" aria-hidden="true">
+         <svg class="au-i au-i-idle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v4h-4"/></svg>
+         <svg class="au-i au-i-latest" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+         <svg class="au-i au-i-available" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="M6 11l6-6 6 6"/></svg>
+         <svg class="au-i au-i-error" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 7v6"/><path d="M12 17h.01"/></svg>
+        </span>
+        <div class="au-text"><div class="au-title" id="auTitle">检查更新</div><div class="au-sub" id="auSub">从 GitHub 读取最新发布版本</div></div>
+        <button type="button" class="au-btn" id="auCheck">检查更新</button>
+       </div>
+       <div class="au-release" id="auRelease"><div class="au-release-in">
+        <div class="au-notes" id="auNotes"></div>
+        <div class="au-actions">
+         <a class="au-go" id="auGo" href="https://github.com/Ayin-git1/tingdao/releases" target="_blank" rel="noreferrer">下载安装包</a>
+         <a class="au-page" id="auPage" href="https://github.com/Ayin-git1/tingdao/releases" target="_blank" rel="noreferrer">发布页</a>
+         <button type="button" class="au-skip" id="auSkip">跳过此版本</button>
+        </div>
+        <div class="au-asset" id="auAsset"></div>
+       </div></div>
+      </div>
+      <div class="about-row">
+       <div class="st">启动时自动检查<span>每次启动查一次，只读取 GitHub 上公开的发布信息</span></div>
+       <div class="seg" id="setUpdateAuto" role="group" aria-label="启动时自动检查更新">
+        <i class="segin" aria-hidden="true"></i><button type="button" data-v="on" class="on">开启</button><button type="button" data-v="off">关闭</button>
+       </div>
+      </div>
+      <nav class="about-links" aria-label="项目链接">
+       <a href="https://github.com/Ayin-git1/tingdao" target="_blank" rel="noreferrer"><span>项目主页</span><span>github.com/Ayin-git1/tingdao</span></a>
+       <a href="https://github.com/Ayin-git1/tingdao/releases" target="_blank" rel="noreferrer"><span>版本发布记录</span><span>全部安装包与更新说明</span></a>
+       <a href="https://github.com/Ayin-git1/tingdao/issues" target="_blank" rel="noreferrer"><span>反馈问题</span><span>GitHub Issues</span></a>
+       <a href="https://github.com/Ayin-git1/tingdao/blob/main/LICENSE" target="_blank" rel="noreferrer"><span>许可证</span><span>PolyForm Noncommercial 1.0.0</span></a>
+       <a href="https://github.com/Ayin-git1/tingdao/blob/main/THIRD-PARTY-NOTICES.md" target="_blank" rel="noreferrer"><span>第三方组件</span><span>致谢与许可说明</span></a>
+      </nav>
+      <p class="about-foot">仅供个人非商业使用</p>
      </div>
 
     </div>
@@ -5531,7 +5692,7 @@ $('cacheClear').onclick=async()=>{
   finally{button.disabled=false;}
 };
 /* 顶部分类：保留原分区 ID，功能内的跳转仍可直接到对应配置。 */
-const SET_GROUPS = [['rec','talk','tone'],['local','cloud'],['hw','tpl'],['appearance'],['sound','key'],['cache']];
+const SET_GROUPS = [['rec','talk','tone'],['local','cloud'],['hw','tpl'],['appearance'],['sound','key'],['cache'],['about']];
 let activeSettingsSection = 'rec';
 function closeSettingsSubPops(){
   if($('copypop')?.classList.contains('show'))closeCopyFormatMenu();
@@ -5559,6 +5720,7 @@ function gotoSec(key){
   document.querySelectorAll('#setBody .seg').forEach(seg=>{
     if(seg.offsetWidth)segInd(seg,segSel(seg),false,true);
   });
+  if(key==='about')openAboutSection();
 }
 $('setNav').addEventListener('click',e=>{
   const button=e.target.closest('button');if(!button)return;
@@ -5577,6 +5739,125 @@ $('setNav').addEventListener('keydown',e=>{
 });
 gotoSec(activeSettingsSection);
 
+/* ---- 版本更新: 后端代查 GitHub 最新 Release(/api/update, 一小时缓存)。
+   启动后静默查一次; 有新版且没被「跳过此版本」时, 侧栏底部浮出提示卡、设置「关于」亮绿点。
+   「稍后」只在本次运行内收起, 下次启动再提醒。 */
+let updateInfo = null, updateChecking = null, updateAuto = true, updateSkip = '', updateLater = false;
+const plainReleaseMd = s => String(s||'').replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1');
+function updateHighlights(notes){
+  return plainReleaseMd(notes).split('\n')
+    .map(line=>line.match(/^\s*[-*+]\s+(.+)/)).filter(Boolean)
+    .map(m=>m[1].replace(/\*\*|`/g, '').trim()).filter(Boolean).slice(0, 2);
+}
+function releaseDate(iso){
+  const d = new Date(iso);
+  return isNaN(d) ? '' : `${d.getFullYear()} 年 ${d.getMonth()+1} 月 ${d.getDate()} 日`;
+}
+function checkedAgo(ts){
+  const min = Math.floor((Date.now()/1000 - ts) / 60);
+  if(min < 1) return '刚刚';
+  if(min < 60) return `${min} 分钟前`;
+  const d = new Date(ts*1000), p = n=>String(n).padStart(2,'0');
+  return `${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+const updatePending = ()=> !!(updateInfo?.ok && updateInfo.available && updateInfo.latest !== updateSkip);
+function paintUpdateCard(){
+  const card = $('updateCard'), show = updatePending() && !updateLater;
+  $('aboutDot').hidden = !updatePending();
+  if(show){
+    $('ucTitle').textContent = 'v' + updateInfo.latest;
+    $('ucDate').textContent = releaseDate(updateInfo.published_at).replace(/^\d+ 年 /, '');
+    $('ucGo').href = updateInfo.download_url || updateInfo.url;
+    const list = $('ucNotes'); list.textContent = '';
+    updateHighlights(updateInfo.notes).forEach(text=>{
+      const li = document.createElement('li'); li.textContent = text; list.append(li);
+    });
+    card.classList.remove('leaving');
+    card.hidden = false;
+  }else if(!card.hidden && !card.classList.contains('leaving')){
+    card.classList.add('leaving');
+    card.addEventListener('animationend', ()=>{ card.hidden = true; card.classList.remove('leaving'); }, {once:true});
+    setTimeout(()=>{ if(card.classList.contains('leaving')){ card.hidden = true; card.classList.remove('leaving'); } }, 400);
+  }
+  document.querySelector('.sidebar').classList.toggle('has-update', show);
+}
+function paintAboutUpdate(){
+  const box = $('aboutUpdate'), info = updateInfo;
+  const state = updateChecking ? 'checking' : !info ? 'idle' : !info.ok ? 'error' : info.available ? 'available' : 'latest';
+  box.dataset.state = state;
+  $('auCheck').disabled = !!updateChecking;
+  $('auCheck').textContent = state === 'error' ? '重试' : state === 'checking' ? '正在检查…' : '检查更新';
+  if(state === 'idle'){ $('auTitle').textContent = '检查更新'; $('auSub').textContent = '从 GitHub 读取最新发布版本'; }
+  else if(state === 'checking'){ $('auTitle').textContent = '正在检查更新'; $('auSub').textContent = '连接 GitHub…'; }
+  else if(state === 'error'){ $('auTitle').textContent = '检查失败'; $('auSub').textContent = info.error || '请稍后再试'; }
+  else if(state === 'latest'){
+    $('auTitle').textContent = '已是最新版本';
+    $('auSub').textContent = `${info.platform} v${info.current} · 检查于 ${checkedAgo(info.checked_at)}`;
+  }else{
+    const skipped = info.latest === updateSkip;
+    $('auTitle').textContent = `新版本 v${info.latest} 可用`;
+    $('auSub').textContent = [`当前 v${info.current}`, releaseDate(info.published_at) && `发布于 ${releaseDate(info.published_at)}`, skipped && '已跳过']
+      .filter(Boolean).join(' · ');
+    $('auNotes').innerHTML = md(plainReleaseMd(info.notes)) || '<p>这个版本没有附更新说明。</p>';
+    $('auGo').href = info.download_url || info.url;
+    $('auPage').href = info.url;
+    const mb = info.asset_size ? ` · ${(info.asset_size/1048576).toFixed(0)} MB` : '';
+    $('auAsset').textContent = info.asset_name ? `${info.platform} 安装包 ${info.asset_name}${mb}` : '';
+    $('auSkip').textContent = skipped ? '恢复提醒' : '跳过此版本';
+  }
+}
+function checkForUpdate(force){
+  if(updateChecking) return updateChecking;
+  updateChecking = api('/api/update' + (force ? '?force=1' : ''))
+    .catch(()=>({ok:false, error:'无法连接听道后端'}))
+    .then(info=>{ updateInfo = info; })
+    .finally(()=>{ updateChecking = null; paintAboutUpdate(); paintUpdateCard(); });
+  paintAboutUpdate();
+  return updateChecking;
+}
+function openAboutSection(){
+  $('aboutPlatform').textContent = hostPlatform === 'Windows' ? 'Windows' : 'macOS';
+  paintAboutUpdate();
+  if(!updateInfo && !updateChecking) checkForUpdate(false);
+}
+function syncUpdateAutoUI(){
+  const seg = $('setUpdateAuto');
+  seg.querySelectorAll('button').forEach(b=>{
+    const selected = b.dataset.v === (updateAuto ? 'on' : 'off');
+    b.classList.toggle('on', selected);
+    b.setAttribute('aria-pressed', String(selected));
+  });
+  if(seg.offsetWidth) segInd(seg, seg.querySelector('button.on'), false, true);
+}
+$('auCheck').addEventListener('click', ()=> checkForUpdate(true));
+$('auSkip').addEventListener('click', async ()=>{
+  const previous = updateSkip;
+  updateSkip = updateSkip === updateInfo?.latest ? '' : (updateInfo?.latest || '');
+  paintAboutUpdate(); paintUpdateCard();
+  try{ await savePersonalSetting('update_skip', updateSkip); }
+  catch(err){ updateSkip = previous; paintAboutUpdate(); paintUpdateCard(); toast('保存失败，请稍后重试'); }
+});
+$('ucLater').addEventListener('click', ()=>{ updateLater = true; paintUpdateCard(); });
+// 在按钮上截住冒泡: document 上「点外面关弹层」的监听会把刚打开的设置又关掉
+$('ucMore').addEventListener('click', e=>{
+  e.stopPropagation();
+  if(!$('setpop').classList.contains('show')) $('btnSet').click();
+  gotoSec('about');
+});
+$('setUpdateAuto').addEventListener('click', async e=>{
+  const b = e.target.closest('button[data-v]'); if(!b) return;
+  const previous = updateAuto;
+  updateAuto = b.dataset.v === 'on'; syncUpdateAutoUI();
+  try{ await savePersonalSetting('update_auto', updateAuto); }
+  catch(err){ updateAuto = previous; syncUpdateAutoUI(); toast('自动检查设置保存失败，已恢复上次选择'); }
+});
+api('/api/settings').then(st=>{
+  updateAuto = st.update_auto !== false;
+  updateSkip = st.update_skip || '';
+  syncUpdateAutoUI();
+  // 等首屏与后端预热稳定后再联网, 不和启动抢资源
+  if(updateAuto) setTimeout(()=> checkForUpdate(false), 4000);
+}).catch(()=>{});
 /* 提示文案里的「跳到某区」链接(如云端未连通时的引导) */
 document.addEventListener('click', e=>{
   const g = e.target.closest('[data-goto]'); if(!g) return;
