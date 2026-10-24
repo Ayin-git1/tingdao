@@ -40,14 +40,14 @@
 
 1. macOS 首次录音时，在系统提示中允许「屏幕录制」和麦克风权限；听道通过系统接口采集音频，不录制屏幕画面。
 2. Windows 按下方步骤准备 Python 环境；安装版已包含 FFmpeg。
-3. 在「设置 → 本地模型」中填写模型路径；需要云端服务时，在「设置 → 对话模式」中配置并测试连接。
-4. 在「设置 → 录音」选择麦克风输入源。系统声音采集跟随系统默认输出设备。
+3. 在「设置 → 模型与服务 → 本地模型目录」中填写模型路径；需要云端服务时，在同页「云端」中配置并测试连接，再到「设置 → 录音与转写 → 对话模式」选择「云端」。
+4. 在「设置 → 录音与转写」选择录音来源和麦克风输入源。系统声音采集跟随系统默认输出设备。
 
 <h2 id="dependencies"><img src="./assets/readme/badges/dependencies.svg" height="40" alt="运行依赖"></h2>
 
 - **系统**：macOS 安装包支持 Apple Silicon 和 macOS 12.3+；Windows 支持 10/11 x64。
 - **Python**：建议 3.10。Windows 安装版会自动索引已安装且具备听道依赖的 Python 虚拟环境；也可在设置中手动选择解释器，或通过 `TINGDAO_PY` 指定。
-- **FFmpeg**：Windows 安装版已包含；macOS 和源码 zip 需要单独安装并加入 `PATH`，用于音视频导入、M4A 编码和音频预处理。macOS 可选安装 `switchaudio-osx` 以在录制中调整输出音量。
+- **FFmpeg**：Windows 安装版已包含；macOS 和源码 zip 需要单独安装并加入 `PATH`，用于音视频导入、M4A 编码和音频预处理。macOS 录制中的输出音量直接通过系统 CoreAudio 调节；可选安装 `switchaudio-osx`，便于准确识别当前输出设备。
 - **模型**：SenseVoiceSmall、Silero VAD 和 Whisper 模型均需自行下载，在设置中填写路径。macOS 的 MLX 模型不能用于 Windows；Windows 需使用 CTranslate2 格式。
 - 系统声音采集：macOS 使用 ScreenCaptureKit，Windows 使用 WASAPI loopback，均无需虚拟声卡或额外驱动。
 
@@ -63,7 +63,7 @@ $python = "$env:USERPROFILE\tingdao-venv\Scripts\python.exe"
 & $python -m pip install numpy requests sherpa-onnx pyaudiowpatch faster-whisper
 ```
 
-Windows 安装版已包含 FFmpeg。安装 Python 后重开 PowerShell，并确认 `py -3.10 --version` 可用。下载 SenseVoiceSmall、Silero VAD 和 CTranslate2 格式 Whisper 模型，在「设置 → 本地模型」填写路径。首次录音时允许麦克风访问。安装器在系统缺少 WebView2 时会联网下载运行时；源码 zip 运行还需自行安装 FFmpeg。
+Windows 安装版已包含 FFmpeg。安装 Python 后重开 PowerShell，并确认 `py -3.10 --version` 可用。下载 SenseVoiceSmall、Silero VAD 和 CTranslate2 格式 Whisper 模型，在「设置 → 模型与服务 → 本地模型目录」填写路径。首次录音时允许麦克风访问。安装器在系统缺少 WebView2 时会联网下载运行时；源码 zip 运行还需自行安装 FFmpeg。
 
 源码 zip 备用启动方式：在源码目录创建环境并安装 `requirements.txt`，再运行 `python app.py`。日常使用安装版无需下载源码。
 
@@ -74,11 +74,11 @@ Windows 安装版已包含 FFmpeg。安装 Python 后重开 PowerShell，并确�
 3. 精修完成后可单独生成 AI 摘要与章节目录；目录会落到真实时间戳，用于文稿标题和右侧导航。
 4. 将逐句文稿、时间戳、笔记、摘要目录和音频保存在本地项目中，按需导出。
 
-内部服务仅监听 `127.0.0.1`；数据默认保存在 `~/Documents/transcripts/`（macOS）或 Windows 用户文档目录，可通过 `TINGDAO_DATA` 指定 macOS 数据目录。
+内部服务仅监听 `127.0.0.1`；数据默认保存在系统「文档」目录下的 `transcripts/`（macOS 为 `~/Documents/transcripts/`，Windows 跟随「文档」文件夹的实际位置），两个平台都可通过环境变量 `TINGDAO_DATA` 改到其他目录。
 
 <h2 id="data"><img src="./assets/readme/badges/data.svg" height="40" alt="文件与数据"></h2>
 
-源码 zip 包含 `app.py`、`index.html`、`whisper_worker.py`、`requirements.txt` 和 Tauri 原生窗口壳。Windows 的打包壳使用 `tauri-shell/program-windows/` 中的运行文件。项目录音、文稿、设置、热词和日志保存在用户数据目录，不写入应用安装目录。
+源码 zip 包含 `app.py`（后端）、`index.html`（界面）、`whisper_worker.py` / `whisper_worker_windows.py`（本地精修）、`tingdao-mix.swift`（macOS 采集助手源码）、`requirements.txt` 和 `tauri-shell/` 原生窗口壳。打包时程序本体会先复制到 `tauri-shell/program/`（macOS）或由 `npm run stage:windows` 复制到 `tauri-shell/program-windows/`（Windows），这两个目录是生成产物，不入库。项目录音、文稿、设置、热词和日志保存在用户数据目录，处理缓存在其中的 `.cache/`，均不写入应用安装目录。
 
 <h2 id="limitations"><img src="./assets/readme/badges/limitations.svg" height="40" alt="已知限制"></h2>
 

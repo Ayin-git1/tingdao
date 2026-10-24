@@ -1,3 +1,11 @@
+> **执行状态（2026-10-24 按代码与回归测试核对）**
+>
+> - 已落地：Whisper 管道（`tests/test_whisper_worker_pipes.py`）、音频 Range / 206（`tests/test_audio_range.py`）、推理移出全局锁（`tests/test_inference_lock.py`）、图片不阻塞文稿打开（`tests/note-image-preload.test.js`）、滚动与播放高亮（`tests/scroll-frame.test.js`、`tests/playback-highlight.test.js`）、状态轮询防重叠（`tests/status-polling.test.js`）、history 元数据缓存（`.history-cache.json`，`tests/test_frontend_bootstrap.py`）、查找清理与弹窗滚动（`tests/find-cleanup.test.js`、`tests/temporary-popup-scroll.test.js`）。
+> - 尚未开始：PCM 队列观测与降级、正文分批渲染/虚拟列表、启动预热模型、常驻 Whisper worker、导入流水线、云端并发、GPU 与材质降级。
+> - 全文查找已于 7cb2ffd 重做为搜索面板，第 11 节对旧查找栏的分析仅作历史参考。
+>
+> 下文保留为当时的评估与计划原文。
+
 重新梳理后，建议不要按原报告里的“性能问题严重程度”直接排序开发顺序，而要同时看两件事：
 
 - **问题风险**：现在不改，会造成多大性能/稳定性问题。
