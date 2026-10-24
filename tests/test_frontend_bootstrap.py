@@ -30,6 +30,9 @@ class FrontendBootstrapTests(unittest.TestCase):
             "urlparse": urlparse,
             "INDEX": INDEX,
             "APP_VERSION": "3.0.0",
+            "APP": type("FakeApp", (), {"history_snapshot": lambda self: [
+                {"id": "p1", "name": "讲座 </script><b>x</b>", "date": "2026-10-03 10:00"}]})(),
+            "load_groups": lambda: {"order": ["课程"], "collapsed": [], "colors": {}},
             "load_setting": lambda key: {
                 "appearance": "system",
                 "theme_color": {"h": 335.9, "s": 79, "l": 79},
@@ -37,6 +40,38 @@ class FrontendBootstrapTests(unittest.TestCase):
         }
         exec(compile(ast.Module(body=[method], type_ignores=[]), str(APP), "exec"), namespace)
         cls.do_GET = staticmethod(namespace["do_GET"])
+
+    def render_root(self):
+        class Harness:
+            path = "/"
+            wfile = io.BytesIO()
+
+            def send_response(self, code):
+                self.status = code
+
+            def send_header(self, name, value):
+                pass
+
+            def end_headers(self):
+                pass
+
+        response = Harness()
+        self.do_GET(response)
+        return response.wfile.getvalue().decode("utf-8")
+
+    def test_history_snapshot_is_injected_and_survives_script_close_in_names(self):
+        html = self.render_root()
+        self.assertNotIn("__TINGDAO_HISTORY__", html)
+        line = next(l for l in html.splitlines() if "bootHistory = JSON.parse(" in l)
+        self.assertNotIn("</script>", line)
+        literal = re.search(r"JSON\.parse\((\".*\")\);", line).group(1)
+        result = subprocess.run(
+            ["node", "-e", f"process.stdout.write(JSON.stringify(JSON.parse({literal})))"],
+            text=True, capture_output=True, check=True,
+        )
+        boot = json.loads(result.stdout)
+        self.assertEqual(boot["items"][0]["name"], "讲座 </script><b>x</b>")
+        self.assertEqual(boot["groups"]["order"], ["课程"])
 
     def test_root_page_injection_keeps_all_inline_javascript_valid(self):
         class Harness:

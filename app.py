@@ -387,6 +387,7 @@ def vad_model_path():
 SESSIONS_DIR = DATA_DIR
 HOTWORDS_FILE = DATA_DIR / ".hotwords.txt"      # 全局热词表
 SETTINGS_FILE = DATA_DIR / ".settings.json"     # 应用设置(预处理开关等)
+HISTORY_CACHE_FILE = DATA_DIR / ".history-cache.json"  # 项目列表元数据快照, 启动免全量解析
 RECORDING_MODES = ("system", "mix", "mic")
 
 
@@ -2631,7 +2632,7 @@ class App:
         self.lock = threading.RLock()
         self.decode_lock = threading.RLock()  # VAD/推理串行，独立于状态锁
         self.capture_lock = threading.RLock()  # PCM 读写不能被识别/VAD 占住
-        self._history_cache = {}  # session.json 路径 -> (mtime_ns/size, 列表元数据)
+        self._history_cache = self._load_history_cache()  # session.json 路径 -> (mtime_ns/size, 列表元数据)
         self._procs = {}        # sid -> Whisper 子进程 Popen(停止时 SIGTERM 它)
         self._cancel = set()    # 用户按过停止的 sid(云端链路在检查点自查)
         # 任务表: sid -> {kind,state,stage,pct}。批量导入后 refining 只是
@@ -5469,6 +5470,40 @@ class App:
         """去掉旧版标题里的「逐字稿：」等前缀"""
         return re.sub(r"^(逐字稿|转录稿|文稿)[:：]\s*", "", (t or "").strip())
 
+    # 快照格式变更(如列表字段增减)时递增, 旧快照整体作废
+    HISTORY_CACHE_VERSION = 1
+
+    def _load_history_cache(self):
+        """读上次写下的列表快照。签名仍逐个比对, 文件坏了就当没有。"""
+        try:
+            raw = json.loads(HISTORY_CACHE_FILE.read_text(encoding="utf-8"))
+            if raw.get("version") != self.HISTORY_CACHE_VERSION:
+                return {}
+            return {SESSIONS_DIR / sid / "session.json": ((int(m), int(size)), item)
+                    for sid, (m, size, item) in raw["items"].items()
+                    if isinstance(item, dict) and item.get("id") == sid}
+        except Exception:
+            return {}
+
+    def _save_history_cache(self, cache):
+        data = {"version": self.HISTORY_CACHE_VERSION,
+                "items": {sj.parent.name: [sig[0], sig[1], item]
+                          for sj, (sig, item) in cache.items()}}
+        # 唯一临时名 + 原子替换: 并发的 history() 各写各的, 读方永远看到完整文件
+        tmp = HISTORY_CACHE_FILE.with_name(f"{HISTORY_CACHE_FILE.name}.{uuid.uuid4().hex}.tmp")
+        try:
+            tmp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+            os.replace(tmp, HISTORY_CACHE_FILE)
+        except OSError:
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
+
+    def history_snapshot(self):
+        """首屏占位用: 直接给内存里的列表快照(启动时取自缓存文件), 不扫目录、不读 session.json。"""
+        return [item.copy() for _sig, item in self._history_cache.values()]
+
     def history(self):
         items = []
         cache = self._history_cache
@@ -5533,6 +5568,8 @@ class App:
                               "group": "", "notes": 0, "favorite": False, "archived": False})
         # 每次扫描生成新快照，淘汰已删除/改名路径；并发请求不修改彼此的缓存字典。
         self._history_cache = next_cache
+        if next_cache != cache:
+            self._save_history_cache(next_cache)
         return items
 
     def session_flags(self, ids, favorite=None, archived=None):
@@ -5815,6 +5852,11 @@ class Handler(BaseHTTPRequestHandler):
                 theme_color = {"h": 135.1, "s": 58.6, "l": 49.2}
             theme_color_json = json.dumps(
                 json.dumps(theme_color, separators=(",", ":")))
+            # 项目列表快照同注入: 首帧就画出上次的侧栏, 真实扫描结果随后静默替换。
+            # "</" 转义, 防止项目名里的 </script> 提前截断内联脚本。
+            history_json = json.dumps(json.dumps(
+                {"items": APP.history_snapshot(), "groups": load_groups()},
+                ensure_ascii=False)).replace("</", "<\\/")
             # 平台标记同注入：首帧前就把 Windows 版式(窗口控件留白)定下来，避免先闪 mac 样式
             body = INDEX.read_text(encoding="utf-8").replace(
                 "__TINGDAO_APPEARANCE__", am).replace(
@@ -5822,6 +5864,7 @@ class Handler(BaseHTTPRequestHandler):
                 "__TINGDAO_THEME_COLOR__", theme_color_json).replace(
                 "__TINGDAO_MATERIAL_MODE__", material_mode).replace(
                 "__TINGDAO_MATERIAL_OPTIONS__", material_options_json).replace(
+                "__TINGDAO_HISTORY__", history_json).replace(
                 "__TINGDAO_VERSION__", f"v{APP_VERSION}").encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")

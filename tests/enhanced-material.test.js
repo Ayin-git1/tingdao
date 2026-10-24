@@ -296,7 +296,7 @@ test('SVG save failure restores the switch and filter state',async()=>{
 });
 
 test('material preview uses the bundled lakeside image and server route',()=>{
-  assert.match(html,/\.material-preview\{[^}]*background-image:url\('\/material-preview\/lakeside\.png'\)/);
+  assert.match(html,/\.material-preview\{[^}]*background-image:url\('\/material-preview\/lakeside\.png(?:\?v=\d+)?'\)/);
   assert.ok(fs.existsSync('assets/material-preview-lakeside.png'));
   assert.ok(fs.statSync('assets/material-preview-lakeside.png').size > 100000);
   const backend=fs.readFileSync('app.py','utf8');

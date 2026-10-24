@@ -11,10 +11,12 @@ use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
 #[cfg(target_os = "macos")]
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
+use tauri::webview::PageLoadEvent;
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 // 不透明白底只给 mac 用(见 open_main_window 的 cfg 分支), Windows 构建里没人引用它 ——
 // 跟着 cfg 走, 免得白留一条 unused import 警告。
@@ -31,6 +33,8 @@ const REPOSITORY_URL: &str = "https://github.com/Ayin-git1/tingdao";
 static BACKEND: LazyLock<Mutex<Option<Child>>> = LazyLock::new(|| Mutex::new(None));
 static PORTFILE: LazyLock<Mutex<Option<PathBuf>>> = LazyLock::new(|| Mutex::new(None));
 static BACKEND_PORT: LazyLock<Mutex<Option<u16>>> = LazyLock::new(|| Mutex::new(None));
+/// 已进入退出流程。窗口先于后端出现, 用户可能在后端起到一半时就退出: 此后不许再拉起后端。
+static EXITING: AtomicBool = AtomicBool::new(false);
 
 fn is_repository_url(url: &str) -> bool {
     url.trim_end_matches('/') == REPOSITORY_URL
@@ -583,10 +587,17 @@ fn start_backend(resource_dir: Option<PathBuf>, settings_file: Option<PathBuf>) 
             .ok_or_else(|| "测试版缺少包内麦克风助手 TingdaoMic.app".to_string())?;
         command.env("TINGDAO_MIC_APP", mic_app);
     }
-    let child = command
-        .spawn()
-        .map_err(|e| format!("后端进程起不来：{e}"))?;
-    *BACKEND.lock().unwrap() = Some(child);
+    // 持锁检查退出标记再 spawn: 与 stop_backend(先置标记再取锁)配对, 不会漏下一个没人收的后端。
+    {
+        let mut backend = BACKEND.lock().unwrap();
+        if EXITING.load(Ordering::SeqCst) {
+            return Err("正在退出".to_string());
+        }
+        let child = command
+            .spawn()
+            .map_err(|e| format!("后端进程起不来：{e}"))?;
+        *backend = Some(child);
+    }
 
     // 模型加载发生在 bind 之前(Engine 在模块导入期建), 所以要给足等待时间;
     // 模型没配齐时后端也会照常起, 到点录音才报「设置→本地模型」。
@@ -745,9 +756,14 @@ mod release_tests {
 }
 
 fn stop_backend() {
+    EXITING.store(true, Ordering::SeqCst);
     if let Some(mut c) = BACKEND.lock().unwrap().take() {
-        if let Some(port) = *BACKEND_PORT.lock().unwrap() {
-            request_shutdown(port);
+        match *BACKEND_PORT.lock().unwrap() {
+            Some(port) => request_shutdown(port),
+            // 还没开始服务(启动中途退出): 没有录音可收尾, 直接结束, 别白等 35 秒。
+            None => {
+                let _ = c.kill();
+            }
         }
         let deadline = Instant::now() + Duration::from_secs(SHUTDOWN_TIMEOUT_SECS);
         loop {
@@ -824,15 +840,19 @@ fn clear_legacy_webview_cache(app: &tauri::App, window: &tauri::WebviewWindow) {
     }
 }
 
-/// 用后端回报的端口, 在运行时把主窗口开起来。
-/// 窗口的尺寸/居中等写在这里而非 tauri.conf.json —— 因为 URL 现在带的是动态端口, 只能建窗时注入。
-fn open_main_window(app: &mut tauri::App, port: u16) -> tauri::Result<()> {
-    let url_str = format!("http://127.0.0.1:{port}/");
-    // External 变体的字段类型是 url::Url, 所以这里的 .parse() 会自动按该类型解析, 无需额外命名。
-    // 我们自拼的地址必然合法, 真解析失败(理论不可达)就归成 InvalidUrl 让壳启动流程干净报错。
-    let url = WebviewUrl::External(url_str.parse().map_err(tauri::Error::InvalidUrl)?);
-
-    let mut builder = WebviewWindowBuilder::new(app, "main", url)
+/// 主窗口在 setup 里立刻建好但先隐藏, 后端就绪后由后台线程导航到 http://127.0.0.1:<动态端口>/,
+/// 真实页面加载完成(上次的项目列表已同步画出)才显示 —— 用户看到窗口时页面已经是完整的。
+/// 窗口的尺寸/居中等写在这里而非 tauri.conf.json —— 动态端口的页面只能运行时再导航过去。
+fn open_main_window(app: &mut tauri::App) -> tauri::Result<tauri::WebviewWindow> {
+    let mut builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+        .visible(false)
+        // 只认后端页面(http)的加载完成; 建窗时那张内置空白页(tauri://)的完成事件不算。
+        .on_page_load(|window, payload| {
+            if payload.event() == PageLoadEvent::Finished && payload.url().scheme() == "http" {
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        })
         // WKWebView 无法指定缓存目录，使用内存数据存储避免按动态端口积累磁盘缓存。
         .incognito(true)
         .title("听道")
@@ -901,7 +921,29 @@ fn open_main_window(app: &mut tauri::App, port: u16) -> tauri::Result<()> {
         apply_selfdrawn_frame(hwnd.0 as isize);
     }
 
-    Ok(())
+    Ok(window)
+}
+
+/// 后台线程: 拉起后端, 就绪后把隐藏着的窗口导航到真实页面(加载完成时 on_page_load 负责显示)。
+fn load_backend_into(window: tauri::WebviewWindow, resource_dir: Option<PathBuf>, settings_file: Option<PathBuf>) {
+    let result = start_backend(resource_dir, settings_file).and_then(|port| {
+        // 自拼的地址必然合法, 真解析失败(理论不可达)也走统一的启动失败提示。
+        let url = format!("http://127.0.0.1:{port}/").parse().map_err(|e| format!("{e}"))?;
+        window.navigate(url).map_err(|e| e.to_string())
+    });
+    if result.is_ok() {
+        // 兜底: 万一加载完成事件没来(页面报错等), 也别让窗口永远藏着。
+        std::thread::sleep(Duration::from_secs(10));
+        let _ = window.show();
+    }
+    if let Err(error) = result {
+        if EXITING.load(Ordering::SeqCst) {
+            return; // 用户在启动途中退出, 不算失败
+        }
+        stop_backend();
+        alert("听道启动失败", &error);
+        std::process::exit(1);
+    }
 }
 
 fn main() {
@@ -940,25 +982,21 @@ fn main() {
                 _ => {}
             }
         })
-        // 主窗口在 setup 里建: 需要先有后端回报的动态端口才能定 URL, 而端口在 start_backend 已到手。
+        // 主窗口在 setup 里立刻建(隐藏), 后端在后台线程里起, 就绪后导航过去, 页面加载完才显示。
+        // 坑: tauri 的 setup hook 返回 Err 时, 会在 run() 内部直接 panic(GUI 进程
+        // 无声无息退出 101, 用户什么都看不到), 下面 unwrap_or_else 的 alert 兜不到它。
+        // 所以启动失败必须自己弹窗 + 退出, 让用户看到具体原因。
         .setup(move |app| {
             let resource_dir = app.path().resource_dir().ok();
             let settings_file = settings_file_path(app);
-            let port = match start_backend(resource_dir, settings_file) {
-                Ok(p) => p,
-                Err(e) => {
-                    // 坑: tauri 的 setup hook 返回 Err 时, 会在 run() 内部直接 panic(GUI 进程
-                    // 无声无息退出 101, 用户什么都看不到), 下面 unwrap_or_else 的 alert 兜不到它。
-                    // 所以启动失败必须在这里自己弹窗 + 退出, 让用户看到具体原因。
-                    alert("听道启动失败", &e);
+            let window = match open_main_window(app) {
+                Ok(window) => window,
+                Err(error) => {
+                    alert("听道启动失败", &error.to_string());
                     std::process::exit(1);
                 }
             };
-            if let Err(error) = open_main_window(app, port) {
-                stop_backend();
-                alert("听道启动失败", &error.to_string());
-                std::process::exit(1);
-            }
+            std::thread::spawn(move || load_backend_into(window, resource_dir, settings_file));
             Ok(())
         })
         .build(tauri::generate_context!())

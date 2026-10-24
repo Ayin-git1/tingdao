@@ -5,6 +5,7 @@ import re
 import shutil
 import time
 import unittest
+import uuid
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
@@ -20,24 +21,31 @@ class SessionLifecycleTests(unittest.TestCase):
         tree = ast.parse(APP.read_text(encoding="utf-8"))
         app_class = next(node for node in tree.body
                          if isinstance(node, ast.ClassDef) and node.name == "App")
-        wanted = {"_clean_title", "history", "session_flags"}
-        cls.methods = {node.name: node for node in app_class.body
-                       if isinstance(node, ast.FunctionDef) and node.name in wanted}
+        wanted = {"_clean_title", "history", "session_flags", "HISTORY_CACHE_VERSION",
+                  "_load_history_cache", "_save_history_cache"}
+        cls.methods = {}
+        for node in app_class.body:
+            if isinstance(node, ast.FunctionDef) and node.name in wanted:
+                cls.methods[node.name] = node
+            elif isinstance(node, ast.Assign) and node.targets[0].id in wanted:
+                cls.methods[node.targets[0].id] = node
 
     def make_app(self, sessions_dir):
-        methods = [self.methods[name] for name in ("_clean_title", "history", "session_flags")
-                   if name in self.methods]
+        methods = list(self.methods.values())
         namespace = {
             "SESSIONS_DIR": sessions_dir,
+            "HISTORY_CACHE_FILE": sessions_dir / ".history-cache.json",
             "json": json,
+            "os": os,
             "re": re,
             "time": time,
+            "uuid": uuid,
             "MASTER_RAW_FILE": "master.s16",
         }
         module = ast.Module(body=methods, type_ignores=[])
         exec(compile(ast.fix_missing_locations(module), str(APP), "exec"), namespace)
         app = type("AppHarness", (), namespace)()
-        app._history_cache = {}
+        app._history_cache = app._load_history_cache()
         return app
 
     def make_session(self, root, sid, **meta):
@@ -187,6 +195,41 @@ class SessionLifecycleTests(unittest.TestCase):
             self.assertEqual([item['id'] for item in items], ['renamed'])
             self.assertEqual(reads, [renamed / 'session.json'])
             self.assertEqual(set(app._history_cache), {renamed / 'session.json'})
+
+    def test_restart_reuses_persisted_cache_without_reading_json(self):
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            self.make_session(root, 'first')
+            self.make_session(root, 'second')
+            initial = self.make_app(root).history()
+            items, reads = self.count_json_reads(self.make_app(root))
+            self.assertEqual(items, initial)
+            self.assertEqual(reads, [])
+            self.assertEqual(sorted(p.name for p in root.iterdir() if p.is_file()),
+                             ['.history-cache.json'])
+
+    def test_restart_rereads_projects_changed_while_closed(self):
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            sj = self.make_session(root, 'first', name='Alpha') / 'session.json'
+            self.make_session(root, 'second')
+            self.make_app(root).history()
+            sj.write_text(sj.read_text().replace('Alpha', 'Bravo!'), encoding='utf-8')
+            shutil.rmtree(root / 'second')
+            items, reads = self.count_json_reads(self.make_app(root))
+            self.assertEqual([item['name'] for item in items], ['Bravo!'])
+            self.assertEqual(reads, [sj])
+
+    def test_corrupt_or_outdated_persisted_cache_is_ignored(self):
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            self.make_session(root, 'first')
+            cache_file = root / '.history-cache.json'
+            for content in ('{broken', json.dumps({'version': 0, 'items': {}})):
+                cache_file.write_text(content, encoding='utf-8')
+                items, reads = self.count_json_reads(self.make_app(root))
+                self.assertEqual(items[0]['id'], 'first')
+                self.assertEqual(len(reads), 1)
 
     def test_returned_metadata_cannot_mutate_cache(self):
         with TemporaryDirectory() as temp:

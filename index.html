@@ -478,11 +478,11 @@
   .titlebar{flex:none; display:none; align-items:center; position:relative; z-index:var(--z-chrome);
             padding:14px 26px 10px; background:linear-gradient(to bottom, #fff 68%, rgba(255,255,255,0));}
   .titlebar .namebox{flex:1; min-width:0; padding:0;}
-  .feedwrap{flex:1; overflow-y:auto; overflow-x:hidden; padding:16px var(--reading-edge-gap) calc(var(--transcript-bottom-space, 20px) + var(--edit-bottom-space, 0px) + var(--note-bottom-space, 0px));
+  .feedwrap{flex:1; overflow-y:auto; overflow-x:hidden; padding:16px var(--reading-edge-gap) calc(var(--transcript-bottom-space, 20px) + var(--edit-bottom-space, 0px) + var(--note-bottom-space, 0px) + var(--live-tail-space, 0px));
             position:relative; z-index:var(--z-feed); scrollbar-width:none;}
   /* 音频条底距 18px、展开高 55px，再留 27px 阅读间距。 */
   .main:has(.audiobar.show) .feedwrap{--transcript-bottom-space:100px;}
-  .feedwrap::-webkit-scrollbar{width:0;}   /* 录制态隐藏纵向滚动条(字幕自走) */
+  .feedwrap::-webkit-scrollbar{width:0;}   /* 录制态隐藏纵向滚动条(可滚, 只是不显示) */
   .feedwrap.viewing{overflow-y:auto;}
   .feedwrap.viewing::-webkit-scrollbar{width:8px;}
   /* 长音频分段锚点: 贴在文稿右缘，不参与正文滚动；当前片段用主题色加深。 */
@@ -1245,13 +1245,15 @@
     mask-image:linear-gradient(to bottom,transparent,#000 16%,#000 84%,transparent);
     transition:height .2s cubic-bezier(.22,1,.36,1);}
   html[data-appearance="dark"] .audiobar .seek-wash{--seek-track-ink:rgba(255,255,255,.08);--seek-track-tint:.14;}
-  .audiobar .seek-wash::before{content:""; position:absolute; inset:0 auto 0 0; width:var(--seek-progress,0%);
+  .audiobar .seek-wash::before{content:""; position:absolute; inset:0;
+    mask-image:linear-gradient(90deg,#000 calc(var(--seek-progress,0%) - 3px),transparent var(--seek-progress,0%));
     background:radial-gradient(ellipse at 12% 22%,rgba(var(--gd-rgb),.20),transparent 35%),
                radial-gradient(ellipse at 43% 85%,rgba(var(--gd-rgb),.14),transparent 38%),
                radial-gradient(ellipse at 78% 18%,rgba(var(--gd-rgb),.18),transparent 36%),
                radial-gradient(ellipse at 32% 15%,rgba(255,255,255,.28),transparent 28%),
                radial-gradient(ellipse at 65% 80%,rgba(255,255,255,.20),transparent 30%),
                linear-gradient(90deg,rgba(var(--g-rgb),.30),rgba(var(--g-rgb),.40) 54%,rgba(var(--g-rgb),.32));
+    background-size:96px 100%,96px 100%,96px 100%,96px 100%,96px 100%,100% 100%;
     clip-path:polygon(0 18%,9% 8%,18% 17%,29% 9%,40% 18%,52% 8%,65% 17%,77% 9%,89% 18%,100% 11%,
                       100% 82%,90% 92%,78% 82%,66% 91%,53% 82%,41% 93%,29% 82%,17% 91%,0 82%);
     opacity:.96; transition:opacity .2s cubic-bezier(.22,1,.36,1);}
@@ -2329,8 +2331,6 @@
         圆钮在他眼里就又和弹窗同层级, 退后等于白做。 */
   #btnNoteTool.note-on,
   #btnNoteTool.note-on:hover{opacity:.3; filter:none;}
-
-  /* ============ 悬浮搜索窗：仿 Notion 搜索 —— 输入在上、命中列表在下、键盘走一遍 ============ */
   /* 录音来源: 圆钮显示当前来源, 点开向上逐个弹出三枚同款圆钮, 点哪个切哪个 */
   .srcwrap{position:relative; display:flex; flex:none;}
   #btnSrc.on{border-color:color-mix(in srgb, var(--g) 60%, transparent); color:var(--g-ink);}
@@ -2381,6 +2381,8 @@
     .srcopt,.srcfan.show .srcopt{transition:none;}
     #feed .srcmark,#btnSrc.switching svg{animation:none;}
   }
+
+  /* ============ 悬浮搜索窗：仿 Notion 搜索 —— 输入在上、命中列表在下、键盘走一遍 ============ */
   .findbar{display:none; position:fixed; top:56px; right:26px; z-index:var(--z-float); width:400px;
            max-width:calc(100vw - 24px); flex-direction:column; overflow:hidden;
            background:var(--material-rest-background); backdrop-filter:var(--material-rest-backdrop-filter);
@@ -2708,7 +2710,7 @@
     --material-expanded-backdrop-filter:url("#material-glass-magnify") blur(calc(var(--material-custom-blur,4px) + 1px)) saturate(2.8) contrast(var(--material-optical-contrast,1));
   }
   .material-group{grid-column:1 / -1;}
-  .material-preview{position:relative;overflow:hidden;height:180px;border-radius:var(--radius-3);background-image:url('/material-preview/lakeside.png');background-position:center 54%;background-size:cover;}
+  .material-preview{position:relative;overflow:hidden;height:180px;border-radius:var(--radius-3);background-image:url('/material-preview/lakeside.png?v=2');background-position:center 54%;background-size:cover;}
   .material-preview::before{content:'';position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.08),rgba(0,0,0,.02) 55%,rgba(0,0,0,.20));pointer-events:none;}
   .material-preview-toolbar{position:relative;display:flex;align-items:center;gap:10px;padding:22px;}
   .material-preview-control{display:flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 17px;border-radius:var(--radius-4);color:var(--txt);background:var(--material-rest-background);border:1px solid var(--material-rest-border);backdrop-filter:var(--material-rest-backdrop-filter);-webkit-backdrop-filter:var(--material-rest-backdrop-filter);box-shadow:var(--material-shadow-level-2);}
@@ -2942,7 +2944,7 @@
 
   /* 顶部分类设置：沿用听道主题变量、圆角与控件，内容按页分组。 */
   #setpop{--settings-top-safe:20px;width:860px;max-width:calc(100vw - 32px);height:700px;max-height:calc(100vh - var(--settings-top-safe) - 20px);background:var(--side);}
-  html[data-platform="mac"] #setpop{--settings-top-safe:64px;}
+  html[data-platform="mac"] #setpop{--settings-top-safe:48px;}
   #setpop .sethead{padding:20px 46px 16px 24px;align-items:center;border-bottom:1px solid var(--line);}
   #setpop .sethead .ht{font-size:17px;}
   #setpop .sethead .hs{font-size:12px;margin-left:auto;}
@@ -2966,9 +2968,77 @@
   #setBody .appearance-group{border:0;border-radius:0;padding:0;background:none;}
   #setBody .appearance-group + .appearance-group{border-top:1px solid var(--line);padding-top:18px;}
   #setBody .appearance-group > .st:first-child{margin-top:0;}
-  #setBody .seg button{font-size:13px;}
-  #setBody .pathrow input,#setBody .cloudpop input{font-size:13px;}
+  #setBody .seg button{height:30px; padding:0 8px; font-size:13px; line-height:20px;}
+  #setBody .devfield,#setBody .pathrow input,#setBody .cloudpop input{height:38px; box-sizing:border-box; font-size:13px;}
+  #setBody .pathpick{width:38px; height:38px;}
+  #setBody #cacheClear{min-height:38px; padding:8px 14px; border:1px solid var(--line); border-radius:var(--radius-3);
+    background:var(--soft); color:var(--txt); font:inherit; font-size:13px; cursor:pointer;
+    transition:background var(--hov), color var(--hov);}
+  #setBody #cacheClear:hover{background:var(--hover);}
+  #setBody #cacheClear:focus-visible{outline:2px solid var(--g); outline-offset:3px;}
+  #setBody #cacheClear:disabled{opacity:.55; cursor:wait;}
+  #setBody :is(#cachePath,#cacheLastCleared){background:none; padding:0; color:var(--sub);}
   #setBody .material-preview{max-width:360px;}
+#setBody #sec-appearance .appearance-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px 28px;}
+#setBody #sec-appearance .appearance-group{min-width:0;}
+#setBody #sec-appearance :where(.appearance-group+.appearance-group){border-top:0;padding-top:0;}
+#setBody #sec-appearance .appearance-group>.st:first-child{font-weight:600;margin-bottom:12px;}
+#setBody #sec-appearance .appearance-grid .material-group{display:grid;grid-template-columns:280px 1fr;gap:12px 24px;padding:20px;background:var(--card);border:1px solid var(--line);border-radius:var(--radius-3);}
+#setBody #sec-appearance .material-group>.st{grid-column:1 / -1;margin:0;}
+#setBody #sec-appearance .material-preview{height:140px;width:100%;max-width:none;grid-column:1;grid-row:2 / 4;}
+#setBody #sec-appearance .material-preview-toolbar{padding:16px;gap:6px;}
+#setBody #sec-appearance .material-preview-control{min-height:34px;padding:0 12px;}
+#setBody #sec-appearance .material-preview-caption{font-size:16px;left:16px;bottom:16px;}
+#setBody #sec-appearance .material-setting-row{display:block;margin:0;}
+#setBody #sec-appearance .material-slider{width:100%;margin-top:20px;}
+#setBody #sec-appearance .material-adjustments{grid-column:1 / -1;}
+#setBody #sec-appearance .reading-group{grid-column:1 / -1;border-top:1px solid var(--line);padding-top:20px;display:grid;grid-template-columns:1fr 1fr;column-gap:28px;}
+#setBody #sec-appearance .reading-group>.st:first-child,#setBody #sec-appearance .reading-group>.ptinfo{grid-column:1 / -1;}
+#setBody #sec-appearance .reading-group>label{grid-row:3;}
+#setBody #sec-appearance .reading-group>.st{margin-top:0!important;}
+#setBody #sec-appearance .copy-group{grid-column:1 / -1;border-top:1px solid var(--line);padding-top:20px;display:grid;grid-template-columns:170px 1fr;column-gap:28px;align-items:center;}
+#setBody #sec-appearance .copy-group>.st{margin:0;}
+#setBody #sec-appearance .copy-group>.ptinfo{grid-column:2;}
+@media(max-width:700px){#setBody #sec-appearance .appearance-grid{grid-template-columns:1fr;}#setBody #sec-appearance .appearance-grid .material-group{grid-template-columns:1fr;}#setBody #sec-appearance .material-preview{grid-column:1;grid-row:auto;}#setBody #sec-appearance .reading-group,#setBody #sec-appearance .copy-group{display:block;}#setBody #sec-appearance .reading-group>label{margin-bottom:14px;}}
+
+#setBody #sec-appearance #themeGroup{display:grid;grid-template-columns:1fr auto;gap:10px 12px;align-content:start;align-items:center;}
+#setBody #sec-appearance #themeGroup>.st{margin-bottom:0!important;}
+#setBody #sec-appearance #themePresets{min-height:38px;}
+#setBody #sec-appearance #themeGroup>.st,#setBody #sec-appearance #themeColorSummary{grid-column:1 / -1;margin:0;}
+#setBody #sec-appearance #themeGroup .theme-custom-trigger{margin:0;white-space:nowrap;}
+@media(max-width:700px){#setBody #sec-appearance #themeGroup{display:block;}#setBody #sec-appearance #themeGroup .theme-custom-trigger{margin-top:12px;}}
+
+#setBody #sec-appearance #materialAdjustments{margin:8px 0 0;grid-column:1 / -1;border-top:1px solid var(--line);padding-top:20px;}
+#setBody #sec-appearance .parameter-group{min-width:0;}
+#setBody #sec-appearance .parameter-group h3{font-size:13px;font-weight:600;color:var(--txt);margin:0 0 14px;}
+#setBody #sec-appearance #materialAdjustments .personal-range{display:grid;grid-template-columns:124px minmax(70px,1fr) 44px;max-width:none;gap:12px;margin:0 0 16px;align-items:center;color:var(--txt);font-size:12px;}
+#setBody #sec-appearance #materialAdjustments .personal-range input{min-width:0;width:100%;margin:0;}
+#setBody #sec-appearance #materialAdjustments .personal-range output{min-width:0;font-size:12px;color:var(--sub);font-variant-numeric:tabular-nums;}
+#setBody #sec-appearance #materialAdjustments .material-optics-row{margin:0;gap:16px;align-items:center;font-size:13px;}
+#setBody #sec-appearance #materialAdjustments .material-optics-row .ptinfo{margin-top:5px;line-height:1.6;color:var(--sub);font-size:12px;}
+#setBody #sec-appearance #materialAdjustments .material-note{margin:4px 0 0;grid-column:1 / -1;}
+#setBody #sec-appearance .material-setting-row .ptinfo{max-width:30em;}
+@media(max-width:760px){#setBody #sec-appearance #materialAdjustments .personal-range{grid-template-columns:124px minmax(50px,1fr) 44px;}}
+
+#setBody #sec-appearance .parameter-columns{display:grid;grid-template-columns:1fr 1fr;gap:24px 28px;}
+#setBody #sec-appearance #materialAdjustments .parameter-columns .personal-range{grid-template-columns:1fr 44px;gap:8px;}
+#setBody #sec-appearance #materialAdjustments .parameter-columns .personal-range input{grid-row:2;grid-column:1 / -1;}
+#setBody #sec-appearance #materialAdjustments .parameter-columns .personal-range output{grid-column:2;grid-row:1;text-align:right;}
+#setBody #sec-appearance #materialAdjustments .material-switches{display:grid;grid-template-columns:1fr 1fr;gap:28px;border-top:1px solid var(--line);padding-top:20px;margin:6px 0 18px;}
+@media(max-width:700px){#setBody #sec-appearance .parameter-columns,#setBody #sec-appearance #materialAdjustments .material-switches{grid-template-columns:1fr;}}
+
+html:not([data-material="mimetic"]) #setBody #materialAdvanced{display:none;}
+#setBody #sec-appearance .material-advanced{margin:4px 0 14px;border-top:1px solid var(--line);}
+#setBody #sec-appearance .material-advanced summary{display:flex;align-items:center;gap:10px;min-height:44px;cursor:pointer;color:var(--txt);font-size:13px;font-weight:600;list-style:none;}
+#setBody #sec-appearance .material-advanced summary::-webkit-details-marker{display:none;}
+#setBody #sec-appearance .material-advanced summary::before{content:'›';width:12px;font-size:20px;transform:rotate(0);transition:transform .14s ease;}
+#setBody #sec-appearance .material-advanced[open] summary::before{transform:rotate(90deg);}
+#setBody #sec-appearance .material-advanced .advanced-summary{margin-left:auto;font-weight:400;font-size:12px;color:var(--sub);}
+#setBody #sec-appearance .material-advanced summary:focus-visible{outline:2px solid var(--g);outline-offset:3px;border-radius:var(--radius-1);}
+#setBody #sec-appearance .advanced-body{padding:10px 0 0;}
+#setBody #sec-appearance #materialAdjustments .material-advanced .material-switches{margin-bottom:6px;}
+@media(prefers-reduced-motion:reduce){#setBody #sec-appearance .material-advanced summary::before{transition:none;}}
+
   #setBody #sec-cloud .two{gap:24px;}
   #setBody #sec-cloud .two > div + div{border-top:1px solid var(--line);padding-top:20px;}
   @keyframes settingsPaneIn{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:translateY(0)}}
@@ -2988,7 +3058,7 @@
   #setpop .sethead .hs{color:var(--txt);opacity:.65;}
   #setpop .setclose{color:var(--txt);}
   #setpop .setclose:focus-visible{outline:2px solid var(--g);outline-offset:3px;}
-  #setBody .seg{padding:3px;}
+  #setBody .seg{height:38px; box-sizing:border-box; padding:3px; line-height:normal;}
   #setBody .segin{top:3px;height:calc(100% - 6px);border-radius:10px;}
 </style>
 
@@ -3358,39 +3428,6 @@
         </div>
         <div class="ptinfo" id="appearanceHint">跟随系统外观自动切换。</div>
        </section>
-       <section class="appearance-group material-group">
-        <div class="st">材质效果</div>
-        <div class="material-preview" role="img" aria-label="当前材质效果预览：彩色背景上的工具栏">
-         <div class="material-preview-toolbar" aria-hidden="true">
-          <span class="material-preview-control">＋</span><span class="material-preview-control">•••</span><span class="material-preview-control">⌕ 搜索</span>
-         </div>
-         <div class="material-preview-caption" id="materialPreviewCaption">中性材质</div>
-        </div>
-        <div class="material-setting-row">
-         <div><div id="materialModeLabel">材质风格</div><div class="ptinfo">统一调整中性材质控件的透光与亮边。</div></div>
-         <div class="material-slider">
-          <input type="range" id="setMaterialMode" min="0" max="2" step="1" value="0" aria-labelledby="materialModeLabel" aria-valuetext="中性">
-          <div class="material-slider-labels" aria-hidden="true"><span>中性</span><span>增强</span><span>拟态</span></div>
-         </div>
-        </div>
-        <div class="material-adjustments" id="materialAdjustments" hidden>
-         <div class="st">可视效果</div>
-         <label class="personal-range" for="materialBlur"><span id="materialBlurLabel">模糊程度</span><input aria-labelledby="materialBlurLabel" id="materialBlur" type="range" min="0" max="20" step="1" value="4"><output id="materialBlurValue">4 px</output></label>
-         <label class="personal-range" for="materialTransparency"><span id="materialFilmLabel">白色底膜透明度</span><input aria-labelledby="materialFilmLabel" id="materialTransparency" type="range" min="0" max="100" step="1" value="54"><output id="materialTransparencyValue">54%</output></label>
-         <label class="personal-range" for="materialShadowStrength"><span id="materialShadowLabel">阴影颜色浓度</span><input aria-labelledby="materialShadowLabel" id="materialShadowStrength" type="range" min="0" max="100" step="1" value="50"><output id="materialShadowStrengthValue">50%</output></label>
-         <label class="personal-range" id="materialHighlightRow" for="materialHighlightStrength" hidden><span id="materialHighlightLabel">内侧白色反光</span><input aria-labelledby="materialHighlightLabel" id="materialHighlightStrength" type="range" min="0" max="100" step="1" value="50"><output id="materialHighlightStrengthValue">50%</output></label>
-         <label class="personal-range" id="materialHighlightBloomRow" for="materialHighlightBloom" hidden><span id="materialHighlightBloomLabel">高光向内晕染</span><input aria-labelledby="materialHighlightBloomLabel" id="materialHighlightBloom" type="range" min="0" max="100" step="1" value="0"><output id="materialHighlightBloomValue">0%</output></label>
-         <div class="ptinfo">透明度越高，背景越清晰；增强与拟态分别保存。</div>
-         <label class="material-optics-row" id="materialOpticsRow" hidden>
-          <span><span id="materialOpticsLabel">玻璃光感增强</span><span class="ptinfo" style="display:block" id="materialOpticsHint">增强背景对比，突出玻璃层次。</span></span>
-          <input id="materialOptics" type="checkbox" role="switch" aria-labelledby="materialOpticsLabel" aria-describedby="materialOpticsHint">
-         </label>
-         <label class="material-optics-row" id="materialRefractionRow" hidden>
-          <span><span id="materialRefractionLabel">SVG 放大折射</span><span class="ptinfo" style="display:block" id="materialRefractionHint">放大玻璃背后的内容；效果取决于浏览器支持。</span></span>
-          <input id="materialRefraction" type="checkbox" role="switch" aria-labelledby="materialRefractionLabel" aria-describedby="materialRefractionHint">
-         </label>
-        </div>
-       </section>
        <section class="appearance-group" id="themeGroup">
         <div class="st">主题颜色</div>
         <div class="theme-presets" id="themePresets" role="group" aria-label="预设主题颜色">
@@ -3425,7 +3462,51 @@
          <div class="theme-picker-foot"><span class="ptinfo">色相由圆盘控制</span><button type="button" class="theme-reset" id="themeReset">恢复默认绿色</button></div>
         </div>
        </section>
-       <section class="appearance-group">
+       <section class="appearance-group material-group">
+        <div class="st">材质效果</div>
+        <div class="material-preview" role="img" aria-label="当前材质效果预览：彩色背景上的工具栏">
+         <div class="material-preview-toolbar" aria-hidden="true">
+          <span class="material-preview-control">＋</span><span class="material-preview-control">•••</span><span class="material-preview-control">⌕ 搜索</span>
+         </div>
+         <div class="material-preview-caption" id="materialPreviewCaption">中性材质</div>
+        </div>
+        <div class="material-setting-row">
+         <div><div id="materialModeLabel">材质风格</div><div class="ptinfo">统一调整中性材质控件的透光与亮边。</div></div>
+         <div class="material-slider">
+          <input type="range" id="setMaterialMode" min="0" max="2" step="1" value="0" aria-labelledby="materialModeLabel" aria-valuetext="中性">
+          <div class="material-slider-labels" aria-hidden="true"><span>中性</span><span>增强</span><span>拟态</span></div>
+         </div>
+        </div>
+        <div class="material-adjustments" id="materialAdjustments" hidden>
+         <div class="parameter-group"><h3>常用调节</h3>
+          <label class="personal-range" for="materialBlur"><span id="materialBlurLabel">模糊程度</span><input aria-labelledby="materialBlurLabel" id="materialBlur" type="range" min="0" max="20" step="1" value="4"><output id="materialBlurValue">4 px</output></label>
+          <label class="personal-range" for="materialTransparency"><span id="materialFilmLabel">白色底膜透明度</span><input aria-labelledby="materialFilmLabel" id="materialTransparency" type="range" min="0" max="100" step="1" value="54"><output id="materialTransparencyValue">54%</output></label>
+          <label class="personal-range" for="materialShadowStrength"><span id="materialShadowLabel">阴影颜色浓度</span><input aria-labelledby="materialShadowLabel" id="materialShadowStrength" type="range" min="0" max="100" step="1" value="50"><output id="materialShadowStrengthValue">50%</output></label>
+         </div>
+         <details class="material-advanced" id="materialAdvanced">
+          <summary><span>高级光影</span><span class="advanced-summary">反光、晕染与折射</span></summary>
+          <div class="advanced-body">
+           <div class="parameter-columns">
+            <div class="parameter-group"><label class="personal-range" id="materialHighlightRow" for="materialHighlightStrength" hidden><span id="materialHighlightLabel">内侧白色反光</span><input aria-labelledby="materialHighlightLabel" id="materialHighlightStrength" type="range" min="0" max="100" step="1" value="50"><output id="materialHighlightStrengthValue">50%</output></label></div>
+            <div class="parameter-group"><label class="personal-range" id="materialHighlightBloomRow" for="materialHighlightBloom" hidden><span id="materialHighlightBloomLabel">高光向内晕染</span><input aria-labelledby="materialHighlightBloomLabel" id="materialHighlightBloom" type="range" min="0" max="100" step="1" value="0"><output id="materialHighlightBloomValue">0%</output></label></div>
+           </div>
+           <div class="material-switches">
+            <label class="material-optics-row" id="materialOpticsRow" hidden>
+          <span><span id="materialOpticsLabel">玻璃光感增强</span><span class="ptinfo" style="display:block" id="materialOpticsHint">增强背景对比，突出玻璃层次。</span></span>
+          <input id="materialOptics" type="checkbox" role="switch" aria-labelledby="materialOpticsLabel" aria-describedby="materialOpticsHint">
+         </label>
+            <label class="material-optics-row" id="materialRefractionRow" hidden>
+          <span><span id="materialRefractionLabel">SVG 放大折射</span><span class="ptinfo" style="display:block" id="materialRefractionHint">放大玻璃背后的内容；效果取决于浏览器支持。</span></span>
+          <input id="materialRefraction" type="checkbox" role="switch" aria-labelledby="materialRefractionLabel" aria-describedby="materialRefractionHint">
+         </label>
+           </div>
+          </div>
+         </details>
+         <div class="ptinfo material-note">透明度越高，背景越清晰；增强与拟态分别保存。</div>
+        </div>
+       </section>
+
+       <section class="appearance-group reading-group">
         <div class="st">逐字稿阅读</div>
         <div class="st">字号</div>
        <label class="personal-range"><span>小</span><input id="transcriptFontSize" type="range" min="14" max="18" step="1" value="16"><span>大</span><output id="transcriptFontSizeValue">16 px</output></label>
@@ -3433,7 +3514,7 @@
        <label class="personal-range"><span>紧</span><input id="transcriptLineHeight" type="range" min="1.5" max="2.2" step="0.05" value="1.75"><span>松</span><output id="transcriptLineHeightValue">1.75</output></label>
        <div class="ptinfo">即时应用到逐字稿，重启后保留。</div>
        </section>
-       <section class="appearance-group">
+       <section class="appearance-group copy-group">
         <div class="st">默认复制方式</div>
         <button class="devfield" id="defaultCopyFormatButton" type="button" aria-expanded="false" aria-controls="copypop">
           <span class="dv" id="defaultCopyFormatValue">不带时间戳 · 纯文本</span>
@@ -3745,6 +3826,10 @@
   <button class="rcbtn" id="btnNoteTool" title="记笔记">
     <svg class="ui-icon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20h4l10-10-4-4L4 16v4zM13.5 6.5l4 4"/></svg>
   </button>
+  <div class="srcwrap">
+    <div class="srcfan" id="srcfan" role="menu" aria-label="录音来源"><button class="srcopt" role="menuitemradio" aria-checked="false" data-src="mic" style="--i:0"><span class="srclab">仅麦克</span><span class="srccirc"><i class="srcico"></i><svg class="src-spin" width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2.5" opacity=".2"/><path d="M12 3a9 9 0 0 1 9 9" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></span></button><button class="srcopt" role="menuitemradio" aria-checked="false" data-src="mix" style="--i:1"><span class="srclab">系统+麦</span><span class="srccirc"><i class="srcico"></i><svg class="src-spin" width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2.5" opacity=".2"/><path d="M12 3a9 9 0 0 1 9 9" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></span></button><button class="srcopt" role="menuitemradio" aria-checked="false" data-src="system" style="--i:2"><span class="srclab">仅系统</span><span class="srccirc"><i class="srcico"></i><svg class="src-spin" width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2.5" opacity=".2"/><path d="M12 3a9 9 0 0 1 9 9" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></span></button></div>
+    <button class="rcbtn" id="btnSrc" aria-haspopup="menu" aria-expanded="false" title="录音来源"></button>
+  </div>
   <button class="rcbtn" id="btnVol" title="输出音量"><span class="volpct" id="volPct">—</span></button>
   <button class="rcbtn" id="btnPause" title="暂停 / 继续">
     <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
@@ -3824,10 +3909,6 @@
     <button id="transcriptFormatQuote" type="button" title="引用到笔记" aria-label="引用到笔记"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 4h16v14H9l-5 4Z"/><path d="M8 8h3v3l-2 2m5-5h3v3l-2 2"/></svg></button>
   </div>
   <div class="tf-palette" id="transcriptFormatPalette" hidden>
-  <div class="srcwrap">
-    <div class="srcfan" id="srcfan" role="menu" aria-label="录音来源"><button class="srcopt" role="menuitemradio" aria-checked="false" data-src="mic" style="--i:0"><span class="srclab">仅麦克</span><span class="srccirc"><i class="srcico"></i><svg class="src-spin" width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2.5" opacity=".2"/><path d="M12 3a9 9 0 0 1 9 9" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></span></button><button class="srcopt" role="menuitemradio" aria-checked="false" data-src="mix" style="--i:1"><span class="srclab">系统+麦</span><span class="srccirc"><i class="srcico"></i><svg class="src-spin" width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2.5" opacity=".2"/><path d="M12 3a9 9 0 0 1 9 9" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></span></button><button class="srcopt" role="menuitemradio" aria-checked="false" data-src="system" style="--i:2"><span class="srclab">仅系统</span><span class="srccirc"><i class="srcico"></i><svg class="src-spin" width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2.5" opacity=".2"/><path d="M12 3a9 9 0 0 1 9 9" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></span></button></div>
-    <button class="rcbtn" id="btnSrc" aria-haspopup="menu" aria-expanded="false" title="录音来源"></button>
-  </div>
     <h4>最近使用</h4><div class="tf-grid" id="transcriptFormatRecent"></div>
     <h4>文本颜色</h4><div class="tf-grid" id="transcriptFormatColors"></div>
     <h4>背景颜色</h4><div class="tf-grid" id="transcriptFormatBackgrounds"></div>
@@ -4381,14 +4462,9 @@ function updateChrome(){
   if(!(selected.size > 0 && !rec)) $('gpop').classList.remove('show');  // 选择条没了弹窗别留着
   // 电平指示条: 仅录制周期出现(上滑进入)
   $('lvlbar').classList.toggle('show', rec);
-  // 录制态=字幕锚定模式(最新字悬停在约62%高度); 查看态=普通滚动。
-  // 注意: 录制/暂停中绝不能清 transform(状态轮询 0.9s 一次, 清了字幕就会来回横跳)
+  // 录制态也可自由翻动: 新字默认滑到约62%高度, 用户翻看时暂停跟随(见 anchorLive)。
   $('feedwrap').classList.toggle('viewing', !rec);
-  $('feedwrap').style.overflowY = rec ? 'hidden' : 'auto';
-  if(!rec){
-    $('feed').style.transform = '';
-    $('feedwrap').scrollTop = 0;
-  }
+  if(!rec) $('feedwrap').scrollTop = 0;
   // 顶栏状态指示: 仅录制周期存在, 从上方下落 / 反向退场
   $('pillwrap').classList.toggle('drop', rec);
   if(!rec){                                      // 吊牌退场时热词弹层跟着收, 别留一块浮在原地
@@ -4591,6 +4667,9 @@ function handleEvent(e){
     settleLiveRow();           // VAD 断句: 流式行让位给权威整句
     addSeg(e, true); ensureFeed();
   }
+  if(e.type === 'mode_switch' && view === null){
+    $('feed').appendChild(createSourceMark(e.t, e.mode)); ensureFeed(); anchorLive();
+  }
   if(e.type === 'note' && view === null){
     if(e.text) $('feed').appendChild(createNoteDom(e.t,e.text,null,e.content));
     if(e.text){ensureFeed();anchorLive();}
@@ -4667,9 +4746,6 @@ function handleEvent(e){
           loadSession(e.id);
           return;
         }
-  if(e.type === 'mode_switch' && view === null){
-    $('feed').appendChild(createSourceMark(e.t, e.mode)); ensureFeed(); anchorLive();
-  }
         // 云端失败(只有云端路径会带 err): 不自动跑本地, 给用户一个手动按钮
         if(e.kind === 'cloud' && e.err){
           toast('云端转写失败：' + e.err);
@@ -4738,16 +4814,20 @@ function ensureFeed(){
   $('feed').style.display = 'block';
 }
 
-/* ---- 录制态字幕锚定: 最新文字悬停在可视区约 62% 高度 ---- */
+/* ---- 录制态字幕跟随: 最新文字滑到可视区约 62% 高度 ----
+   文稿可像回放一样自由翻动; 用户翻看时(userScrolling)不抢位置,
+   停止翻动 2.5s 后由 markUserScroll 的计时器调回这里, 再滑回最新吐出的文字。 */
 function anchorLive(){
   const wrap = $('feedwrap'), feed = $('feed');
   const active = (state==='recording'||state==='paused'||state==='stopping');
-  if(!active || view !== null){ feed.style.transform=''; return; }  // 暂停/收尾也保住锚定, 不跳底
+  if(!active || view !== null){ wrap.style.removeProperty('--live-tail-space'); return; }  // 暂停/收尾也保住锚定, 不跳底
   const anchorY = wrap.clientHeight * 0.62;         // 锚定线(中间偏下)
-  const contentH = feed.scrollHeight;
-  const shift = Math.max(0, contentH - anchorY);    // 超出锚线的部分向上推
-  feed.style.transform = `translateY(${-shift}px)`;
-  feed.style.transition = 'transform .5s cubic-bezier(.2,.8,.2,1)';
+  // 底部留出 38% 视口的空白, 最新一行才能真正滚到锚定线上
+  wrap.style.setProperty('--live-tail-space', `${Math.round(wrap.clientHeight - anchorY)}px`);
+  if(userScrolling) return;
+  const target = Math.max(0, feed.offsetTop + feed.offsetHeight - anchorY);
+  if(Math.abs(wrap.scrollTop - target) < 1) return;
+  wrap.scrollTo({top: target, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'});
 }
 
 function addSeg(seg, live){
@@ -4902,7 +4982,9 @@ function applyStatus(d){
   pill.className = 'statepill ' + (state==='recording'?'rec':state==='paused'?'paused':'idle');
   $('stateTxt').textContent = state==='recording'?'录制中':state==='paused'?'已暂停':state==='stopping'?'正在收尾…':'未开始';
   $('timer').textContent = fmt(d.elapsed);
+  if(RECORD_MODES.includes(d.mode)) recMode = d.mode;
   syncPauseButton();
+  syncSourceButton();
   if(d.engine && d.engine !== engine){ engine = d.engine; syncEngineUI(); }
   drawLevel(d.level || 0);
   updateChrome();
@@ -4961,88 +5043,6 @@ document.addEventListener('keydown', e=>{
   if(e.key === 'Escape') volClose();
 });
 
-/* ---- 电平: 喂给条状按钮内的波形背景 + 右下角 dB 小字 ---- */
-let curLevel = 0;
-for(let i=0;i<22;i++){ $('wavebg').appendChild(document.createElement('b')); }
-function drawLevel(lv){
-  curLevel = lv;
-  const el = $('ldb');
-  if(lv > 0.0002){
-    el.textContent = Math.round(20*Math.log10(Math.min(lv,1)));
-    const amp = Math.min(1, Math.sqrt(lv / 0.10));      // 0..1 感知响度
-    el.style.color = 'rgba(' + getComputedStyle(document.documentElement).getPropertyValue('--gd-rgb') + ',' + (0.22 + 0.78*amp).toFixed(2) + ')';
-  }else{
-    el.textContent = '-∞';
-    el.style.color = 'var(--gry-hair)';
-  }
-}
-/* 按钮内流动波形: 行波从左到右, 幅度跟着真实音量走 */
-let wavePh = 0;
-setInterval(()=>{
-  const rec = state==='recording';
-  wavePh += rec ? 0.42 : 0.10;
-  const bars = $('wavebg').children;
-  const amp = rec ? Math.min(1, Math.sqrt(curLevel / 0.10)) : 0;
-  for(let i=0;i<bars.length;i++){
-    const w = Math.sin(i*0.65 - wavePh) * 0.5 + 0.5;   // 0..1 行波
-    bars[i].style.height = (4 + w*4 + amp*(6 + w*26)).toFixed(0) + 'px';
-    bars[i].classList.toggle('on', rec);
-  }
-}, 90);
-
-  if(RECORD_MODES.includes(d.mode)) recMode = d.mode;
-let recordLoadingBusy=false, recordLoadingTimer=null, recordLoadingRestore=[];
-  syncSourceButton();
-let recordLoadingFocus=null;
-const recordLoadingMessages={
-  start:['录音助手加载中','创建专属录音锁','正在唤醒录音助手','正在准备录音环境','正在连接音频设备','即将开始聆听'],
-  stop:['正在结束本次录音','正在等待音频收尾','正在保存录音内容','正在整理本次文稿','正在准备完整记录','请稍候，即将完成']
-};
-function showRecordLoading(phase){
-  if(recordLoadingBusy)return false;
-  clearTranscriptTextSelection();
-  hideTranscriptFormatTools();
-  recordLoadingBusy=true;
-  const layer=$('recordLoading'), messages=recordLoadingMessages[phase];
-  let previous=-1;
-  const next=()=>{
-    const choices=messages.filter((_,index)=>index!==previous);
-    const message=choices[Math.floor(Math.random()*choices.length)];
-    previous=messages.indexOf(message);
-    $('recordLoadingText').textContent=message;
-  };
-  next();
-  recordLoadingFocus=document.activeElement;
-  recordLoadingRestore=[...document.body.children].filter(el=>el!==layer).map(el=>[el,el.inert]);
-  recordLoadingRestore.forEach(([el])=>{el.inert=true;});
-  layer.hidden=false;layer.classList.add('show');layer.focus();
-  recordLoadingTimer=setInterval(next,2400);
-  return true;
-}
-function hideRecordLoading(){
-  clearInterval(recordLoadingTimer);recordLoadingTimer=null;
-  $('recordLoading').classList.remove('show');$('recordLoading').hidden=true;
-  recordLoadingRestore.forEach(([el,inert])=>{el.inert=inert;});recordLoadingRestore=[];
-  recordLoadingBusy=false;
-  if(recordLoadingFocus?.isConnected)recordLoadingFocus.focus();
-  recordLoadingFocus=null;
-}
-window.addEventListener('keydown',event=>{
-  if(!recordLoadingBusy)return;
-  event.preventDefault();event.stopImmediatePropagation();
-},true);
-
-$('fab').onclick = async ()=>{
-  if(recordLoadingBusy || state === 'stopping') return;
-  if(state === 'idle'){
-    showRecordLoading('start');
-    try{
-      transcriptViewGeneration++;
-      if(view !== null) exitView();
-      selected.clear();                       // 清掉遗留多选, 防止选择条浮在屏幕外
-      renderSelState();
-      const name = defaultName();
-      const d = await api('/api/start', {mode, lang:langSel, name});
 /* ---- 录音 dock 入场: 圆钮像一列被胶囊推出去的小车 ----
    推出段: 整列按同一条位移曲线从胶囊底下向外滑, 每颗越过胶囊左缘才现身, 所以一颗跟着一颗冒出来;
    到位时仍带一点速度(DOCK_PUSH.v0)。
@@ -5174,6 +5174,86 @@ document.addEventListener('click', e=>{
 });
 document.addEventListener('keydown', e=>{ if(e.key === 'Escape') sourceClose(); });
 
+/* ---- 电平: 喂给条状按钮内的波形背景 + 右下角 dB 小字 ---- */
+let curLevel = 0;
+for(let i=0;i<22;i++){ $('wavebg').appendChild(document.createElement('b')); }
+function drawLevel(lv){
+  curLevel = lv;
+  const el = $('ldb');
+  if(lv > 0.0002){
+    el.textContent = Math.round(20*Math.log10(Math.min(lv,1)));
+    const amp = Math.min(1, Math.sqrt(lv / 0.10));      // 0..1 感知响度
+    el.style.color = 'rgba(' + getComputedStyle(document.documentElement).getPropertyValue('--gd-rgb') + ',' + (0.22 + 0.78*amp).toFixed(2) + ')';
+  }else{
+    el.textContent = '-∞';
+    el.style.color = 'var(--gry-hair)';
+  }
+}
+/* 按钮内流动波形: 行波从左到右, 幅度跟着真实音量走 */
+let wavePh = 0;
+setInterval(()=>{
+  const rec = state==='recording';
+  wavePh += rec ? 0.42 : 0.10;
+  const bars = $('wavebg').children;
+  const amp = rec ? Math.min(1, Math.sqrt(curLevel / 0.10)) : 0;
+  for(let i=0;i<bars.length;i++){
+    const w = Math.sin(i*0.65 - wavePh) * 0.5 + 0.5;   // 0..1 行波
+    bars[i].style.height = (4 + w*4 + amp*(6 + w*26)).toFixed(0) + 'px';
+    bars[i].classList.toggle('on', rec);
+  }
+}, 90);
+
+let recordLoadingBusy=false, recordLoadingTimer=null, recordLoadingRestore=[];
+let recordLoadingFocus=null;
+const recordLoadingMessages={
+  start:['录音助手加载中','创建专属录音锁','正在唤醒录音助手','正在准备录音环境','正在连接音频设备','即将开始聆听'],
+  stop:['正在结束本次录音','正在等待音频收尾','正在保存录音内容','正在整理本次文稿','正在准备完整记录','请稍候，即将完成']
+};
+function showRecordLoading(phase){
+  if(recordLoadingBusy)return false;
+  clearTranscriptTextSelection();
+  hideTranscriptFormatTools();
+  recordLoadingBusy=true;
+  const layer=$('recordLoading'), messages=recordLoadingMessages[phase];
+  let previous=-1;
+  const next=()=>{
+    const choices=messages.filter((_,index)=>index!==previous);
+    const message=choices[Math.floor(Math.random()*choices.length)];
+    previous=messages.indexOf(message);
+    $('recordLoadingText').textContent=message;
+  };
+  next();
+  recordLoadingFocus=document.activeElement;
+  recordLoadingRestore=[...document.body.children].filter(el=>el!==layer).map(el=>[el,el.inert]);
+  recordLoadingRestore.forEach(([el])=>{el.inert=true;});
+  layer.hidden=false;layer.classList.add('show');layer.focus();
+  recordLoadingTimer=setInterval(next,2400);
+  return true;
+}
+function hideRecordLoading(){
+  clearInterval(recordLoadingTimer);recordLoadingTimer=null;
+  $('recordLoading').classList.remove('show');$('recordLoading').hidden=true;
+  recordLoadingRestore.forEach(([el,inert])=>{el.inert=inert;});recordLoadingRestore=[];
+  recordLoadingBusy=false;
+  if(recordLoadingFocus?.isConnected)recordLoadingFocus.focus();
+  recordLoadingFocus=null;
+}
+window.addEventListener('keydown',event=>{
+  if(!recordLoadingBusy)return;
+  event.preventDefault();event.stopImmediatePropagation();
+},true);
+
+$('fab').onclick = async ()=>{
+  if(recordLoadingBusy || state === 'stopping') return;
+  if(state === 'idle'){
+    showRecordLoading('start');
+    try{
+      transcriptViewGeneration++;
+      if(view !== null) exitView();
+      selected.clear();                       // 清掉遗留多选, 防止选择条浮在屏幕外
+      renderSelState();
+      const name = defaultName();
+      const d = await api('/api/start', {mode, lang:langSel, name});
       if(!d.ok && d.error){ toast(d.error); return; }
       transcriptViewGeneration++;
       view = null; state = 'recording';
@@ -5387,13 +5467,13 @@ function placeAbove(pop, btn, gap){
   pop.style.left = left + 'px';
   pop.style.right = 'auto';
 }
-/* 居中弹层: 设置面板用。用 left/top 定位(不碰 transform, 免得和 popDrop 入场动画打架) */
+/* 设置面板横向居中，mac 顶部贴近红绿灯。用 left/top 定位，避免干扰 popDrop 入场动画。 */
 function placeCenter(pop){
   const w = pop.offsetWidth, h = pop.offsetHeight;
   pop.style.left   = Math.max(12, (window.innerWidth  - w) / 2) + 'px';
   pop.style.right  = 'auto';
   const topSafe = parseFloat(getComputedStyle(pop).getPropertyValue('--settings-top-safe')) || 12;
-  pop.style.top    = Math.max(topSafe, topSafe + (window.innerHeight - topSafe - 20 - h) / 2) + 'px';
+  pop.style.top    = (document.documentElement.dataset.platform === 'mac' ? topSafe : Math.max(topSafe, topSafe + (window.innerHeight - topSafe - 20 - h) / 2)) + 'px';
   pop.style.bottom = 'auto';
 }
 window.addEventListener('resize',()=>{
@@ -5496,6 +5576,7 @@ $('setNav').addEventListener('keydown',e=>{
   e.preventDefault();gotoSec(tabs[next].dataset.t);tabs[next].focus();
 });
 gotoSec(activeSettingsSection);
+
 /* 提示文案里的「跳到某区」链接(如云端未连通时的引导) */
 document.addEventListener('click', e=>{
   const g = e.target.closest('[data-goto]'); if(!g) return;
@@ -8401,8 +8482,14 @@ function sidebarSectionIcon(kind){
   return `<svg class="ui-icon sbsection-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
 }
 
+// 后端随页面注入的上次列表快照: 首次 refreshHistory 同步画出, 之后一律走接口。
+// 未走后端(file://)时标记原样保留, JSON.parse 抛错即无快照。
+let bootHistory = null;
+try{ bootHistory = JSON.parse(__TINGDAO_HISTORY__); }catch(_){}
 async function refreshHistory(){
-  const response = await api('/api/history');
+  const boot = bootHistory;
+  bootHistory = null;
+  const response = boot || await api('/api/history');
   if(response.error){
     lastHistRaw = [];
     renderHomePanel(); renderCollectionPanel();
@@ -8412,7 +8499,7 @@ async function refreshHistory(){
   let raw = response.items || [];
   lastHistRaw = raw;
   try{
-    const g = await api('/api/groups');
+    const g = boot ? boot.groups : await api('/api/groups');
     groupMeta = {order: g.order || [], collapsed: g.collapsed || [], colors: g.colors || {}};
   }catch(e){}
   renderHomePanel();   // 首页卡片墙随每次历史刷新保持新鲜（内部有 sig 去重，只在主页可见）
@@ -10023,7 +10110,7 @@ let userScrolling = false, scrollTimer = null;
 function markUserScroll(){
   userScrolling = true;
   clearTimeout(scrollTimer);
-  scrollTimer = setTimeout(()=>userScrolling=false, 2500);
+  scrollTimer = setTimeout(()=>{ userScrolling = false; anchorLive(); }, 2500);   // 录制中: 停手后滑回最新文字
 }
 (function(){
   const wrap = $('feedwrap');
@@ -10400,6 +10487,8 @@ function placeFind(){
   bar.style.right = right + 'px';
   bar.style.left = 'auto';
 }
+function findOpen(){ return $('findbar').classList.contains('show'); }
+function closeFind(){ $('findbar').classList.remove('show'); clearFind(); }
 $('btnFind').onclick = ()=>{
   if(!view){ toast('读取项目后才能搜索'); return; }
   if(findOpen()){ closeFind(); return; }
@@ -10439,6 +10528,7 @@ $('findReplToggle').onclick = ()=>{
 $('findReplace').onclick = replaceCurrentFind;
 $('replaceInput').addEventListener('input', syncFindReplaceButton);
 $('replaceInput').addEventListener('keydown', e=>{
+  if(e.isComposing) return;
   if(e.key === 'Enter'){ e.preventDefault(); replaceCurrentFind(); }
   if(e.key === 'Escape'){ e.preventDefault(); closeFind(); }
   if(e.key === 'ArrowDown' || e.key === 'ArrowUp'){ e.preventDefault(); navFind(e.key === 'ArrowDown' ? 1 : -1); }
@@ -10496,8 +10586,6 @@ function editBar(html, anchor){
   const b = $('editbar');
   if(anchor) anchor.after(b);
   b.innerHTML = html; b.classList.add('show');
-function findOpen(){ return $('findbar').classList.contains('show'); }
-function closeFind(){ $('findbar').classList.remove('show'); clearFind(); }
   refreshTranscriptImageAsideFlow();
   requestAnimationFrame(fitEditBar);
 }
@@ -10520,7 +10608,6 @@ function fitEditBar(){
   const delta = rect.bottom > bottom ? rect.bottom - bottom : rect.top < bounds.top + 16 ? rect.top - bounds.top - 16 : 0;
   if(delta)wrap.scrollTo({top:Math.max(0, wrap.scrollTop + delta),behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});
 }
-  if(e.isComposing) return;
 window.addEventListener('resize', fitEditBar);
 function editBarOff(){
   const b = $('editbar'); b.classList.remove('show');
@@ -10711,6 +10798,12 @@ function findMatchCase(){ return $('findCase').getAttribute('aria-pressed') === 
 function findMatchRanges(text, query, matchCase=findMatchCase()){
   const ranges = [];
   if(!query) return ranges;
+  // 默认不分大小写；个别字符小写后长度会变，那就退回原样比对，免得下标错位
+  let hay = text, needle = query;
+  if(!matchCase){
+    const lt = text.toLowerCase(), lq = query.toLowerCase();
+    if(lt.length === text.length && lq.length === query.length){ hay = lt; needle = lq; }
+  }
   let from = 0, start;
   while((start = hay.indexOf(needle, from)) !== -1){
     ranges.push({start, end:start + needle.length});
@@ -10725,6 +10818,7 @@ function findNextHitIndex(hits, segmentIndex, offset){
   return next >= 0 ? next : 0;
 }
 function runFind(){
+  findTimer = null;
   clearFind(false);
   const q = $('findInput').value.trim();
   if(!q){ findPos = 0; renderFindResults(); syncFindReplaceButton(); return; }
@@ -10853,6 +10947,11 @@ function landFind(){
   el.addEventListener('animationend', ()=>el.classList.remove('find-land'), {once:true});
 }
 function navFind(dir){
+  if(!$('findInput').value.trim()){
+    const n = findRecent().length;
+    if(n) markFindRow((findPos + dir + n) % n);
+    return;
+  }
   if(!findHits.length) return;
   const next = (findPos + dir + findHits.length) % findHits.length;
   findPos = next; scrollToHit();
@@ -10870,6 +10969,8 @@ function scrollToHit(){
   hit.el.classList.add('hl');
   if(hit.mark) hit.mark.classList.add('current');
   $('feedwrap').scrollTop = hit.el.offsetTop - $('feedwrap').clientHeight/2;
+  $('findCnt').textContent = `${findPos+1} / ${findHits.length}`;
+  syncFindReplaceButton();
 }
 function syncFindReplaceButton(){
   const button = $('findReplace');
@@ -10881,12 +10982,6 @@ async function replaceCurrentFind(){
   const hit = findHits[findPos];
   const query = $('findInput').value.trim();
   const replacement = $('replaceInput').value;
-  // 默认不分大小写；个别字符小写后长度会变，那就退回原样比对，免得下标错位
-  let hay = text, needle = query;
-  if(!matchCase){
-    const lt = text.toLowerCase(), lq = query.toLowerCase();
-    if(lt.length === text.length && lq.length === query.length){ hay = lt; needle = lq; }
-  }
   syncFindReplaceButton();
   if(!hit || !view || !query || !replacement.trim()) return;
   if(state !== 'idle'){ toast('录制中不能改稿，先结束录音'); return; }
@@ -10902,7 +10997,6 @@ async function replaceCurrentFind(){
   try{ r = await api('/api/edit_segment', {id:view.id, t:parseFloat(hit.el.dataset.t), text:nextText}); }catch(e){}
   if(!r || !r.ok){
     toast('替换失败：' + ((r && r.error) || '接口没有回应'));
-  findTimer = null;
     return;
   }
   const seg = segOf(hit.el);
@@ -10938,11 +11032,6 @@ function skelActivate(){
   const welcome = document.body.classList.contains('home');
   const grid = $('hpGrid'), feedEl = $('feed'), fw = $('feedwrap');
   const hasGrid = welcome && grid && grid.style.display !== 'none';
-  if(!$('findInput').value.trim()){
-    const n = findRecent().length;
-    if(n) markFindRow((findPos + dir + n) % n);
-    return;
-  }
   const hasFeed = !welcome && feedEl && feedEl.children.length > 0;
   if(!hasGrid && !hasFeed) return false;          // 没东西会重排(空主页/空正文) → 不盖
   const target = welcome ? grid : feedEl;
@@ -10958,8 +11047,6 @@ $('btnSide').onclick = ()=>{
   }
   clearTimeout(promoteTimer);
   document.body.classList.remove('side-promoting');
-  $('findCnt').textContent = `${findPos+1} / ${findHits.length}`;
-  syncFindReplaceButton();
   document.body.classList.remove('side-peek', 'side-peeked'); peekHold = false;
   clearTimeout(peekedTimer);
   const skel = skelActivate();
@@ -11796,7 +11883,8 @@ $('fldTpl').onclick = ()=> openTplPop('manage', $('fldTpl'));
    整页点不动(而那颗"云端转写"按钮是会真实上传计费的)。当前界面状态本来就由
    /api/status 补齐, 不需要靠重放历史事件恢复, 所以先取 seq 当起点再开始增量拉。 ---- */
 fetchStatus().then(st=>{ applyStatus(st); lastSeq = st.seq || 0; seeded = true; }).catch(()=>{ seeded = true; });
-refreshHistory();
+refreshHistory();   // 有快照时同步画出上次的列表(安慰剂)
+refreshHistory();   // 再取真实结果; 签名不变就不重绘, 不闪
 pollStatus();
 // 启动就同步对话模式/云端流程: 以前只有打开设置面板才会 loadTalkState,
 // 重载后 talkMode 一直停在默认 single → 云端设置下导入不弹窗直接本地转写

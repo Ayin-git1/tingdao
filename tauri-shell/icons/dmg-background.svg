@@ -1,20 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="800" height="400" viewBox="0 0 800 400" role="img" aria-labelledby="title desc">
-  <title id="title">听道 3.1.0 安装</title>
-  <desc id="desc">将左侧听道应用拖入右侧应用程序文件夹。</desc>
-  <defs>
-    <linearGradient id="paper" x2="1" y2="1"><stop stop-color="#f8faf6"/><stop offset="1" stop-color="#e9f1e8"/></linearGradient>
-  </defs>
-  <rect width="800" height="400" fill="url(#paper)"/>
-  <g font-family="-apple-system,BlinkMacSystemFont,'PingFang SC',sans-serif">
-    <text x="48" y="64" font-size="27" font-weight="600" fill="#263d30">听道 <tspan font-weight="400" fill="#607c68">· oto</tspan></text>
-    <text x="48" y="91" font-size="15" fill="#607469">让声音成稿，默认留在本机。</text>
-    <text x="752" y="64" text-anchor="end" font-size="20" fill="#42654d">3.1.0</text>
-    <text x="752" y="91" text-anchor="end" font-size="13" fill="#607469">macOS · Apple Silicon</text>
-    <text x="400" y="151" text-anchor="middle" font-size="25" font-weight="600" fill="#263d30">拖入应用程序，开始使用</text>
-    <path d="M318 245H482m-12-10 12 10-12 10" fill="none" stroke="#79a984" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-    <text x="400" y="344" text-anchor="middle" font-size="13" fill="#607469">安装完成后，从「应用程序」打开听道</text>
-    <path d="M48 362H752" stroke="#ceddce"/>
-    <text x="48" y="386" font-size="13" fill="#607469">录音 · 文稿 · 图片笔记 · 摘要目录</text>
-    <text x="752" y="386" text-anchor="end" font-size="13" fill="#607469">本地优先</text>
-  </g>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="432" viewBox="0 0 800 432" role="img" aria-labelledby="title desc">
+<title id="title">听道 · 安装</title><desc id="desc">将听道拖入应用程序，安装后从应用程序打开。</desc>
+<rect width="800" height="432" fill="#F7F6F2"/>
+<path d="M52 112H748" stroke="#DADFD7"/>
+<g font-family="-apple-system, PingFang SC, sans-serif">
+<text x="52" y="72" font-size="36" font-weight="600" fill="#243C31">听道<tspan dx="14" font-size="24" font-weight="400" fill="#748478">oto</tspan></text>
+<text x="748" y="58" font-size="12" letter-spacing="1.5" text-anchor="end" fill="#748478">MACOS · APPLE SILICON</text>
+<text x="748" y="82" font-size="14" text-anchor="end" fill="#243C31">3.1.0</text>
+<text x="400" y="157" text-anchor="middle" font-size="22" font-weight="500" fill="#243C31">把声音，留成文字。</text>
+<circle cx="220" cy="245" r="61" fill="#ECEFE8"/>
+<circle cx="580" cy="245" r="61" fill="#ECEFE8"/>
+<path d="M337 245H462m-10-9 10 9-10 9" fill="none" stroke="#567764" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="400" y="340" text-anchor="middle" font-size="17" fill="#243C31">将听道拖入「应用程序」</text>
+<text x="400" y="369" text-anchor="middle" font-size="13" fill="#748478">安装完成后，从应用程序打开</text>
+<path d="M52 397H748" stroke="#DADFD7"/>
+</g></svg>
