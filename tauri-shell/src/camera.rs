@@ -1,0 +1,178 @@
+//! 连续互通相机: 录音中点相机钮 → 弹出系统的「iPhone › 拍照 / 扫描文稿 / 添加速绘」→ 拍完, 照片回到网页。
+//!
+//! 实测(macOS 27)两条硬约束, 别"简化"回去:
+//! 1. 系统只把这项服务交给 NSTextView。自定义 NSView 即便实现 validRequestorForSendType:returnType:
+//!    并登记图片类型, 系统也从不来问, 菜单项一直灰着。所以接收者是一枚隐形的 NSTextView 子类,
+//!    只重写 readSelectionFromPasteboard: 把照片截走(不让它真插进文本框)。
+//! 2. iPhone 那组菜单项只在"走正常右键流程"时由 AppKit 补进来: 把合成的右键事件交给视图的
+//!    rightMouseDown:, 视图的 menuForEvent: 只给标题行即可。NSMenu popUpContextMenu / popUpMenuPositioningItem
+//!    直接弹的菜单不会补, 只剩自己加的项。
+//!
+//! 网页 → 壳: 隐藏 iframe 导航到 tingdao-camera://take?x=&y=(见 main.rs 的 on_navigation)。
+//! 自定义 #[tauri::command] 对后端直出的 remote 页面不可用, 理由同 main.rs 里窗口三键那段。
+//! 壳 → 网页: tauri 事件 CAMERA_STATE_EVENT / CAMERA_PHOTO_EVENT, 网页用 plugin:event|listen 收。
+
+use std::cell::{Cell, RefCell};
+use std::ptr::NonNull;
+use std::sync::OnceLock;
+
+use base64::Engine;
+use block2::RcBlock;
+use objc2::rc::Retained;
+use objc2::{define_class, msg_send, MainThreadMarker, MainThreadOnly};
+use objc2_app_kit::{
+    NSBitmapImageFileType, NSBitmapImageRep, NSColor, NSEvent, NSEventModifierFlags, NSEventType, NSMenu,
+    NSMenuDidSendActionNotification, NSMenuItem, NSPasteboard, NSPasteboardTypePNG, NSPasteboardTypeTIFF,
+    NSResponder, NSText, NSTextView, NSView, NSWindow,
+};
+use objc2_foundation::{NSDictionary, NSNotification, NSNotificationCenter, NSObject, NSPoint, NSRect, NSSize, NSString};
+use tauri::Emitter;
+
+pub const CAMERA_SCHEME: &str = "tingdao-camera";
+/// { waiting: bool } —— 菜单收起时报一次: 选了拍照项就进入等待, 否则恢复按钮。
+const CAMERA_STATE_EVENT: &str = "tingdao://camera-state";
+/// { mime, data(base64) } —— iPhone 拍完的照片。
+const CAMERA_PHOTO_EVENT: &str = "tingdao://camera-photo";
+
+pub static APP: OnceLock<tauri::AppHandle> = OnceLock::new();
+
+thread_local! {
+    /// 当前挂着的接收视图与弹菜单前的第一响应者(一般是 WKWebView), 只在主线程碰。
+    static ACTIVE: RefCell<Option<(Retained<CameraView>, Option<Retained<NSResponder>>)>> = const { RefCell::new(None) };
+    /// 刚摘下的视图多留一轮: finish() 可能正在它自己的 readSelectionFromPasteboard: 里执行, 不能当场释放。
+    static RETIRED: RefCell<Option<Retained<CameraView>>> = const { RefCell::new(None) };
+    /// 菜单开着时有没有哪一项发出了动作(即用户点了「拍照」等), 由 NSMenuDidSendActionNotification 置位。
+    static CHOSEN: Cell<bool> = const { Cell::new(false) };
+}
+
+pub fn init(app: tauri::AppHandle) {
+    let _ = APP.set(app);
+}
+
+fn emit(event: &str, payload: serde_json::Value) {
+    if let Some(app) = APP.get() {
+        let _ = app.emit(event, payload);
+    }
+}
+
+define_class!(
+    #[unsafe(super(NSTextView, NSText, NSView, NSResponder, NSObject))]
+    #[thread_kind = MainThreadOnly]
+    #[name = "TingdaoContinuityCameraView"]
+    struct CameraView;
+
+    impl CameraView {
+        // 右键菜单只放一行标题; AppKit 会在下面补上 iPhone 名称与拍照等项(以及系统自带的「自动填充」)。
+        #[unsafe(method_id(menuForEvent:))]
+        fn menu_for_event(&self, _event: &NSEvent) -> Option<Retained<NSMenu>> {
+            let mtm = self.mtm();
+            let menu = NSMenu::new(mtm);
+            let header = NSMenuItem::new(mtm);
+            header.setTitle(&NSString::from_str("用 iPhone 拍照插入")); // 无 action, 自动置灰当标题
+            menu.addItem(&header);
+            Some(menu)
+        }
+
+        #[unsafe(method(readSelectionFromPasteboard:))]
+        fn read_selection(&self, pasteboard: &NSPasteboard) -> bool {
+            let photo = read_photo(pasteboard);
+            if let Some((mime, bytes)) = photo {
+                let data = base64::engine::general_purpose::STANDARD.encode(bytes);
+                emit(CAMERA_PHOTO_EVENT, serde_json::json!({ "mime": mime, "data": data }));
+            } else {
+                emit(CAMERA_STATE_EVENT, serde_json::json!({ "waiting": false }));
+            }
+            finish();
+            true // 已处理: 不让文本框自己把图片插进去
+        }
+    }
+);
+
+/// iPhone 一般直接给 JPEG; 只拿到 TIFF 时转成 JPEG, 免得几十 MB 的位图塞进笔记。
+fn read_photo(pasteboard: &NSPasteboard) -> Option<(&'static str, Vec<u8>)> {
+    if let Some(data) = pasteboard.dataForType(&NSString::from_str("public.jpeg")) {
+        return Some(("image/jpeg", data.to_vec()));
+    }
+    if let Some(data) = pasteboard.dataForType(unsafe { NSPasteboardTypePNG }) {
+        return Some(("image/png", data.to_vec()));
+    }
+    // HEIC / TIFF 统一转 JPEG: 网页未必解得了 HEIC, TIFF 又太大
+    let raw = ["public.heic", "public.heif"]
+        .iter()
+        .find_map(|kind| pasteboard.dataForType(&NSString::from_str(kind)))
+        .or_else(|| pasteboard.dataForType(unsafe { NSPasteboardTypeTIFF }))?;
+    let rep = NSBitmapImageRep::imageRepWithData(&raw)?;
+    let jpeg = unsafe { rep.representationUsingType_properties(NSBitmapImageFileType::JPEG, &NSDictionary::new()) }?;
+    Some(("image/jpeg", jpeg.to_vec()))
+}
+
+/// 摘下接收视图, 焦点还给弹菜单前的响应者(网页), 否则键盘快捷键会一直落空。
+fn finish() {
+    let Some((view, previous)) = ACTIVE.with(|active| active.borrow_mut().take()) else { return };
+    if let Some(window) = view.window() {
+        window.makeFirstResponder(previous.as_deref());
+    }
+    view.removeFromSuperview();
+    RETIRED.with(|retired| *retired.borrow_mut() = Some(view));
+}
+
+/// 解析 tingdao-camera://take?x=&y=, 坐标是相机钮中心的网页 CSS 像素。
+pub fn parse_request(url: &tauri::Url) -> Option<(f64, f64)> {
+    if url.scheme() != CAMERA_SCHEME || url.host_str() != Some("take") {
+        return None;
+    }
+    let mut x = None;
+    let mut y = None;
+    for (key, value) in url.query_pairs() {
+        match &*key {
+            "x" => x = value.parse().ok(),
+            "y" => y = value.parse().ok(),
+            _ => {}
+        }
+    }
+    Some((x?, y?))
+}
+
+/// 在 WKWebView 上(x, y)处弹出连续互通相机菜单。须在主线程调用。
+///
+/// # Safety
+/// `webview` 与 `window` 必须是同一主窗口的 WKWebView 与 NSWindow。
+pub unsafe fn present(webview: *mut std::ffi::c_void, window: *mut std::ffi::c_void, x: f64, y: f64) {
+    let Some(mtm) = MainThreadMarker::new() else { return };
+    let webview: &NSView = &*webview.cast();
+    let window: &NSWindow = &*window.cast();
+    finish(); // 上一次没等到照片(在 iPhone 上取消了)就再点: 先收掉旧的
+
+    // WKWebView 是翻转坐标(原点左上), 与 CSS 一致; 万一不是, 按高度翻一下。
+    let y = if webview.isFlipped() { y } else { webview.bounds().size.height - y };
+    let frame = NSRect::new(NSPoint::new(x - 1.0, y - 1.0), NSSize::new(2.0, 2.0));
+    let view: Retained<CameraView> = msg_send![CameraView::alloc(mtm), initWithFrame: frame];
+    view.setRichText(true);
+    view.setImportsGraphics(true);
+    view.setDrawsBackground(false);
+    view.setInsertionPointColor(Some(&NSColor::clearColor())); // 当第一响应者时别在按钮上闪一根光标
+    webview.addSubview(&view);
+    let previous = window.firstResponder();
+    window.makeFirstResponder(Some(&view));
+    ACTIVE.with(|active| *active.borrow_mut() = Some((view.clone(), previous)));
+
+    let location = view.convertPoint_toView(NSPoint::new(1.0, 1.0), None);
+    let Some(event) = NSEvent::mouseEventWithType_location_modifierFlags_timestamp_windowNumber_context_eventNumber_clickCount_pressure(
+        NSEventType::RightMouseDown, location, NSEventModifierFlags::empty(), 0.0, window.windowNumber(), None, 0, 1, 1.0,
+    ) else {
+        finish();
+        return;
+    };
+    // 右键菜单不回报选没选, 改听菜单动作通知: 点了拍照项才进入等待态, 直接关菜单就恢复按钮。
+    CHOSEN.with(|chosen| chosen.set(false));
+    let center = NSNotificationCenter::defaultCenter();
+    let block = RcBlock::new(|_: NonNull<NSNotification>| CHOSEN.with(|chosen| chosen.set(true)));
+    let observer = center.addObserverForName_object_queue_usingBlock(Some(NSMenuDidSendActionNotification), None, None, &block);
+    let _: () = msg_send![&*view, rightMouseDown: &*event]; // 菜单开着期间在这里阻塞
+    center.removeObserver(observer.as_ref());
+    let chosen = CHOSEN.with(|chosen| chosen.get());
+    emit(CAMERA_STATE_EVENT, serde_json::json!({ "waiting": chosen }));
+    if !chosen {
+        finish();
+    }
+}

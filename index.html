@@ -2331,6 +2331,23 @@
         圆钮在他眼里就又和弹窗同层级, 退后等于白做。 */
   #btnNoteTool.note-on,
   #btnNoteTool.note-on:hover{opacity:.3; filter:none;}
+  .rcbtn[hidden]{display:none;}
+  /* iPhone 拍照圆钮: 菜单选了「拍照」后等 iPhone —— 镜头收放呼吸 + 外圈绿晕(与来源切换同一种"进行中"语气);
+     照片回来时快门闪一下, 随后录制图片堆自己的入场动画接力。 */
+  #btnCamTool .cam-lens{transform-box:fill-box; transform-origin:center;
+                        transition:transform .3s cubic-bezier(.16,1,.3,1);}
+  #btnCamTool:hover:not(:disabled) .cam-lens{transform:scale(1.14);}
+  #btnCamTool.cam-wait{color:var(--g-ink); border-color:color-mix(in srgb, var(--g) 60%, transparent);
+                       animation:cam-wait 1.6s ease-in-out infinite;}
+  #btnCamTool.cam-wait .cam-lens{animation:cam-lens 1.6s ease-in-out infinite;}
+  @keyframes cam-wait{50%{box-shadow:var(--material-shadow-level-3), 0 0 0 5px color-mix(in srgb, var(--g) 18%, transparent);}}
+  @keyframes cam-lens{50%{transform:scale(.74);}}
+  #btnCamTool.cam-shot::after{content:''; position:absolute; inset:-1px; border-radius:50%; background:#fff;
+                              pointer-events:none; animation:cam-shot .45s cubic-bezier(.16,1,.3,1) forwards;}
+  @keyframes cam-shot{from{opacity:.9; transform:scale(.9);} to{opacity:0; transform:scale(1.35);}}
+  @media (prefers-reduced-motion:reduce){
+    #btnCamTool .cam-lens,#btnCamTool.cam-wait,#btnCamTool.cam-wait .cam-lens,#btnCamTool.cam-shot::after{animation:none; transition:none;}
+  }
   /* 录音来源: 圆钮显示当前来源, 点开向上逐个弹出三枚同款圆钮, 点哪个切哪个 */
   .srcwrap{position:relative; display:flex; flex:none;}
   #btnSrc.on{border-color:color-mix(in srgb, var(--g) 60%, transparent); color:var(--g-ink);}
@@ -3987,6 +4004,10 @@ html:not([data-material="mimetic"]) #setBody #materialAdvanced{display:none;}
   <button class="rcbtn" id="btnNoteTool" title="记笔记">
     <svg class="ui-icon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20h4l10-10-4-4L4 16v4zM13.5 6.5l4 4"/></svg>
   </button>
+  <!-- 仅 macOS 壳内显示(registerCameraBridge 摘掉 hidden): 连续互通相机, 用 iPhone 拍照插入录制图片 -->
+  <button class="rcbtn" id="btnCamTool" title="用 iPhone 拍照插入" aria-label="用 iPhone 拍照插入" hidden>
+    <svg class="ui-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3.5 8.5A1.5 1.5 0 0 1 5 7h2.5l1.6-2.2h5.8L16.5 7H19a1.5 1.5 0 0 1 1.5 1.5v9A1.5 1.5 0 0 1 19 19H5a1.5 1.5 0 0 1-1.5-1.5z"/><circle class="cam-lens" cx="12" cy="12.8" r="3.4"/></svg>
+  </button>
   <div class="srcwrap">
     <div class="srcfan" id="srcfan" role="menu" aria-label="录音来源"><button class="srcopt" role="menuitemradio" aria-checked="false" data-src="mic" style="--i:0"><span class="srclab">仅麦克</span><span class="srccirc"><i class="srcico"></i><svg class="src-spin" width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2.5" opacity=".2"/><path d="M12 3a9 9 0 0 1 9 9" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></span></button><button class="srcopt" role="menuitemradio" aria-checked="false" data-src="mix" style="--i:1"><span class="srclab">系统+麦</span><span class="srccirc"><i class="srcico"></i><svg class="src-spin" width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2.5" opacity=".2"/><path d="M12 3a9 9 0 0 1 9 9" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></span></button><button class="srcopt" role="menuitemradio" aria-checked="false" data-src="system" style="--i:2"><span class="srclab">仅系统</span><span class="srccirc"><i class="srcico"></i><svg class="src-spin" width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2.5" opacity=".2"/><path d="M12 3a9 9 0 0 1 9 9" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></span></button></div>
     <button class="rcbtn" id="btnSrc" aria-haspopup="menu" aria-expanded="false" title="录音来源"></button>
@@ -4636,6 +4657,7 @@ function updateChrome(){
   const dockEntering = rec && !$('dockgrp').classList.contains('rec');
   if(dockEntering) volRefresh();
   $('dockgrp').classList.toggle('rec', rec);
+  if(!rec) $('btnCamTool').classList.remove('cam-wait');
   if(dockEntering) pushDockButtons();
   const fab = $('fab');
   fab.classList.toggle('rec', rec);
@@ -8058,6 +8080,51 @@ function registerTranscriptNoteNativeDragBridge(){
   });
 }
 registerTranscriptNoteNativeDragBridge();
+
+/* ---- iPhone 拍照: 壳弹连续互通相机菜单(tauri-shell/src/camera.rs), 照片经 tauri 事件回来,
+   与拖入、粘贴同一个入口(insertTranscriptImageFiles + recordingImageCapture), 落进右下角录制图片堆。
+   网页→壳没有可用的自定义命令, 靠隐藏 iframe 导航到 tingdao-camera:// 被壳的 on_navigation 截下。 */
+let cameraWaitTimer=null;
+const cameraFrame=document.createElement('iframe');
+function setCameraWaiting(on){
+  clearTimeout(cameraWaitTimer);
+  $('btnCamTool').classList.toggle('cam-wait',on);
+  // iPhone 上点取消不会通知 Mac: 等两分钟没回音就放下按钮的等待态(照片晚到仍照常插入)
+  if(on)cameraWaitTimer=setTimeout(()=>$('btnCamTool').classList.remove('cam-wait'),120000);
+}
+function cameraShutterFlash(){
+  const button=$('btnCamTool');button.classList.remove('cam-shot');void button.offsetWidth;button.classList.add('cam-shot');
+  setTimeout(()=>button.classList.remove('cam-shot'),500);
+}
+async function insertCameraPhoto(payload){
+  setCameraWaiting(false);
+  if(view!==null||!['recording','paused'].includes(state)||recordingImageStopping){toast('照片未插入：请在录制页拍照');return;}
+  try{
+    const blob=await (await fetch(`data:${payload.mime};base64,${payload.data}`)).blob();
+    const capture=recordingImageCapture();
+    const file=new File([blob],`iPhone 照片 ${fmt(capture.time)}.${payload.mime==='image/png'?'png':'jpg'}`,{type:payload.mime});
+    cameraShutterFlash();
+    await insertTranscriptImageFiles([file],capture);
+  }catch(error){toast('照片插入失败：'+(error.message||'未知原因'));}
+}
+$('btnCamTool').onclick=()=>{
+  if(!['recording','paused'].includes(state)||recordingImageStopping)return;
+  const rect=$('btnCamTool').getBoundingClientRect();
+  // 菜单锚在按钮顶边中点: 按钮贴着窗口底, 菜单与 iPhone 提示框自然往上弹
+  cameraFrame.src=`tingdao-camera://take?x=${Math.round(rect.left+rect.width/2)}&y=${Math.round(rect.top)}&t=${Date.now()}`;
+};
+(function registerCameraBridge(){
+  const internals=window.__TAURI_INTERNALS__;
+  if(window.__TD_PLATFORM__!=='Darwin'||!internals||typeof internals.invoke!=='function'||typeof internals.transformCallback!=='function')return;
+  cameraFrame.hidden=true;cameraFrame.tabIndex=-1;cameraFrame.setAttribute('aria-hidden','true');
+  document.body.appendChild(cameraFrame);
+  const listen=(event,handle)=>internals.invoke('plugin:event|listen',{event,target:{kind:'Webview',label:'main'},
+    handler:internals.transformCallback(e=>handle(transcriptNoteNativeEventPayload(e)))})
+    .catch(error=>console.error('相机事件注册失败',event,error));
+  listen('tingdao://camera-state',payload=>setCameraWaiting(!!payload.waiting));
+  listen('tingdao://camera-photo',insertCameraPhoto);
+  $('btnCamTool').hidden=false;
+})();
 function transcriptVisibleImagePasteTarget(){
   if(view===null&&['recording','paused'].includes(state)&&$('transcriptNoteLayer').hidden)
     return recordingImageCapture();

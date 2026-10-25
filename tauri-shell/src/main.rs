@@ -15,6 +15,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
 #[cfg(target_os = "macos")]
+#[cfg(target_os = "macos")]
+mod camera;
+
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::webview::PageLoadEvent;
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
@@ -443,18 +446,19 @@ fn app_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<Menu<
         true,
         None::<&str>,
     )?;
+    // 预设项不给文字时 muda 用英文默认标题, 不跟系统语言走, 这里逐个写中文。
     let edit_menu = Submenu::with_items(
         app,
         "编辑",
         true,
         &[
-            &PredefinedMenuItem::undo(app, None)?,
-            &PredefinedMenuItem::redo(app, None)?,
+            &PredefinedMenuItem::undo(app, Some("撤销"))?,
+            &PredefinedMenuItem::redo(app, Some("重做"))?,
             &PredefinedMenuItem::separator(app)?,
-            &PredefinedMenuItem::cut(app, None)?,
-            &PredefinedMenuItem::copy(app, None)?,
-            &PredefinedMenuItem::paste(app, None)?,
-            &PredefinedMenuItem::select_all(app, None)?,
+            &PredefinedMenuItem::cut(app, Some("剪切"))?,
+            &PredefinedMenuItem::copy(app, Some("拷贝"))?,
+            &PredefinedMenuItem::paste(app, Some("粘贴"))?,
+            &PredefinedMenuItem::select_all(app, Some("全选"))?,
         ],
     )?;
     Menu::with_items(
@@ -466,7 +470,7 @@ fn app_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<Menu<
             &[
                 &microphone_modes,
                 &PredefinedMenuItem::separator(app)?,
-                &PredefinedMenuItem::quit(app, None)?,
+                &PredefinedMenuItem::quit(app, Some("退出听道"))?,
             ],
         )?],
     )
@@ -873,6 +877,28 @@ fn open_main_window(app: &mut tauri::App) -> tauri::Result<tauri::WebviewWindow>
             open_repository_url(url.as_str());
             tauri::webview::NewWindowResponse::Deny
         });
+    // 录音中的相机钮: 网页让隐藏 iframe 导航到 tingdao-camera://take?x=&y=, 这里截下并弹连续互通相机菜单(见 camera.rs)。
+    #[cfg(target_os = "macos")]
+    {
+        builder = builder.on_navigation(|url| {
+            if url.scheme() != camera::CAMERA_SCHEME {
+                return true;
+            }
+            // 这里身处 WKWebView 的导航决策回调: 网页在同步等这次决策, 此时弹菜单(模态循环)会把页面冻死。
+            // with_webview / run_on_main_thread 在主线程上是就地执行的, 所以借一个线程把消息投回事件循环,
+            // 等本回调返回、导航被取消后再弹。
+            if let Some((x, y)) = camera::parse_request(url) {
+                std::thread::spawn(move || {
+                    if let Some(window) = camera::APP.get().and_then(|app| app.get_webview_window("main")) {
+                        let _ = window.with_webview(move |webview| unsafe {
+                            camera::present(webview.inner(), webview.ns_window(), x, y);
+                        });
+                    }
+                });
+            }
+            false
+        });
+    }
     // 不透明白底只给 mac 用(压住 WKWebView 首帧白闪)。Windows 下面要走透明窗口,
     // 而 wry 在 transparent 时会忽略 background_color —— 干脆不设, 免得读代码时误判窗口底是白的。
     #[cfg(not(target_os = "windows"))]
@@ -995,6 +1021,8 @@ fn main() {
         // 无声无息退出 101, 用户什么都看不到), 下面 unwrap_or_else 的 alert 兜不到它。
         // 所以启动失败必须自己弹窗 + 退出, 让用户看到具体原因。
         .setup(move |app| {
+            #[cfg(target_os = "macos")]
+            camera::init(app.handle().clone());
             let resource_dir = app.path().resource_dir().ok();
             let settings_file = settings_file_path(app);
             let window = match open_main_window(app) {

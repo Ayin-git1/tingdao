@@ -18,7 +18,9 @@ serde_json = "1"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
-objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSDate"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSDate", "NSData", "NSDictionary", "NSGeometry", "NSString", "NSNotification", "NSOperation", "block2"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSResponder", "NSView", "NSWindow", "NSMenu", "NSMenuItem", "NSPasteboard", "NSImageRep", "NSBitmapImageRep", "NSUserInterfaceItemIdentification", "NSEvent", "NSGraphicsContext", "NSText", "NSTextView", "NSColor"] }
+base64 = "0.22"
 objc2-web-kit = { version = "0.3", default-features = false, features = ["std", "WKWebsiteDataStore", "block2"] }
 block2 = "0.6"
 
