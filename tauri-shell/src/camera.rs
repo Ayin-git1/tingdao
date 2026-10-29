@@ -8,6 +8,9 @@
 //!    rightMouseDown:, 视图的 menuForEvent: 只给标题行即可。NSMenu popUpContextMenu / popUpMenuPositioningItem
 //!    直接弹的菜单不会补, 只剩自己加的项。
 //!
+//! 3. 补进来的「自动填充」「扫描文稿」「添加速绘」用不上, 在 AppKit 加项时(NSMenuDidAddItemNotification)
+//!    逐个藏掉, 只留每台设备的「拍照」。自己那行标题也藏起来, 但不能不加: 空菜单 AppKit 不往里补。
+//!
 //! 网页 → 壳: 隐藏 iframe 导航到 tingdao-camera://take?x=&y=(见 main.rs 的 on_navigation)。
 //! 自定义 #[tauri::command] 对后端直出的 remote 页面不可用, 理由同 main.rs 里窗口三键那段。
 //! 壳 → 网页: tauri 事件 CAMERA_STATE_EVENT / CAMERA_PHOTO_EVENT, 网页用 plugin:event|listen 收。
@@ -19,10 +22,10 @@ use std::sync::OnceLock;
 use base64::Engine;
 use block2::RcBlock;
 use objc2::rc::Retained;
-use objc2::{define_class, msg_send, MainThreadMarker, MainThreadOnly};
+use objc2::{define_class, msg_send, sel, MainThreadMarker, MainThreadOnly};
 use objc2_app_kit::{
     NSBitmapImageFileType, NSBitmapImageRep, NSColor, NSEvent, NSEventModifierFlags, NSEventType, NSMenu,
-    NSMenuWillSendActionNotification, NSMenuItem, NSPasteboard, NSPasteboardTypePNG, NSPasteboardTypeTIFF,
+    NSMenuDidAddItemNotification, NSMenuWillSendActionNotification, NSMenuItem, NSPasteboard, NSPasteboardTypePNG, NSPasteboardTypeTIFF,
     NSResponder, NSText, NSTextView, NSView, NSWindow,
 };
 use objc2_foundation::{NSDictionary, NSNotification, NSNotificationCenter, NSObject, NSPoint, NSRect, NSSize, NSString};
@@ -60,14 +63,14 @@ define_class!(
     struct CameraView;
 
     impl CameraView {
-        // 右键菜单只放一行标题; AppKit 会在下面补上 iPhone 名称与拍照等项(以及系统自带的「自动填充」)。
+        // 右键菜单只放一行藏起来的占位; AppKit 会在下面补上 iPhone 名称与拍照等项(以及系统自带的「自动填充」)。
         #[unsafe(method_id(menuForEvent:))]
         fn menu_for_event(&self, _event: &NSEvent) -> Option<Retained<NSMenu>> {
             let mtm = self.mtm();
             let menu = NSMenu::new(mtm);
-            let header = NSMenuItem::new(mtm);
-            header.setTitle(&NSString::from_str("用 iPhone 拍照插入")); // 无 action, 自动置灰当标题
-            menu.addItem(&header);
+            let placeholder = NSMenuItem::new(mtm);
+            placeholder.setHidden(true);
+            menu.addItem(&placeholder);
             Some(menu)
         }
 
@@ -102,6 +105,23 @@ fn read_photo(pasteboard: &NSPasteboard) -> Option<(&'static str, Vec<u8>)> {
     let rep = NSBitmapImageRep::imageRepWithData(&raw)?;
     let jpeg = unsafe { rep.representationUsingType_properties(NSBitmapImageFileType::JPEG, &NSDictionary::new()) }?;
     Some(("image/jpeg", jpeg.to_vec()))
+}
+
+/// AppKit 每往菜单加一项就过一遍: 只留紧跟在设备名后面的第一项(拍照), 其余(含设备名、分隔线)都藏掉。
+/// 判断用 action 不用标题, 免得跟系统语言走。
+fn keep_only_take_photo(notification: &NSNotification) {
+    let Some(menu) = notification.object() else { return };
+    let Ok(menu) = menu.downcast::<NSMenu>() else { return };
+    let Some(info) = notification.userInfo() else { return };
+    let Some(index) = info.objectForKey(&*NSString::from_str("NSMenuItemIndex")) else { return };
+    let index: isize = unsafe { msg_send![&*index, integerValue] };
+    let Some(item) = menu.itemAtIndex(index) else { return };
+    let after_device = index > 0
+        && menu.itemAtIndex(index - 1).and_then(|prev| prev.action()) == Some(sel!(_importFromDeviceText:));
+    let take_photo = item.action() == Some(sel!(importFromDevice:)) && after_device;
+    if !take_photo {
+        item.setHidden(true);
+    }
 }
 
 /// 摘下接收视图, 焦点还给弹菜单前的响应者(网页), 否则键盘快捷键会一直落空。
@@ -167,7 +187,10 @@ pub unsafe fn present(webview: *mut std::ffi::c_void, window: *mut std::ffi::c_v
     let center = NSNotificationCenter::defaultCenter();
     let block = RcBlock::new(|_: NonNull<NSNotification>| emit(CAMERA_STATE_EVENT, serde_json::json!({ "waiting": true })));
     let observer = center.addObserverForName_object_queue_usingBlock(Some(NSMenuWillSendActionNotification), None, None, &block);
+    let trim = RcBlock::new(|note: NonNull<NSNotification>| keep_only_take_photo(note.as_ref()));
+    let trimmer = center.addObserverForName_object_queue_usingBlock(Some(NSMenuDidAddItemNotification), None, None, &trim);
     let _: () = msg_send![&*view, rightMouseDown: &*event];
+    center.removeObserver(trimmer.as_ref());
     center.removeObserver(observer.as_ref());
     emit(CAMERA_STATE_EVENT, serde_json::json!({ "waiting": false }));
     finish(); // 照片已到时 readSelection 里已收过, 这里是空操作
