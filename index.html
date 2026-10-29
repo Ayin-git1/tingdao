@@ -8089,7 +8089,7 @@ const cameraFrame=document.createElement('iframe');
 function setCameraWaiting(on){
   clearTimeout(cameraWaitTimer);
   $('btnCamTool').classList.toggle('cam-wait',on);
-  // iPhone 上点取消不会通知 Mac: 等两分钟没回音就放下按钮的等待态(照片晚到仍照常插入)
+  // 壳在会话结束时会报 false; 两分钟兜底只防壳那边意外没报, 别让按钮一直呼吸
   if(on)cameraWaitTimer=setTimeout(()=>$('btnCamTool').classList.remove('cam-wait'),120000);
 }
 function cameraShutterFlash(){

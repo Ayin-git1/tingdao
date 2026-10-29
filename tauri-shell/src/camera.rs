@@ -12,7 +12,7 @@
 //! 自定义 #[tauri::command] 对后端直出的 remote 页面不可用, 理由同 main.rs 里窗口三键那段。
 //! 壳 → 网页: tauri 事件 CAMERA_STATE_EVENT / CAMERA_PHOTO_EVENT, 网页用 plugin:event|listen 收。
 
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::ptr::NonNull;
 use std::sync::OnceLock;
 
@@ -22,14 +22,14 @@ use objc2::rc::Retained;
 use objc2::{define_class, msg_send, MainThreadMarker, MainThreadOnly};
 use objc2_app_kit::{
     NSBitmapImageFileType, NSBitmapImageRep, NSColor, NSEvent, NSEventModifierFlags, NSEventType, NSMenu,
-    NSMenuDidSendActionNotification, NSMenuItem, NSPasteboard, NSPasteboardTypePNG, NSPasteboardTypeTIFF,
+    NSMenuWillSendActionNotification, NSMenuItem, NSPasteboard, NSPasteboardTypePNG, NSPasteboardTypeTIFF,
     NSResponder, NSText, NSTextView, NSView, NSWindow,
 };
 use objc2_foundation::{NSDictionary, NSNotification, NSNotificationCenter, NSObject, NSPoint, NSRect, NSSize, NSString};
 use tauri::Emitter;
 
 pub const CAMERA_SCHEME: &str = "tingdao-camera";
-/// { waiting: bool } —— 菜单收起时报一次: 选了拍照项就进入等待, 否则恢复按钮。
+/// { waiting: bool } —— 点了菜单项报 true; 菜单关闭或连续互通会话结束(拍完/取消/失败)报 false。
 const CAMERA_STATE_EVENT: &str = "tingdao://camera-state";
 /// { mime, data(base64) } —— iPhone 拍完的照片。
 const CAMERA_PHOTO_EVENT: &str = "tingdao://camera-photo";
@@ -41,8 +41,6 @@ thread_local! {
     static ACTIVE: RefCell<Option<(Retained<CameraView>, Option<Retained<NSResponder>>)>> = const { RefCell::new(None) };
     /// 刚摘下的视图多留一轮: finish() 可能正在它自己的 readSelectionFromPasteboard: 里执行, 不能当场释放。
     static RETIRED: RefCell<Option<Retained<CameraView>>> = const { RefCell::new(None) };
-    /// 菜单开着时有没有哪一项发出了动作(即用户点了「拍照」等), 由 NSMenuDidSendActionNotification 置位。
-    static CHOSEN: Cell<bool> = const { Cell::new(false) };
 }
 
 pub fn init(app: tauri::AppHandle) {
@@ -163,16 +161,14 @@ pub unsafe fn present(webview: *mut std::ffi::c_void, window: *mut std::ffi::c_v
         finish();
         return;
     };
-    // 右键菜单不回报选没选, 改听菜单动作通知: 点了拍照项才进入等待态, 直接关菜单就恢复按钮。
-    CHOSEN.with(|chosen| chosen.set(false));
+    // 实测: 选了「拍照」后整个连续互通会话(等 iPhone 拍照/取消)都在这次 rightMouseDown: 里跑完,
+    // 照片也是在里面经 readSelectionFromPasteboard: 送达的。所以"进入等待"要在用户点菜单项那一刻
+    // (WillSend, 动作发出之前)就报, 调用返回即会话结束: 不管照片到没到, 一律收起等待态。
     let center = NSNotificationCenter::defaultCenter();
-    let block = RcBlock::new(|_: NonNull<NSNotification>| CHOSEN.with(|chosen| chosen.set(true)));
-    let observer = center.addObserverForName_object_queue_usingBlock(Some(NSMenuDidSendActionNotification), None, None, &block);
-    let _: () = msg_send![&*view, rightMouseDown: &*event]; // 菜单开着期间在这里阻塞
+    let block = RcBlock::new(|_: NonNull<NSNotification>| emit(CAMERA_STATE_EVENT, serde_json::json!({ "waiting": true })));
+    let observer = center.addObserverForName_object_queue_usingBlock(Some(NSMenuWillSendActionNotification), None, None, &block);
+    let _: () = msg_send![&*view, rightMouseDown: &*event];
     center.removeObserver(observer.as_ref());
-    let chosen = CHOSEN.with(|chosen| chosen.get());
-    emit(CAMERA_STATE_EVENT, serde_json::json!({ "waiting": chosen }));
-    if !chosen {
-        finish();
-    }
+    emit(CAMERA_STATE_EVENT, serde_json::json!({ "waiting": false }));
+    finish(); // 照片已到时 readSelection 里已收过, 这里是空操作
 }
