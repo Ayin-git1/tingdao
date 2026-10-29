@@ -8,7 +8,7 @@
 
 听道适用于 macOS 与 Windows，可录制系统声音与麦克风声音。支持本地模型转写和远端api转写两套通路。支持生成笔记与文稿摘要。深度集成从听→学的知识掌握链路。听道服务于：咨询服务、会议记录、私密会话、网课学习等场景。
 
-当前版本：**v3.1.1**　·　[下载页面](https://github.com/Ayin-git1/tingdao/releases)　·　[PolyForm Noncommercial License](./LICENSE)
+当前版本：**v3.1.2**　·　[下载页面](https://github.com/Ayin-git1/tingdao/releases)　·　[PolyForm Noncommercial License](./LICENSE)
 
 <h2 id="download"><img src="./assets/readme/badges/download.svg" height="40" alt="下载与安装"></h2>
 
@@ -25,7 +25,7 @@
 - **录制与实时字幕**：系统声音、麦克风或混合录音；录音中可随时切换来源而不中断；支持暂停、继续和实时字幕。
 - **本地转写**：macOS 使用 MLX Whisper，Windows 使用 faster-whisper / CTranslate2；支持录音精修和音视频导入。
 - **云端处理（可选）**：可选择上传音频转写，或只发送本地转写出的文字进行润色和摘要。上传前会再次确认。
-- **文稿整理**：逐句时间戳与回放、说话人标记、AI 摘要与章节目录、录音中与录音后的时间线笔记、热词模板、搜索面板与替换、快捷键。
+- **文稿整理**：逐句时间戳与回放、说话人标记、AI 摘要与章节目录、录音中与录音后的时间线笔记（macOS 录音中可用 iPhone 直接拍照插入）、热词模板、搜索面板与替换、快捷键。
 - **个性化**：浅色、深色和跟随系统外观；支持预设及自定义主题色。
 - **导出与管理**：导出 Markdown 和音频；历史项目支持搜索、排序、批量删除与在文件管理器中打开。删除内容先移入系统回收站。
 
@@ -92,7 +92,16 @@ Windows 安装版已包含 FFmpeg。安装 Python 后重开 PowerShell，并确�
 
 源码采用 [PolyForm Noncommercial License 1.0.0](./LICENSE)，仅限个人非商业使用；应表述为“源码公开”，不属于允许商业使用的 OSI 开源许可。第三方库、工具和模型各自遵循其上游许可，详见 [`THIRD-PARTY-NOTICES.md`](./THIRD-PARTY-NOTICES.md)。macOS 提供 DMG，Windows 提供 NSIS 安装包，源码 zip 作为备用方式。
 
-<h2 id="updates"><img src="./assets/readme/badges/updates.svg" height="40" alt="v3.1.1 更新"></h2>
+<h2 id="updates"><img src="./assets/readme/badges/updates.svg" height="40" alt="v3.1.2 更新"></h2>
+
+### v3.1.2 · 2026-10-29
+
+[下载 macOS Apple Silicon 安装包](https://github.com/Ayin-git1/tingdao/releases/download/v3.1.2/tingdao_3.1.2_aarch64.dmg)。
+
+- 新增 iPhone 拍照（macOS）：录音浮条的笔记按钮旁加入相机按钮，通过「连续互通相机」用 iPhone 拍照，照片与拖入、粘贴的图片走同一路径，进入本次录音的图片笔记；等待拍摄与快门有对应动画。
+- 相机菜单只保留「拍照」一项，去掉自动填充、扫描文稿、添加速绘等无关条目。
+- 修复拍照完成或取消后相机按钮仍在“呼吸”闪烁的问题。
+- 菜单栏的编辑与退出等系统菜单项改为中文。
 
 ### v3.1.1 · 2026-10-24
 

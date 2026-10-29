@@ -40,7 +40,7 @@ from urllib.parse import urlparse, parse_qs, unquote
 import numpy as np
 import sherpa_onnx
 
-APP_VERSION = "3.1.1"
+APP_VERSION = "3.1.2"
 
 # Finder/Dock 启动的 GUI 进程 PATH 不含 homebrew, 主动补齐(ffmpeg/SwitchAudioSource 所在)
 for _p in ("/opt/homebrew/bin", "/usr/local/bin"):
