@@ -887,11 +887,11 @@ fn open_main_window(app: &mut tauri::App) -> tauri::Result<tauri::WebviewWindow>
             // 这里身处 WKWebView 的导航决策回调: 网页在同步等这次决策, 此时弹菜单(模态循环)会把页面冻死。
             // with_webview / run_on_main_thread 在主线程上是就地执行的, 所以借一个线程把消息投回事件循环,
             // 等本回调返回、导航被取消后再弹。
-            if let Some((x, y)) = camera::parse_request(url) {
+            if let Some((x, y, direct)) = camera::parse_request(url) {
                 std::thread::spawn(move || {
                     if let Some(window) = camera::APP.get().and_then(|app| app.get_webview_window("main")) {
                         let _ = window.with_webview(move |webview| unsafe {
-                            camera::present(webview.inner(), webview.ns_window(), x, y);
+                            camera::present(webview.inner(), webview.ns_window(), x, y, direct);
                         });
                     }
                 });

@@ -25,7 +25,10 @@ function shortcutHandler(platform = 'Darwin') {
     fab: { click: () => { global.started = true; } },
     btnSide: { click: () => { global.sidebarToggled = true; } },
     btnNoteTop: { click: () => { global.drawerToggled = true; } },
+    btnCamTool: { hidden: false },
   })[id];
+  global.recordingImageStopping = false;
+  global.openIphoneCamera = direct => { global.cameraOpened = direct; };
   global.state = 'idle';
   global.view = null;
   global.hostPlatform = platform;
@@ -93,4 +96,35 @@ test('Command-Shift-B reuses the right drawer toggle', () => {
 
   assert.equal(global.drawerToggled, true);
   assert.equal(prevented, true);
+});
+
+function pressCameraShortcut(handler) {
+  let prevented = false;
+  handler({
+    key: 'P', code: 'KeyP', metaKey: true, ctrlKey: false, shiftKey: true,
+    altKey: false, repeat: false, preventDefault: () => { prevented = true; },
+  });
+  return prevented;
+}
+
+test('Command-Shift-P takes an iPhone photo directly while recording', () => {
+  for (const recordingState of ['recording', 'paused']) {
+    global.cameraOpened = false;
+    const handler = shortcutHandler();
+    global.state = recordingState;
+
+    assert.equal(pressCameraShortcut(handler), true);
+    assert.equal(global.cameraOpened, true);
+  }
+});
+
+test('Command-Shift-P does nothing outside recording', () => {
+  for (const idleState of ['idle', 'stopping']) {
+    global.cameraOpened = false;
+    const handler = shortcutHandler();
+    global.state = idleState;
+
+    assert.equal(pressCameraShortcut(handler), false);
+    assert.equal(global.cameraOpened, false);
+  }
 });

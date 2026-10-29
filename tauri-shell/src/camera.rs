@@ -10,12 +10,14 @@
 //!
 //! 3. 补进来的「自动填充」「扫描文稿」「添加速绘」用不上, 在 AppKit 加项时(NSMenuDidAddItemNotification)
 //!    逐个藏掉, 只留每台设备的「拍照」。自己那行标题也藏起来, 但不能不加: 空菜单 AppKit 不往里补。
+//! 4. 快捷键要"直接拍": 菜单照样走一遍(不走就没有拍照项), 等 AppKit 补进第一台设备的「拍照」,
+//!    投到菜单跟踪循环里收起菜单、替用户点下它。之后的会话与手点完全一样。
 //!
 //! 网页 → 壳: 隐藏 iframe 导航到 tingdao-camera://take?x=&y=(见 main.rs 的 on_navigation)。
 //! 自定义 #[tauri::command] 对后端直出的 remote 页面不可用, 理由同 main.rs 里窗口三键那段。
 //! 壳 → 网页: tauri 事件 CAMERA_STATE_EVENT / CAMERA_PHOTO_EVENT, 网页用 plugin:event|listen 收。
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::ptr::NonNull;
 use std::sync::OnceLock;
 
@@ -26,9 +28,12 @@ use objc2::{define_class, msg_send, sel, MainThreadMarker, MainThreadOnly};
 use objc2_app_kit::{
     NSBitmapImageFileType, NSBitmapImageRep, NSColor, NSEvent, NSEventModifierFlags, NSEventType, NSMenu,
     NSMenuDidAddItemNotification, NSMenuWillSendActionNotification, NSMenuItem, NSPasteboard, NSPasteboardTypePNG, NSPasteboardTypeTIFF,
-    NSResponder, NSText, NSTextView, NSView, NSWindow,
+    NSEventTrackingRunLoopMode, NSModalPanelRunLoopMode, NSResponder, NSText, NSTextView, NSView, NSWindow,
 };
-use objc2_foundation::{NSDictionary, NSNotification, NSNotificationCenter, NSObject, NSPoint, NSRect, NSSize, NSString};
+use objc2_foundation::{
+    NSArray, NSDefaultRunLoopMode, NSDictionary, NSNotification, NSNotificationCenter, NSObject, NSPoint, NSRect, NSRunLoop,
+    NSSize, NSString,
+};
 use tauri::Emitter;
 
 pub const CAMERA_SCHEME: &str = "tingdao-camera";
@@ -44,6 +49,8 @@ thread_local! {
     static ACTIVE: RefCell<Option<(Retained<CameraView>, Option<Retained<NSResponder>>)>> = const { RefCell::new(None) };
     /// 刚摘下的视图多留一轮: finish() 可能正在它自己的 readSelectionFromPasteboard: 里执行, 不能当场释放。
     static RETIRED: RefCell<Option<Retained<CameraView>>> = const { RefCell::new(None) };
+    /// 这次是快捷键发起的: 等「拍照」一出现就替用户点下, 点过即清。
+    static DIRECT: Cell<bool> = const { Cell::new(false) };
 }
 
 pub fn init(app: tauri::AppHandle) {
@@ -121,6 +128,20 @@ fn keep_only_take_photo(notification: &NSNotification) {
     let take_photo = item.action() == Some(sel!(importFromDevice:)) && after_device;
     if !take_photo {
         item.setHidden(true);
+        return;
+    }
+    // 中间那份临时菜单里的项还没挂上 representedObject, 点它没用; 要等真正显示的那份。
+    if item.representedObject().is_none() || !DIRECT.with(|direct| direct.replace(false)) {
+        return;
+    }
+    // 此刻 AppKit 还在往菜单里加项, 当场点会打乱它; 投到菜单跟踪循环的下一轮再点。
+    let block = RcBlock::new(move || {
+        menu.cancelTracking();
+        menu.performActionForItemAtIndex(index);
+    });
+    unsafe {
+        let modes = NSArray::from_slice(&[NSEventTrackingRunLoopMode, NSDefaultRunLoopMode, NSModalPanelRunLoopMode]);
+        NSRunLoop::mainRunLoop().performInModes_block(&modes, &block);
     }
 }
 
@@ -134,32 +155,35 @@ fn finish() {
     RETIRED.with(|retired| *retired.borrow_mut() = Some(view));
 }
 
-/// 解析 tingdao-camera://take?x=&y=, 坐标是相机钮中心的网页 CSS 像素。
-pub fn parse_request(url: &tauri::Url) -> Option<(f64, f64)> {
+/// 解析 tingdao-camera://take?x=&y=[&direct=1], 坐标是相机钮中心的网页 CSS 像素; direct=1 跳过菜单直接拍。
+pub fn parse_request(url: &tauri::Url) -> Option<(f64, f64, bool)> {
     if url.scheme() != CAMERA_SCHEME || url.host_str() != Some("take") {
         return None;
     }
     let mut x = None;
     let mut y = None;
+    let mut direct = false;
     for (key, value) in url.query_pairs() {
         match &*key {
             "x" => x = value.parse().ok(),
             "y" => y = value.parse().ok(),
+            "direct" => direct = value == "1",
             _ => {}
         }
     }
-    Some((x?, y?))
+    Some((x?, y?, direct))
 }
 
 /// 在 WKWebView 上(x, y)处弹出连续互通相机菜单。须在主线程调用。
 ///
 /// # Safety
 /// `webview` 与 `window` 必须是同一主窗口的 WKWebView 与 NSWindow。
-pub unsafe fn present(webview: *mut std::ffi::c_void, window: *mut std::ffi::c_void, x: f64, y: f64) {
+pub unsafe fn present(webview: *mut std::ffi::c_void, window: *mut std::ffi::c_void, x: f64, y: f64, direct: bool) {
     let Some(mtm) = MainThreadMarker::new() else { return };
     let webview: &NSView = &*webview.cast();
     let window: &NSWindow = &*window.cast();
     finish(); // 上一次没等到照片(在 iPhone 上取消了)就再点: 先收掉旧的
+    DIRECT.with(|flag| flag.set(direct));
 
     // WKWebView 是翻转坐标(原点左上), 与 CSS 一致; 万一不是, 按高度翻一下。
     let y = if webview.isFlipped() { y } else { webview.bounds().size.height - y };
@@ -191,6 +215,7 @@ pub unsafe fn present(webview: *mut std::ffi::c_void, window: *mut std::ffi::c_v
     let trimmer = center.addObserverForName_object_queue_usingBlock(Some(NSMenuDidAddItemNotification), None, None, &trim);
     let _: () = msg_send![&*view, rightMouseDown: &*event];
     center.removeObserver(trimmer.as_ref());
+    DIRECT.with(|flag| flag.set(false)); // 没有可用的 iPhone 时根本等不到「拍照」, 别留到下次
     center.removeObserver(observer.as_ref());
     emit(CAMERA_STATE_EVENT, serde_json::json!({ "waiting": false }));
     finish(); // 照片已到时 readSelection 里已收过, 这里是空操作
