@@ -2044,6 +2044,16 @@ def probe_dur(path):
         return 0.0
 
 
+def unreadable_media(paths):
+    """空文件/探不出时长的文件名列表: 导入前整批把关, 有一个坏的就不开工。"""
+    bad = []
+    for p in paths:
+        p = Path(p or "")
+        if not p.is_file() or p.stat().st_size == 0 or not probe_dur(p):
+            bad.append(p.name or str(p))
+    return bad
+
+
 def find_device(patterns):
     devs = list_audio_devices()
     for pat in patterns:
@@ -3026,6 +3036,10 @@ class App:
                 self.emit(type="refinish", id=sid, ok=False, cancelled=True)
             except Exception as e:
                 print(f"[job] {sid} 执行异常: {e}", flush=True)
+                # runner 没自己收尾就抛出来了(如抽轨失败、项目目录已删): 也得让前端出声
+                self.emit(type="refinish", id=sid, ok=False,
+                          kind=(j or {}).get("kind") or "import", err=str(e)[:160],
+                          gone=not (SESSIONS_DIR / sid).is_dir())
             finally:
                 self._tls.sid = None
                 self._job_end(sid)
@@ -4290,10 +4304,17 @@ class App:
 
     def import_audio(self, path, talk="single", lang=None):
         """导入音视频: 秒建项目并排队, 抽轨+转写都在 worker 里跑(批量不堵口)。
-        talk: single=本地 Whisper | cloud=云端转写。本地队列串行, 云端 2 路并行。"""
-        src = Path(path or "")
-        if not src.is_file():
-            raise RuntimeError("文件不存在")
+        talk: single=本地 Whisper | cloud=云端转写。本地队列串行, 云端 2 路并行。
+        path 传列表 = 按顺序首尾接成一份项目(同一场会被切成多段的录音)。"""
+        srcs = [Path(x or "") for x in (path if isinstance(path, (list, tuple)) else [path])]
+        missing = [x.name or "?" for x in srcs if not x.is_file()]
+        if not srcs or missing:
+            raise RuntimeError("文件不存在" + (f"：{missing[0]}" if missing and missing[0] != "?" else ""))
+        bad = unreadable_media(srcs)
+        if bad:
+            raise RuntimeError(f"「{bad[0]}」无法读取（文件为空或已损坏）"
+                               + (f"，另有 {len(bad)-1} 个同样问题" if len(bad) > 1 else ""))
+        src = srcs[0]
         talk = talk if talk in ("single", "cloud") else "single"
         if talk == "cloud" and not cloud_cfg()["enable"]:
             raise RuntimeError("云端未配置：请填 API 地址、Key 与转写模型名")
@@ -4302,6 +4323,8 @@ class App:
         if platform.system() == "Windows":
             stem = safe_title(stem) or "导入"
         # 导入时间可见地写进标题, 同一文件反复导入也能一眼分辨
+        if len(srcs) > 1:
+            stem = f"{stem} 等{len(srcs)}段"[:56]
         name = f"{stem} · {time.strftime('%m-%d %H:%M')}"[:60]
         d = SESSIONS_DIR / f"{stem}-{stamp}"
         i = 1
@@ -4313,39 +4336,76 @@ class App:
             "name": name, "started": time.strftime("%Y-%m-%d %H:%M:%S"),
             "stamp": stamp, "mode": "import", "lang": lang, "talk": talk,
             "duration": 0, "audio": None, "source": str(src),
+            **({"sources": [str(x) for x in srcs]} if len(srcs) > 1 else {}),
             "segments": [], "notes": [],
         }, ensure_ascii=False, indent=1), encoding="utf-8")
         queue = "cloud" if (talk == "cloud" and cloud_flow() == "asr_post") else "local"
         self._job_begin(d.name, "import", state="wait")
         self._enqueue(d.name, queue,
-                      lambda d=d, src=src, talk=talk: self._import_run(d, src, talk))
+                      lambda d=d, srcs=srcs, talk=talk: self._import_run(d, srcs, talk))
         return {"ok": True, "id": d.name, "name": name}
 
-    def _import_run(self, d, src, talk):
+    def _import_run(self, d, srcs, talk):
         """队列 worker 本体: 抽音轨 → 回填 meta → 按 talk 分派转写。
-        抽轨 ffmpeg 登记进 _procs —— 停止按钮在抽轨阶段也掐得动。"""
+        抽轨 ffmpeg 登记进 _procs —— 停止按钮在抽轨阶段也掐得动。
+        多个源文件先无损拼成一条 flac(转写吃它), 再从它压 audio.m4a。"""
         import shutil
-        self.stage("抽取音轨中", 0)
+        srcs = srcs if isinstance(srcs, list) else [srcs]
+        self.stage("抽取音轨中" if len(srcs) == 1 else f"拼接 {len(srcs)} 段音轨中", 0)
         m4a = d / "audio.m4a"
-        ff = subprocess.Popen(
-            [ffmpeg_path(), "-y", "-hide_banner", "-loglevel", "error",
-             "-i", str(src), "-vn", "-ac", "1", "-ar", str(SR),
-             "-c:a", "aac", "-b:a", "64k", str(m4a)],
-            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
-        with self.lock:
-            self._procs[d.name] = ff
-        try:
-            errb = ff.stderr.read()
-            rc = ff.wait(timeout=1800)
-        finally:
+
+        def run_ff(args):
+            ff = subprocess.Popen([ffmpeg_path(), "-y", "-hide_banner", "-loglevel", "error", *args],
+                                  stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
             with self.lock:
-                self._procs.pop(d.name, None)
-        if self.is_cancelled(d.name):
-            raise Cancelled("已停止")
+                self._procs[d.name] = ff
+            try:
+                errb = ff.stderr.read()
+                rc = ff.wait(timeout=1800)
+            finally:
+                with self.lock:
+                    self._procs.pop(d.name, None)
+            if self.is_cancelled(d.name):
+                raise Cancelled("已停止")
+            return rc, errb
+
+        merged = None
+        if len(srcs) > 1:
+            merged = cache_temp_path("import-merge", ".flac")
+            ins, chains = [], []
+            for i, x in enumerate(srcs):
+                ins += ["-i", str(x)]
+                chains.append(f"[{i}:a:0]aresample=48000,aformat=channel_layouts=mono[a{i}]")
+            graph = ";".join(chains) + ";" + "".join(f"[a{i}]" for i in range(len(srcs))) \
+                + f"concat=n={len(srcs)}:v=0:a=1[out]"
+            rc, errb = run_ff([*ins, "-filter_complex", graph, "-map", "[out]",
+                               "-c:a", "flac", str(merged)])
+            if rc != 0 or not merged.exists():
+                merged.unlink(missing_ok=True)
+                shutil.rmtree(d, ignore_errors=True)
+                tail = (errb or b"").decode(errors="ignore").strip().splitlines()
+                raise RuntimeError("无法拼接这些文件" + (f"：{tail[-1]}" if tail else ""))
+        src = merged or srcs[0]
+        try:
+            rc, errb = run_ff(["-i", str(src), "-vn", "-ac", "1", "-ar", str(SR),
+                               "-c:a", "aac", "-b:a", "64k", str(m4a)])
+        except Cancelled:
+            if merged:
+                merged.unlink(missing_ok=True)
+            raise
         if rc != 0 or not m4a.exists() or m4a.stat().st_size < 1024:
+            if merged:
+                merged.unlink(missing_ok=True)
             shutil.rmtree(d, ignore_errors=True)
             tail = (errb or b"").decode(errors="ignore").strip().splitlines()
             raise RuntimeError("无法从该文件提取音频" + (f"：{tail[-1]}" if tail else ""))
+        try:
+            self._import_dispatch(d, src, m4a, talk)
+        finally:
+            if merged:
+                merged.unlink(missing_ok=True)
+
+    def _import_dispatch(self, d, src, m4a, talk):
         dur = probe_dur(m4a)
         # 回放副本从已转好的 16k m4a 派生: 不保留原始全频
         listen_rel, listen_err = encode_listen(m4a, d / LISTEN_FILE)
@@ -6404,8 +6464,12 @@ class Handler(BaseHTTPRequestHandler):
             if u.path == "/api/import":
                 paths = body.get("paths") or ([body.get("path")] if body.get("path") else [])
                 talk = body.get("talk", "single")
+                bad = unreadable_media(paths)
+                if bad:
+                    return self._json({"ok": False, "ids": [], "errors": [], "bad": bad})
                 ids, errs = [], []
-                for p in paths:
+                # merge=True: 整批按给定顺序接成一个项目
+                for p in ([paths] if body.get("merge") and len(paths) > 1 else paths):
                     try:
                         r = APP.import_audio(p, talk, body.get("lang"))
                         ids.append({"id": r["id"], "name": r["name"]})

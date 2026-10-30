@@ -1998,6 +1998,10 @@
   #popStopCloud .sc-meta{display:flex; flex-wrap:wrap; gap:6px 16px; color:var(--sub);
     font-size:var(--fs-meta); line-height:1.6; font-variant-numeric:tabular-nums; margin-bottom:12px;}
   #popStopCloud .sc-detail{font-size:var(--fs-ctl); line-height:1.8; color:var(--txt); margin:0;}
+  .confirm .pb-list{max-height:180px; overflow:auto; margin:0 0 4px; padding-left:0; list-style:decimal inside;
+    font-size:var(--fs-ctl); line-height:1.8; color:var(--txt);}
+  .confirm .pb-list li{white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .confirm .pb-list .pb-dur{color:var(--sub); margin-left:6px;}
   #popStopCloud .sc-hint{font-size:var(--fs-meta); line-height:1.8; color:var(--sub); margin:8px 0 0;}
 
   /* ============ 多选选择条: 固定在侧栏底部, 距窗口底边 16px ============ */
@@ -3773,6 +3777,26 @@ html:not([data-material="mimetic"]) #setBody #materialAdvanced{display:none;}
     </div>
   </div>
 
+  <div class="confirm" id="popAlert" role="alertdialog">
+    <h5 id="paTitle"></h5>
+    <ol class="pb-list" id="paList"></ol>
+    <p class="confirm-hint" id="paHint"></p>
+    <div class="crow">
+      <button class="cgo" id="paOk">知道了</button>
+    </div>
+  </div>
+
+  <div class="confirm" id="popBatch">
+    <h5 id="pbTitle">这几个文件怎么处理？</h5>
+    <ol class="pb-list" id="pbList"></ol>
+    <p class="confirm-hint">合并：按上面的顺序接成一份文稿；分别：每个文件各建一个项目。</p>
+    <div class="crow">
+      <button class="cghost" id="pbCancel">取消</button>
+      <button class="cghost" id="pbSplit">分别转换</button>
+      <button class="cgo" id="pbMerge">合并为一份</button>
+    </div>
+  </div>
+
   <div class="confirm" id="popCloud">
     <h5>选择云端处理方式</h5>
     <p><b>云端转写</b><br>上传录音至你配置的接口，重新转写。</p>
@@ -4910,6 +4934,12 @@ function handleEvent(e){
       syncJobs(st);                        // 校正: 别的并行任务可能仍在跑
       updateRefineUI(); refreshHistory();
     }).catch(()=>{});
+    if(e.ok === false && e.gone){
+      // 抽轨/拼接失败后端已删掉空项目: 报原因, 正看着它就退回主页
+      if(view && view.id === e.id) exitView();
+      showAlert('导入失败', [], e.err || '未知原因');
+      return;
+    }
     if(e.kind === 'summary'){
       if(view && view.id === e.id){
         if(e.ok === false){
@@ -5604,6 +5634,8 @@ function closePops(){
   $('popCloud').classList.remove('show');
   $('spkpop').classList.remove('show');
   $('popStopCloud').classList.remove('show');
+  $('popBatch').classList.remove('show');
+  $('popAlert').classList.remove('show');
   $('tplpop').classList.remove('show');
   $('hwpop').classList.remove('show');           // 吊牌热词弹层: 收起时触发钮一并复原
   $('pillHw').classList.remove('open');
@@ -11388,6 +11420,7 @@ async function replaceCurrentFind(){
 /* ---- 导入音视频: 原生选择器 → 后台 Whisper 直接转写(复用精修指示) ---- */
 let importPendingShow = null;   // (兼容保留)旧单文件占位机制
 let importPending = [];         // [{path,mb,dur}...] 多选结果: 确认弹窗与入队都吃这个
+let importMerge = false;        // 多选时用户选了「合并为一份」
 function enterPendingView(name){
   // 占位查看态: 正文空、指示居中转圈、整页禁用, 等后端建好项目再换成真数据
   view = {id:'__pending__', name, segments:[], notes:[], duration:0, pending:true, spkLabels:{}};
@@ -11481,18 +11514,53 @@ $('btnImport').onclick = async ()=>{
   finally{ $('btnImport').classList.remove('busy'); }
   const list = (picked && picked.paths) || [];
   if(!list.length) return;                          // 用户取消
-  importPending = list;
+  // 选择器给的顺序不可靠, 按文件名自然序排(录音分段 01/02/…/10 才接得对)
+  const base = x => x.path.split(/[\\/]/).pop() || '';
+  importPending = list.slice().sort((a,b)=>base(a).localeCompare(base(b), 'zh', {numeric:true}));
+  importMerge = false;
+  // 读不出时长 = 空文件或已损坏: 点名告诉用户, 整批都不导, 不硬跑
+  const bad = importPending.filter(x=>!x.dur);
+  if(bad.length){ importPending = []; showBadFiles(bad.map(base)); return; }
+  if(importPending.length > 1){ askImportBatch(); return; }
+  importProceed();
+};
+function importProceed(){
   // 只有设置=单人才跳过确认; 云端模式一律弹框让用户确认这批稿子怎么走。
   if(talkMode !== 'cloud'){ doImport('single'); return; }
   askImportCloud();     // 与停录同款: 云端设置下先问要不要上传, 不传就不导入
-};
+}
+function showAlert(title, items, hint){
+  $('paTitle').textContent = title;
+  $('paList').innerHTML = (items||[]).map(t=>`<li title="${esc(t)}">${esc(t)}</li>`).join('');
+  $('paList').style.display = items && items.length ? '' : 'none';
+  $('paHint').textContent = hint || '';
+  closePops();
+  $('popAlert').classList.add('show'); $('popscrim').classList.add('show');
+  $('paOk').onclick = closePops;
+  $('paOk').focus();
+}
+function showBadFiles(names){
+  showAlert(`有 ${names.length} 个文件无法读取`, names,
+    '这些文件可能是空的或已损坏，这次没有导入任何文件。请换掉它们后重新选择。');
+}
+function askImportBatch(){
+  $('pbTitle').textContent = `已选 ${importPending.length} 个文件，怎么处理？`;
+  $('pbList').innerHTML = importPending.map(x=>
+    `<li title="${esc(x.path)}">${esc(x.path.split(/[\\/]/).pop())}${x.dur?`<span class="pb-dur">${fmt(x.dur)}</span>`:''}</li>`).join('');
+  closePops();
+  $('popBatch').classList.add('show'); $('popscrim').classList.add('show');
+  $('pbCancel').onclick = ()=>{ importPending = []; closePops(); };
+  $('pbSplit').onclick = ()=>{ importMerge = false; closePops(); importProceed(); };
+  $('pbMerge').onclick = ()=>{ importMerge = true; closePops(); importProceed(); };
+}
 function askImportCloud(){
   if(!importPending.length) return;
   // 与停录同样的规矩: 数据出本机之前必须弹窗确认; 整批只弹一次, 不确认则一个都不导
-  const n = importPending.length;
+  const n = importMerge ? 1 : importPending.length;
   const totMb = importPending.reduce((a,x)=>a+(x.mb||0), 0);
   const totDur = importPending.reduce((a,x)=>a+(x.dur||0), 0);
-  const metaTxt = (n>1 ? `共 ${n} 个文件 · ` : '')
+  const metaTxt = (importMerge && importPending.length>1 ? `合并 ${importPending.length} 个文件为一份 · `
+                 : n>1 ? `共 ${n} 个文件 · ` : '')
                 + (totDur ? `总时长 ${fmt(totDur)}` : '时长未知')
                 + (totMb ? ` · 合计约 ${Math.round(totMb)} MB` : '');
   if(cloudFlow === 'local_post'){
@@ -11520,25 +11588,29 @@ function askImportCloud(){
   };
 }
 async function doImport(talk){
-  const list = importPending; importPending = []; closePops();
+  const list = importPending, merge = importMerge && list.length > 1;
+  importPending = []; importMerge = false; closePops();
   if(!list.length) return;
   // 后端秒建项目目录(抽轨在队列里跑), 先挂占位页让用户立刻看见"已经在做了"
   const stem = (list[0].path.split('/').pop() || '导入').replace(/\.[^.]+$/,'').slice(0,52);
   enterPendingView(stem);
   await languageReady;
-  const d = await api('/api/import', {paths: list.map(x=>x.path), talk, lang:langSel});
+  const d = await api('/api/import', {paths: list.map(x=>x.path), talk, lang:langSel, merge});
   delete jobs['__pending__'];
   if(d.ok && d.ids && d.ids.length){
     view = null;                         // 绕开"同一 id 不重载"的短路
     loadSession(d.ids[0].id);            // 打开第一个; 其余在侧栏排队/转写中各自有标
     toast(d.ids.length > 1 ? `已排入队列 ${d.ids.length} 个任务`
+      : merge ? `已合并 ${list.length} 个文件，${talk==='cloud' ? '开始云端处理' : '开始本地转写'}`
       : (talk==='cloud' ? '已开始云端处理，完成后自动更新' : '已开始本地转写，完成后自动更新'));
     if(d.errors && d.errors.length)
-      toast(d.errors.length + ' 个文件没能入队：' + (d.errors[0].error || ''));
+      showAlert(`${d.errors.length} 个文件没能导入`,
+        d.errors.map(x=>`${(x.path||'').split(/[\\/]/).pop()}：${x.error||'未知原因'}`));
     refreshHistory();
   } else {
-    toast((d.errors && d.errors[0] && d.errors[0].error) || d.error || '导入失败');
     updateRefineUI(); exitView(); refreshHistory();
+    if(d.bad && d.bad.length) showBadFiles(d.bad);
+    else showAlert('导入失败', [], (d.errors && d.errors[0] && d.errors[0].error) || d.error || '未知原因');
   }
 }
 
