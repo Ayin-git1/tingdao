@@ -8,7 +8,7 @@
 
 听道适用于 macOS 与 Windows，可录制系统声音与麦克风声音。支持本地模型转写和远端api转写两套通路。支持生成笔记与文稿摘要。深度集成从听→学的知识掌握链路。听道服务于：咨询服务、会议记录、私密会话、网课学习等场景。
 
-当前版本：**v3.1.2**　·　[下载页面](https://github.com/Ayin-git1/tingdao/releases)　·　[PolyForm Noncommercial License](./LICENSE)
+当前版本：**v3.1.6**　·　[下载页面](https://github.com/Ayin-git1/tingdao/releases)　·　[PolyForm Noncommercial License](./LICENSE)
 
 <h2 id="download"><img src="./assets/readme/badges/download.svg" height="40" alt="下载与安装"></h2>
 
@@ -23,7 +23,7 @@
 <h2 id="features"><img src="./assets/readme/badges/features.svg" height="40" alt="核心功能"></h2>
 
 - **录制与实时字幕**：系统声音、麦克风或混合录音；录音中可随时切换来源而不中断；支持暂停、继续和实时字幕。
-- **本地转写**：macOS 使用 MLX Whisper，Windows 使用 faster-whisper / CTranslate2；支持录音精修和音视频导入。
+- **本地转写**：macOS 使用 MLX Whisper，Windows 使用 faster-whisper / CTranslate2；支持录音精修和音视频导入；转写语言可选简体中文、繁体中文、英语或自动识别。
 - **云端处理（可选）**：可选择上传音频转写，或只发送本地转写出的文字进行润色和摘要。上传前会再次确认。
 - **文稿整理**：逐句时间戳与回放、说话人标记、AI 摘要与章节目录、录音中与录音后的时间线笔记（macOS 录音中可用 iPhone 直接拍照插入）、热词模板、搜索面板与替换、快捷键。
 - **个性化**：浅色、深色和跟随系统外观；支持预设及自定义主题色。
@@ -105,7 +105,16 @@ Windows 安装版已包含 FFmpeg。安装 Python 后重开 PowerShell，并确�
 
 源码采用 [PolyForm Noncommercial License 1.0.0](./LICENSE)，仅限个人非商业使用；应表述为“源码公开”，不属于允许商业使用的 OSI 开源许可。第三方库、工具和模型各自遵循其上游许可，详见 [`THIRD-PARTY-NOTICES.md`](./THIRD-PARTY-NOTICES.md)。macOS 提供 DMG，Windows 提供 NSIS 安装包，源码 zip 作为备用方式。
 
-<h2 id="updates"><img src="./assets/readme/badges/updates.svg" height="40" alt="v3.1.2 更新"></h2>
+<h2 id="updates"><img src="./assets/readme/badges/updates.svg" height="40" alt="v3.1.6 更新"></h2>
+
+### v3.1.6 · 2026-10-30
+
+[下载 macOS Apple Silicon 安装包](https://github.com/Ayin-git1/tingdao/releases/download/v3.1.6/tingdao_3.1.6_aarch64.dmg)。
+
+- 新增转写语言选择：「设置 → 录音与转写」中的「转写语言」可选简体中文、繁体中文、英语或自动识别，本地与云端转写共用并会记住选择；中英混说时保留英文，中文按所选简繁体输出。
+- 内置 OpenCC 简繁转换库，无需另装依赖；自动识别和其他语种保持识别原文。
+- 热词只作为术语提示传给模型，不再混入指令文字；百炼 `paraformer-v2` 改用语言提示并始终保留英文。
+- 以下修复首次进入 macOS 安装包：切换录音来源、暂停恢复、录音中改名后字幕时间戳接续整段录音；长音频云端分块不再遗漏尾段，取消后不再写入结果；Whisper 精修不再丢失摘要和图片笔记；父进程退出后后端自动收尾。
 
 ### v3.1.2 · 2026-10-29
 

@@ -41,7 +41,7 @@ from urllib.parse import urlparse, parse_qs, unquote, quote
 import numpy as np
 import sherpa_onnx
 
-APP_VERSION = "3.1.2"
+APP_VERSION = "3.1.6"
 
 # Finder/Dock 启动的 GUI 进程 PATH 不含 homebrew, 主动补齐(ffmpeg/SwitchAudioSource 所在)
 if platform.system() == "Darwin":
