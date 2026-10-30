@@ -8,7 +8,7 @@
 
 听道适用于 macOS 与 Windows，可录制系统声音与麦克风声音。支持本地模型转写和远端api转写两套通路。支持生成笔记与文稿摘要。深度集成从听→学的知识掌握链路。听道服务于：咨询服务、会议记录、私密会话、网课学习等场景。
 
-当前版本：**v3.1.6**　·　[下载页面](https://github.com/Ayin-git1/tingdao/releases)　·　[PolyForm Noncommercial License](./LICENSE)
+当前版本：**v3.1.7**　·　[下载页面](https://github.com/Ayin-git1/tingdao/releases)　·　[PolyForm Noncommercial License](./LICENSE)
 
 <h2 id="download"><img src="./assets/readme/badges/download.svg" height="40" alt="下载与安装"></h2>
 
@@ -27,7 +27,7 @@
 - **云端处理（可选）**：可选择上传音频转写，或只发送本地转写出的文字进行润色和摘要。上传前会再次确认。
 - **文稿整理**：逐句时间戳与回放、说话人标记、AI 摘要与章节目录、录音中与录音后的时间线笔记（macOS 录音中可用 iPhone 直接拍照插入）、热词模板、搜索面板与替换、快捷键。
 - **个性化**：浅色、深色和跟随系统外观；支持预设及自定义主题色。
-- **导出与管理**：导出 Markdown 和音频；历史项目支持搜索、排序、批量删除与在文件管理器中打开。删除内容先移入系统回收站。
+- **导出与管理**：导出 Markdown 和音频；文稿可单份或多选批量打包成 zip（含课后笔记与笔记图片）分享给别人；历史项目支持搜索、排序、批量删除与在文件管理器中打开。删除内容先移入系统回收站。
 
 <h2 id="privacy"><img src="./assets/readme/badges/privacy.svg" height="40" alt="隐私与数据"></h2>
 
@@ -82,8 +82,10 @@
 |---|---|---|---|
 | 音频转写 | 转写模型名 | `paraformer-v2` | — |
 | 文稿精修 | 文稿精修 | `qwen-long` | 关 |
-| 摘要与章节目录 | 摘要目录生成模型 | `qwen3.7-flash` | 开 |
+| 摘要与章节目录 | 摘要目录生成模型 | `qwen3.8-flash` | 关 |
 | 笔记 | 笔记模型 | `deepseek-v4.1-flash` | 开 |
+
+**摘要目录为什么推荐 `qwen3.8-flash`**：在作者实际使用中，它对全文的理解比 DeepSeek 更清晰，长逐字稿里哪里是新章节、哪里只是例子或补充，判断得明显更准；逻辑梳理和给内容打标签（H1 章节、H2 要点、H3 细节）的能力很突出，目录层级更干净，章节标题也能抓住每段主要讲的内容。关闭深度思考即可获得很好的效果，速度更快、更省 token。
 
 模型名需与百炼控制台中的名称完全一致；费用按百炼计费规则由服务商收取。若不想上传音频，可改用「本地转写+云端后制作」，只把文稿文字发给精修、摘要和笔记模型。
 
@@ -136,7 +138,20 @@ Windows 安装版已包含 FFmpeg。安装 Python 后重开 PowerShell，并确�
 
 源码采用 [PolyForm Noncommercial License 1.0.0](./LICENSE)，仅限个人非商业使用；应表述为“源码公开”，不属于允许商业使用的 OSI 开源许可。第三方库、工具和模型各自遵循其上游许可，详见 [`THIRD-PARTY-NOTICES.md`](./THIRD-PARTY-NOTICES.md)。macOS 提供 DMG，Windows 提供 NSIS 安装包，源码 zip 作为备用方式。
 
-<h2 id="updates"><img src="./assets/readme/badges/updates.svg" height="40" alt="v3.1.6 更新"></h2>
+<h2 id="updates"><img src="./assets/readme/badges/updates.svg" height="40" alt="v3.1.7 更新"></h2>
+
+### v3.1.7 · 2026-10-31
+
+[下载 macOS Apple Silicon 安装包](https://github.com/Ayin-git1/tingdao/releases/download/v3.1.7/tingdao_3.1.7_aarch64.dmg)。
+
+- 新增批量导入合并：一次导入多个音频时，可按列表顺序合并成一份文稿，也可每个文件各建一个项目；把鼠标移到按钮上，文件列表会先预览结果。
+- 新增导出分享：文稿可单份或多选打包成 zip，内含 Markdown 文稿、课后笔记和笔记图片，方便直接发给别人；保存位置由系统对话框选择，文件名按日期生成。
+- 复制 Markdown 时可直接复制成 .md 文件，粘贴到访达或聊天窗口即是文件；复制失败时自动改为复制文本。
+- 长文稿目录更完整：「设置 → 模型与服务」的摘要目录生成模型下新增「长文稿分段生成目录」开关，开启后长文稿按段依次生成、前后衔接，相邻且主题相同的章节自动合并，条目不丢失；生成中会显示当前阶段和已生成的 token 数，不再只是干等。
+- 推荐的摘要目录模型改为 `qwen3.8-flash`（关闭深度思考），详见 [推荐模型组合](#models)。
+- 超长文稿（2 小时以上）打开、滚动和按目录跳转明显更快；侧栏开合时正文不再反复重排，整个界面的动画更顺滑。
+- 结束录音、删除项目等确认弹窗会写清对象：名字、时长、日期、已转写字数，避免误操作。
+- 首次启动会附带一个「听道使用说明」示例项目；README 新增 [使用说明](#guide) 一节。
 
 ### v3.1.6 · 2026-10-30
 
