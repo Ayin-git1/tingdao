@@ -15,15 +15,14 @@ class DemoProjectTests(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.data = Path(self.tmp.name)
         tree = ast.parse(Path('app.py').read_text())
-        nodes = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in ('seed_demo_project', 'seed_first_open_guide')]
+        nodes = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'seed_demo_project']
         self.settings = {}
         self.written = []
         app = type('App', (), {'_write_md': lambda _self, d, meta, tag: self.written.append((d, tag))})()
         self.ns = dict(SESSIONS_DIR=self.data, DEMO_DIR=DEMO_DIR, NOTE_FILE='note.md',
-                       NOTE_IMAGE_DIR='note-images', APP=app, json=json, platform=self, shutil=shutil, time=time,
+                       NOTE_IMAGE_DIR='note-images', APP=app, json=json, shutil=shutil, time=time,
                        load_setting=lambda key, default=None: self.settings.get(key, default),
                        save_setting=lambda key, value: self.settings.__setitem__(key, value))
-        self.system_name = 'Darwin'
         exec(compile(ast.Module(body=nodes, type_ignores=[]), 'app.py', 'exec'), self.ns)
 
     def test_first_launch_places_a_complete_demo_project(self):
@@ -39,15 +38,21 @@ class DemoProjectTests(unittest.TestCase):
                 if node['type'] == 'image':
                     self.assertTrue((d / node['file']).is_file(), node['file'])
         self.assertEqual(self.written, [(d, '使用说明')])
-        self.assertTrue(self.settings['demo_seeded'])
+        self.assertTrue(self.settings['manual_seeded'])
 
-    def test_runs_once_and_skips_existing_libraries(self):
+    def test_existing_libraries_get_it_once(self):
         (self.data / '旧项目-20260101-000000').mkdir()
+        sid = self.ns['seed_demo_project']()
+        self.assertTrue((self.data / sid / 'session.json').is_file())
+        self.assertTrue(self.settings['manual_seeded'])
+        shutil.rmtree(self.data / sid)
         self.assertIsNone(self.ns['seed_demo_project']())
-        self.assertTrue(self.settings['demo_seeded'])
-        shutil.rmtree(self.data / '旧项目-20260101-000000')
+        self.assertEqual([p.name for p in self.data.iterdir()], ['旧项目-20260101-000000'])
+
+    def test_skips_libraries_that_already_have_the_manual(self):
+        (self.data / '听道使用说明-20261030-120000').mkdir()
         self.assertIsNone(self.ns['seed_demo_project']())
-        self.assertEqual([p.name for p in self.data.iterdir()], [])
+        self.assertEqual(len(list(self.data.iterdir())), 1)
 
     def test_demo_text_is_consistent(self):
         meta = json.loads((DEMO_DIR / 'demo-session.json').read_text(encoding='utf-8'))
@@ -59,26 +64,6 @@ class DemoProjectTests(unittest.TestCase):
             length = len(seg['text'].encode('utf-16-le')) // 2
             for fmt in seg.get('formats', []):
                 self.assertTrue(0 <= fmt['start'] < fmt['end'] <= length)
-
-    def system(self):
-        return self.system_name
-
-    def test_first_open_guide_is_added_once_even_for_existing_libraries(self):
-        (self.data / '旧项目-20260101-000000').mkdir()
-        sid = self.ns['seed_first_open_guide']()
-        meta = json.loads((self.data / sid / 'session.json').read_text(encoding='utf-8'))
-        self.assertEqual(meta['name'], '首次打开说明')
-        self.assertIsNone(meta['audio'])
-        self.assertTrue(any('仍要打开' in s['text'] for s in meta['segments']))
-        self.assertEqual(self.written, [(self.data / sid, '使用说明')])
-        shutil.rmtree(self.data / sid)
-        self.assertIsNone(self.ns['seed_first_open_guide']())
-        self.assertEqual([p.name for p in self.data.iterdir()], ['旧项目-20260101-000000'])
-
-    def test_first_open_guide_is_mac_only(self):
-        self.system_name = 'Windows'
-        self.assertIsNone(self.ns['seed_first_open_guide']())
-        self.assertEqual(list(self.data.iterdir()), [])
 
 
 if __name__ == '__main__':
