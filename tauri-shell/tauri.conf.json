@@ -26,6 +26,7 @@
       "program/tingdao-mix": "program/tingdao-mix",
       "program/sounds/": "program/sounds/",
       "../assets/material-preview-lakeside.png": "program/assets/material-preview-lakeside.png",
+      "../assets/demo/": "program/assets/demo/",
       "program/TingdaoMic.app/": "TingdaoMic.app/",
       "icons/Assets.car": "Assets.car",
       "icons/oto-icon-dark.icns": "Tingdao-dark.icns"

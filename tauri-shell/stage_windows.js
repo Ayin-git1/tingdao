@@ -17,6 +17,8 @@ fs.writeFileSync(path.join(__dirname, 'dist', 'index.html'),
 fs.mkdirSync(path.join(destination, 'assets'), { recursive: true });
 fs.copyFileSync(path.join(root, 'assets', 'material-preview-lakeside.png'),
   path.join(destination, 'assets', 'material-preview-lakeside.png'));
+// 首次启动放进数据目录的「听道使用说明」演示项目。
+fs.cpSync(path.join(root, 'assets', 'demo'), path.join(destination, 'assets', 'demo'), { recursive: true });
 
 fs.mkdirSync(path.join(destination, 'sounds'), { recursive: true });
 for (const file of files) {

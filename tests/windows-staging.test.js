@@ -15,6 +15,8 @@ test('clean Windows staging creates the embedded page and all source resources',
     fs.mkdirSync(path.join(root, 'assets'));
     fs.mkdirSync(path.join(root, 'sounds'));
     fs.writeFileSync(path.join(root, 'assets/material-preview-lakeside.png'), 'preview');
+    fs.mkdirSync(path.join(root, 'assets/demo'));
+    fs.writeFileSync(path.join(root, 'assets/demo/demo-session.json'), 'demo');
     fs.writeFileSync(path.join(root, 'sounds/test.mp3'), 'sound');
     fs.mkdirSync(path.join(root, 'opencc/dictionary'), {recursive:true});
     fs.writeFileSync(path.join(root, 'opencc/dictionary/TSCharacters.txt'), 'dict');
@@ -30,6 +32,7 @@ test('clean Windows staging creates the embedded page and all source resources',
     assert.deepEqual(staged.sort(), resources.filter(r => !r.endsWith('/ffmpeg/')).sort());
     assert.equal(fs.readFileSync(path.join(shell, 'program-windows/assets/material-preview-lakeside.png'), 'utf8'), 'preview');
     assert.equal(fs.readFileSync(path.join(shell, 'program-windows/opencc/dictionary/TSCharacters.txt'), 'utf8'), 'dict');
+    assert.equal(fs.readFileSync(path.join(shell, 'program-windows/assets/demo/demo-session.json'), 'utf8'), 'demo');
   } finally { fs.rmSync(root, {recursive:true, force:true}); }
 });
 

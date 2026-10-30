@@ -6146,6 +6146,33 @@ SOUND_FILES = {
     "task_complete_distant.mp3",
     "project_delete.mp3",
 }
+DEMO_DIR = MATERIAL_PREVIEW_DIR / "demo"     # 「听道使用说明」演示项目, 由 tools/build_demo.py 生成
+
+
+def seed_demo_project():
+    """第一次打开(数据目录里还没有任何项目)时放一份使用说明进去。
+    只试一次: 用户删掉它就不再出现; 老用户升级上来已有项目, 也不往里塞。"""
+    if load_setting("demo_seeded"):
+        return None
+    has_projects = any(d.is_dir() and not d.name.startswith(".") for d in SESSIONS_DIR.iterdir())
+    save_setting("demo_seeded", True)
+    src = DEMO_DIR / "demo-session.json"
+    if has_projects or not src.is_file():
+        return None
+    meta = json.loads(src.read_text(encoding="utf-8"))
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    d = SESSIONS_DIR / f"{meta['name']}-{stamp}"
+    d.mkdir(parents=True)
+    meta["stamp"] = stamp
+    meta["started"] = time.strftime("%Y-%m-%d %H:%M:%S")
+    shutil.copyfile(DEMO_DIR / "demo-audio.m4a", d / meta["audio"])
+    shutil.copyfile(DEMO_DIR / "demo-note.md", d / NOTE_FILE)
+    if (DEMO_DIR / NOTE_IMAGE_DIR).is_dir():
+        shutil.copytree(DEMO_DIR / NOTE_IMAGE_DIR, d / NOTE_IMAGE_DIR)
+    (d / "session.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
+    APP._write_md(d, meta, "使用说明")
+    return d.name
+
 
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):
@@ -6768,6 +6795,12 @@ def main():
             print(f"[cache] 自动清理未完成: {result['errors']}")
     except Exception as error:
         print(f"[cache] 启动缓存检查失败: {error}")
+    try:
+        seeded = seed_demo_project()
+        if seeded:
+            print(f"[demo] 已放入使用说明: {seeded}")
+    except Exception as error:
+        print(f"[demo] 放入使用说明失败: {error}")
     # 端口交给 OS 现挑(bind 端口 0 = 一个真正空闲的回环端口, 没有「探测到空闲→再占用」之间的抢端口竞态);
     # 绑好后从 socket 读回真实端口, 全进程(含回报给壳、喂给 pywebview)都用这一个值。
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)

@@ -1,0 +1,227 @@
+<!doctype html>
+<!-- 「听道使用说明」里的示意图。用浏览器按 2 倍像素截取每个 .fig，存到 assets/demo/note-images/ -->
+<html lang="zh-CN"><head><meta charset="utf-8">
+<style>
+  :root{--g:#35a852;--g-soft:#e3f4e7;--g-line:#bfe5c8;--ink:#1d1d1f;--sub:#6e6e73;--faint:#a1a1a6;
+        --line:#e6e6e8;--bg:#f5f6f5;--card:#fff;--blue:#2f6fd6;--note:#fbe9a6;--note-ink:#7a5a12}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:#fff;font-family:-apple-system,"PingFang SC","Hiragino Sans GB",sans-serif;color:var(--ink)}
+  .fig{display:inline-block;margin:0 24px 24px 0;padding:26px 28px;background:var(--bg);border-radius:18px;vertical-align:top}
+  .cap{margin-top:16px;font-size:13px;color:var(--sub);line-height:1.6}
+  .tag{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--sub);white-space:nowrap}
+  .tag b{font-weight:600;color:var(--ink)}
+  svg.i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+  .round{width:44px;height:44px;border-radius:50%;background:#fff;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.06)}
+  .shadow{box-shadow:0 10px 30px rgba(0,0,0,.10),0 1px 3px rgba(0,0,0,.06)}
+
+  /* 录音底栏 */
+  #dock{width:640px}
+  .dock{display:flex;align-items:flex-end;gap:12px;justify-content:center;position:relative;padding-top:150px}
+  .round.pen{background:#fbe39a;border-color:#efd27a;color:#6b5414}
+  .round.src{border:1.5px solid var(--g);color:var(--g);background:#f1faf3}
+  .round.vol{font-size:13px;font-weight:600}
+  .round.vol small{font-size:9px;color:var(--faint);font-weight:400}
+  .timer{height:52px;border-radius:26px;background:#fff;border:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 18px 0 20px;box-shadow:0 2px 8px rgba(0,0,0,.06)}
+  .timer .t{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}
+  .wave{display:flex;align-items:center;gap:3px}
+  .wave i{display:block;width:4px;border-radius:2px;background:#bfe5c8}
+  .stop{width:13px;height:13px;border-radius:3px;background:var(--ink)}
+  .srcmenu{position:absolute;left:142px;bottom:62px;display:flex;flex-direction:column;gap:8px;align-items:flex-end}
+  .srcmenu div{display:flex;align-items:center;gap:8px}
+  .srcmenu span{font-size:12.5px;padding:4px 10px;border-radius:12px;background:#fff;border:1px solid var(--line);color:var(--sub)}
+  .srcmenu .on span{color:var(--g);border-color:var(--g-line)}
+  .srcmenu .round{width:38px;height:38px}
+  .srcmenu .on .round{background:var(--g-soft);border-color:var(--g);color:var(--g)}
+  .labels{display:flex;gap:12px;justify-content:center;margin-top:12px}
+  .labels .tag{justify-content:center;font-size:12px}
+
+  /* 划词工具栏 */
+  #format{width:600px}
+  .line{display:flex;gap:22px;font-size:15px;line-height:1.9}
+  .ts{color:var(--faint);font-size:13px;width:40px;flex:none;padding-top:2px}
+  .sel{background:#cfe0fb;border-radius:2px}
+  .tbar{display:inline-flex;align-items:center;gap:4px;padding:6px 8px;background:#fff;border:1px solid var(--line);border-radius:14px;margin:0 0 10px 52px}
+  .tbar .b{width:36px;height:32px;display:flex;align-items:center;justify-content:center;border-radius:8px;font-size:15px;color:var(--ink)}
+  .tbar .sep{width:1px;height:22px;background:var(--line);margin:0 4px}
+  .tbar .recent{flex-direction:column;font-size:10px;line-height:1}
+  .tbar .recent em{font-style:normal;background:#f6d2d2;color:#c0392b;padding:1px 3px;border-radius:3px;margin-top:2px;font-size:11px}
+  .legend{display:grid;grid-template-columns:repeat(3,auto);gap:8px 22px;margin-top:18px;justify-content:start}
+  .legend .tag span.k{display:inline-flex;width:24px;height:22px;border-radius:6px;background:#fff;border:1px solid var(--line);align-items:center;justify-content:center;font-size:12px;color:var(--ink)}
+
+  /* 笔记卡片 + 排版菜单 */
+  #notemenu{width:600px}
+  .ncard{position:relative;background:var(--note);border-radius:16px;padding:18px 20px 64px;color:var(--note-ink);font-size:14.5px;line-height:1.8}
+  .ncard .pic{float:left;width:150px;height:96px;border-radius:10px;margin:4px 14px 6px 0;background:linear-gradient(135deg,#cfe9d5,#9fd3ac);outline:3px solid #fff;box-shadow:0 0 0 4px #e9cf6e;display:flex;align-items:center;justify-content:center;color:#2b6a3a;font-size:12px}
+  .ncard .btns{position:absolute;right:16px;bottom:14px;display:flex;gap:8px}
+  .ncard .btns span{font-size:12px;padding:5px 12px;border-radius:12px;background:#fff6d4;border:1px solid #ecd98f}
+  .cmenu{position:absolute;left:250px;top:96px;width:190px;background:#fff;border-radius:12px;padding:6px;font-size:13.5px;color:var(--ink)}
+  .cmenu div{padding:7px 12px;border-radius:8px}
+  .cmenu .on{background:var(--g-soft);color:#21753a}
+  .cmenu hr{border:0;border-top:1px solid var(--line);margin:5px 6px}
+  .cmenu .del{color:#c0392b}
+  .ptr{position:absolute;width:18px;height:18px}
+
+  /* 目录刻度 */
+  #outline{width:420px}
+  .ol-wrap{display:flex;gap:14px;align-items:center}
+  .ol{flex:1;background:#fff;border-radius:14px;padding:12px 8px;font-size:13.5px}
+  .ol div{padding:5px 12px;border-radius:8px;color:var(--ink)}
+  .ol .h1{color:#2d7a43;font-weight:600}
+  .ol .h2{padding-left:28px;color:#3a3a3c}
+  .ol .cur{background:var(--g-soft)}
+  .ol .cur::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--g);margin:0 8px 2px -14px}
+  .rail{display:flex;flex-direction:column;gap:9px;align-items:flex-end;position:relative}
+  .rail i{display:block;height:2px;border-radius:1px;background:#c8c8cc;width:10px}
+  .rail i.h{width:16px}
+  .rail i.cur{background:var(--g);width:22px}
+
+  /* 摘要重新生成 */
+  #summary{width:600px}
+  .scard{position:relative;background:#fff;border:1px solid var(--line);border-radius:16px;padding:18px 22px}
+  .shead{display:flex;align-items:center;justify-content:space-between;margin:-6px -10px 6px;padding:6px 10px;border-radius:10px;background:#f7faf8}
+  .slabel{color:var(--g);font-size:13px;font-weight:600;display:flex;gap:6px;align-items:center}
+  .regen{width:32px;height:32px;border-radius:50%;border:1.5px solid var(--g);background:#f1faf3;color:var(--g);display:flex;align-items:center;justify-content:center}
+  .stitle{font-size:19px;font-weight:700;margin:6px 0 6px}
+  .sline{font-size:14px;color:#3a3a3c;line-height:1.8}
+  .sline.f{color:#c7c7cc}
+  .callout{position:absolute;font-size:12.5px;color:#fff;background:#2c2c2e;padding:5px 10px;border-radius:8px;white-space:nowrap}
+
+  /* 项目右键菜单 */
+  #sidebar{width:440px}
+  .sb{position:relative;height:280px}
+  .item{position:absolute;left:0;top:10px;width:250px;background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px 16px}
+  .item .n{font-size:14.5px;font-weight:600}
+  .item .m{font-size:12px;color:var(--faint);margin-top:8px}
+  .item .dots{position:absolute;right:14px;top:12px;color:var(--sub);font-size:15px;letter-spacing:1px}
+  .smenu{position:absolute;left:170px;top:52px;width:200px;background:#fff;border-radius:12px;padding:6px;font-size:13.5px}
+  .smenu div{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:8px}
+  .smenu div svg{color:var(--sub)}
+  .smenu .hov{background:#f2f2f4}
+  .smenu .arrow{margin-left:auto;color:var(--faint)}
+</style></head>
+<body>
+
+<!-- 1. 录音底栏 -->
+<div class="fig" id="dock">
+  <div class="dock">
+    <div class="srcmenu">
+      <div><span>仅麦克风</span><div class="round"><svg class="i" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></div></div>
+      <div class="on"><span>系统 + 麦克风</span><div class="round"><svg class="i" viewBox="0 0 24 24"><path d="M3 10v4h3l4 3V7L6 10z"/><rect x="14" y="4" width="4" height="8" rx="2"/><path d="M12.5 10a3.5 3.5 0 0 0 7 0M16 13.5V16"/></svg></div></div>
+      <div><span>仅系统声音</span><div class="round"><svg class="i" viewBox="0 0 24 24"><path d="M4 10v4h3l5 4V6L7 10z"/><path d="M16 9a4 4 0 0 1 0 6"/></svg></div></div>
+    </div>
+    <div class="round pen"><svg class="i" viewBox="0 0 24 24"><path d="M4 20l4-1 10-10-3-3L5 16z"/></svg></div>
+    <div class="round src"><svg class="i" viewBox="0 0 24 24"><path d="M3 10v4h3l4 3V7L6 10z"/><rect x="14" y="4" width="4" height="8" rx="2"/><path d="M12.5 10a3.5 3.5 0 0 0 7 0M16 13.5V16"/></svg></div>
+    <div class="round vol">62<small>%</small></div>
+    <div class="round"><svg class="i" viewBox="0 0 24 24"><path d="M9 6v12M15 6v12"/></svg></div>
+    <div class="timer"><span class="t">12:34</span>
+      <span class="wave"><i style="height:12px"></i><i style="height:22px"></i><i style="height:16px"></i><i style="height:28px"></i><i style="height:18px"></i><i style="height:10px"></i><i style="height:24px"></i><i style="height:30px"></i><i style="height:14px"></i><i style="height:20px"></i><i style="height:26px"></i><i style="height:12px"></i></span>
+      <span class="stop"></span></div>
+  </div>
+  <div class="labels">
+    <span class="tag" style="width:44px">笔记</span>
+    <span class="tag" style="width:44px">来源</span>
+    <span class="tag" style="width:44px">音量</span>
+    <span class="tag" style="width:44px">暂停</span>
+    <span class="tag" style="width:196px">计时 · 点小方块结束</span>
+  </div>
+  <div class="cap">录音时的底栏。点来源按钮，弹出三种来源，录到一半也能换。</div>
+</div>
+
+<!-- 2. 划词工具栏 -->
+<div class="fig" id="format">
+  <div class="tbar shadow">
+    <div class="b recent"><svg class="i" viewBox="0 0 24 24" style="width:14px;height:14px"><path d="M4 12a8 8 0 1 0 2.5-5.8M4 4v4h4"/><path d="M12 8v4l2.5 1.5"/></svg><em>Aa</em></div>
+    <div class="sep"></div>
+    <div class="b"><b style="font-family:Georgia,serif">B</b></div>
+    <div class="b"><span style="text-decoration:underline;text-underline-offset:3px">U</span></div>
+    <div class="b" style="font-size:14px">T<sub style="font-size:9px">×</sub></div>
+    <div class="sep"></div>
+    <div class="b"><svg class="i" viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18c1.5 0 2-1 2-2s-1-1.5-1-2.5S14 15 15.5 15H18a3 3 0 0 0 3-3c0-5-4-9-9-9z"/><circle cx="7.5" cy="11" r="1"/><circle cx="10" cy="7" r="1"/><circle cx="15" cy="7.5" r="1"/></svg></div>
+    <div class="b"><svg class="i" viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/><path d="M9 9.5v2M13 9.5v2"/></svg></div>
+  </div>
+  <div class="line"><span class="ts">04:52</span><span>用鼠标<span class="sel">选中一段字</span>，旁边会浮出一条小工具栏。</span></div>
+  <div class="legend">
+    <span class="tag"><span class="k">Aa</span>最近用过的样式</span>
+    <span class="tag"><span class="k"><b>B</b></span>加粗 ⌘B</span>
+    <span class="tag"><span class="k"><u>U</u></span>下划线 ⌘U</span>
+    <span class="tag"><span class="k">T×</span>清除格式</span>
+    <span class="tag"><span class="k">◐</span>文字颜色、背景色</span>
+    <span class="tag"><span class="k">❞</span>引用到笔记</span>
+  </div>
+</div>
+
+<!-- 3. 笔记卡片里的图片排版 -->
+<div class="fig" id="notemenu">
+  <div style="position:relative;height:330px">
+    <div class="ncard">
+      <div class="pic">课件截图</div>
+      课件第 12 页，老师说这张图期末会考。图片选了四周型环绕，文字贴着图片右边往下排，排过图片以后再铺满整行。期末前把这几页再过一遍，尤其是第三节的对照表。
+      <div class="btns"><span>确认</span><span>取消</span></div>
+    </div>
+    <div class="cmenu shadow">
+      <div>嵌入型</div>
+      <div class="on">四周型环绕</div>
+      <div>上下型环绕</div>
+      <div>衬于文字下方</div>
+      <div>浮于文字上方</div>
+      <hr>
+      <div class="del">删除图片</div>
+    </div>
+  </div>
+  <div class="cap">在笔记卡片里右键图片，选排版方式。</div>
+</div>
+
+<!-- 4. 目录刻度 -->
+<div class="fig" id="outline">
+  <div class="ol-wrap">
+    <div class="ol shadow">
+      <div class="h1">录音时记笔记和插图</div>
+      <div class="h2">随手记一句</div>
+      <div class="h2">拖进来，粘进来</div>
+      <div class="h1">回头看稿</div>
+      <div class="h2 cur">跟着听</div>
+      <div class="h2">章节和目录</div>
+      <div class="h2">改错字</div>
+      <div class="h2">划重点</div>
+      <div class="h1">在文稿里放图片</div>
+    </div>
+    <div class="rail">
+      <i class="h"></i><i></i><i></i><i class="h"></i><i class="cur"></i><i></i><i></i><i></i><i class="h"></i><i></i><i></i>
+    </div>
+  </div>
+  <div class="cap">鼠标移到右边的刻度上，展开成目录。</div>
+</div>
+
+<!-- 5. 摘要重新生成 -->
+<div class="fig" id="summary">
+  <div class="scard">
+    <div class="shead">
+      <span class="slabel"><svg class="i" viewBox="0 0 24 24" style="fill:currentColor;stroke:none;width:14px;height:14px"><path d="M10.8 2.8 12.7 9l6.2 1.9-6.2 1.9-1.9 6.2-1.9-6.2L2.7 11l6.2-1.9z"/></svg>AI 摘要</span>
+      <span class="regen"><svg class="i" viewBox="0 0 24 24" style="width:16px;height:16px"><path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5"/></svg></span>
+    </div>
+    <div class="stitle">听道使用说明</div>
+    <div class="sline">听道自带的功能说明，也是一个可以随便动手试的示范项目。</div>
+    <div class="sline f">· 录音：三种录音来源，录到一半也能换……</div>
+    <svg class="ptr" viewBox="0 0 24 24" style="left:250px;top:24px;width:20px;height:20px"><path d="M5 3l14 8-6 1.5L10 19z" fill="#1d1d1f" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/></svg>
+    <span class="callout" style="left:280px;top:-26px">鼠标停在这一行，等一两秒</span>
+    <span class="callout" style="right:-10px;top:-26px;background:var(--g)">重新生成</span>
+  </div>
+</div>
+
+<!-- 6. 项目右键菜单 -->
+<div class="fig" id="sidebar">
+  <div class="sb">
+    <div class="item"><div class="n">听道使用说明</div><div class="m">10-30 · 12:18</div><span class="dots">···</span></div>
+    <div class="smenu shadow">
+      <div><svg class="i" viewBox="0 0 24 24"><path d="M4 20l4-1 10-10-3-3L5 16z"/></svg>重命名</div>
+      <div><svg class="i" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg>复制文稿</div>
+      <div><svg class="i" viewBox="0 0 24 24"><path d="M4 7l2 2 3-3M4 15l2 2 3-3M12 8h8M12 16h8"/></svg>批量操作</div>
+      <div class="hov"><svg class="i" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>移到项目<span class="arrow">›</span></div>
+      <div><svg class="i" viewBox="0 0 24 24"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/></svg>收藏</div>
+      <div><svg class="i" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="5" rx="1"/><path d="M5 9v10h14V9M10 13h4"/></svg>归档</div>
+    </div>
+  </div>
+  <div class="cap">右键项目，或点它右边的三个点。</div>
+</div>
+
+</body></html>
