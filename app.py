@@ -6640,6 +6640,26 @@ def seed_demo_project():
     return d.name
 
 
+def seed_first_open_guide():
+    """macOS 上放一份「首次打开说明」(被提示移到废纸篓时怎么放行)。
+    从 3.1.7 起新老用户都放一次, 不看库里有没有项目; 用户删掉它就不再出现。"""
+    if platform.system() != "Darwin" or load_setting("first_open_guide_seeded"):
+        return None
+    save_setting("first_open_guide_seeded", True)
+    src = DEMO_DIR / "first-open-session.json"
+    if not src.is_file():
+        return None
+    meta = json.loads(src.read_text(encoding="utf-8"))
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    d = SESSIONS_DIR / f"{meta['name']}-{stamp}"
+    d.mkdir(parents=True)
+    meta["stamp"] = stamp
+    meta["started"] = time.strftime("%Y-%m-%d %H:%M:%S")
+    (d / "session.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
+    APP._write_md(d, meta, "使用说明")
+    return d.name
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
@@ -7272,6 +7292,12 @@ def main():
             print(f"[demo] 已放入使用说明: {seeded}")
     except Exception as error:
         print(f"[demo] 放入使用说明失败: {error}")
+    try:
+        seeded = seed_first_open_guide()
+        if seeded:
+            print(f"[demo] 已放入首次打开说明: {seeded}")
+    except Exception as error:
+        print(f"[demo] 放入首次打开说明失败: {error}")
     # 端口交给 OS 现挑(bind 端口 0 = 一个真正空闲的回环端口, 没有「探测到空闲→再占用」之间的抢端口竞态);
     # 绑好后从 socket 读回真实端口, 全进程(含回报给壳、喂给 pywebview)都用这一个值。
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
