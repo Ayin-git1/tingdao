@@ -22,6 +22,7 @@
       "program/app.py": "program/app.py",
       "program/index.html": "program/index.html",
       "program/whisper_worker.py": "program/whisper_worker.py",
+      "../opencc/": "program/opencc/",
       "program/tingdao-mix": "program/tingdao-mix",
       "program/sounds/": "program/sounds/",
       "../assets/material-preview-lakeside.png": "program/assets/material-preview-lakeside.png",

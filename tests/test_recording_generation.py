@@ -16,8 +16,9 @@ class RecordingGenerationTests(unittest.TestCase):
         cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == 'App')
         names = {'start', 'resume', 'pause', 'stop', '_stop_bg', '_read_loop', '_decode_loop', '_start_pcm_threads'}
         methods = [n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name in names]
-        engine = SimpleNamespace(engine_name='other', new_vad=lambda: None)
+        engine = SimpleNamespace(engine_name='other', new_vad=lambda: None, use_language=lambda lang: None)
         namespace = dict(threading=threading, queue=queue, ENGINE=engine,
+                         transcription_language=lambda lang: lang, asr_text=lambda text, lang: text,
                          platform=SimpleNamespace(system=lambda: 'Windows'), SR=16000,
                          talk_mode=lambda: 'cloud', cloud_flow=lambda: 'upload', json=json)
         namespace.update(extra)

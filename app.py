@@ -12,6 +12,7 @@
 import base64
 import calendar
 from datetime import datetime
+from functools import lru_cache
 from collections import deque
 import copy
 import json
@@ -963,7 +964,46 @@ def cloud_think_off_for(provider, model, user_think_on):
     return (not user_think_on) and cloud_think_cap_get(provider, model) == "off"
 
 
-ASR_LANG = {"zh": "zh", "en": "en", "ja": "ja", "ko": "ko", "yue": "yue"}
+ASR_LANG = {"zh": "zh", "zh-tw": "zh", "en": "en", "ja": "ja", "ko": "ko", "yue": "yue"}
+
+
+def transcription_language(value=None):
+    """zh 沿用旧项目的中文值，明确表示简体；新任务默认简体中文。"""
+    value = load_setting("asr_language", "zh") if value is None else value
+    return value if value in ("zh", "zh-tw", "en", "auto") else "zh"
+
+
+@lru_cache(maxsize=2)
+def _asr_converter(script):
+    try:
+        from opencc import OpenCC
+    except ImportError as exc:
+        raise RuntimeError("缺少随程序附带的 opencc 简繁转换库(opencc-python-reimplemented)，请重新安装听道") from exc
+    return OpenCC(script)
+
+
+def asr_text(text, lang):
+    """只转换明确选择的中文字形，自动识别和其他语种保留原文。"""
+    if text and lang in ("zh", "zh-tw"):
+        return _asr_converter("t2s" if lang == "zh" else "s2t").convert(text)
+    return text
+
+
+def asr_result(result, lang):
+    result["text"] = asr_text(result.get("text") or "", lang)
+    for segment in result.get("segments") or []:
+        segment["text"] = asr_text(segment.get("text") or "", lang)
+    return result
+
+
+def asr_prompt(lang, hotwords=None):
+    """转写提示词只放热词: whisper 系把它当上文而非指令, 指令句会被原样吐进稿子。
+    简繁由结果转换保证, 不靠提示词。"""
+    words = "、".join(hotwords or [])
+    if not words:
+        return ""
+    prefix = "Names and terms: " if lang == "en" else "以下是常用人名与术语："
+    return asr_text(prefix + words, lang)
 
 # 上传格式表: ffmpeg 编码参数 + MIME。默认 mp3 —— 16k 单声道 64k 下约 28MB/小时,
 # 各家接口几乎都收; m4a 是 AAC 装在 MP4 容器里, 部分厂商(如只列 wav/mp3/opus/aac 的)会拒
@@ -1004,8 +1044,10 @@ def looks_like_format_err(text):
 
 def cloud_asr_opts(lang=None, hotwords=None):
     """把「识别语言 + 热词库」打包成给转写接口的附加参数(两家协议各取所需)。"""
+    lang = lang or "zh"
     return {"language": ASR_LANG.get((lang or "").strip(), ""),
-            "prompt": "、".join(hotwords or [])}
+            "prompt": asr_prompt(lang, hotwords),
+            "corpus": asr_text("、".join(hotwords or []), lang)}
 
 
 def _cloud_check(cfg, need="chat"):
@@ -1348,10 +1390,14 @@ def cloud_asr(cfg, audio_path, timeout=1800, prog=None, cancel=None, sid=None):
     只能由用户显式触发。返回 {'text', 'segments'}。
     cancel: 无参回调, 在天然检查点(切块之间/轮询之间)调用, 该停就抛。
     sid: 项目 id, 用于失败后暂存 task_id/结果链接, 重试时不二次计费。"""
+    cfg = dict(cfg, lang=cfg.get("lang") or "zh")
     _cloud_check(cfg, "asr")
+    asr_text("中文", cfg["lang"])
     if cfg["provider"] == "dashscope":
-        return _cloud_asr_dashscope(cfg, audio_path, timeout, prog, cancel, sid)
-    return _cloud_asr_openai(cfg, audio_path, timeout, prog, cancel)
+        result = _cloud_asr_dashscope(cfg, audio_path, timeout, prog, cancel, sid)
+    else:
+        result = _cloud_asr_openai(cfg, audio_path, timeout, prog, cancel)
+    return asr_result(result, cfg["lang"])
 
 
 def _cloud_asr_openai(cfg, audio_path, timeout=1800, prog=None, cancel=None):
@@ -1510,10 +1556,15 @@ def _cloud_asr_dashscope(cfg, audio_path, timeout=1800, prog=None, cancel=None, 
     # 人数不写死, 交给云自动判; 部分 filetrans 模型无此参数, 传了会报错所以跳过。
     opts = cloud_asr_opts(cfg.get("lang"), cfg.get("hotwords"))
     params = {} if is_filetrans_single else {"diarization_enabled": True}
-    if opts["language"]:
-        params["language"] = opts["language"]          # 已知语种可显著提升准确率
-    if opts["prompt"]:
-        params["corpus"] = {"text": opts["prompt"]}    # 官方热词位(仅部分模型支持)
+    if model == "paraformer-v2" and opts["language"]:
+        # 该模型使用 language_hints；始终保留英文，支持中英混说。
+        params["language_hints"] = (["en", "zh"] if opts["language"] == "en"
+                                    else [opts["language"], "en"])
+    elif opts["language"] and not is_filetrans_single:
+        params["language"] = opts["language"]
+    # Qwen Filetrans 官方要求混合语音不指定单一 language，简繁由结果转换保证。
+    if opts["corpus"]:
+        params["corpus"] = {"text": opts["corpus"]}    # 热词位不放指令，简繁在结果端保证
     body["parameters"] = params
     r = requests.post(base + "/api/v1/services/audio/asr/transcription",
                       headers=headers, json=body, timeout=120)
@@ -1725,7 +1776,7 @@ def _cloud_ok(r, cfg):
 # 这个常量只作为"什么都探测不到"时的最后兜底。
 BUILTIN_FALLBACK = "MacBook Pro扬声器"
 _VIRT_OUT_PAT = re.compile(r"blackhole|多输出|multi-?output|聚合|aggregate", re.I)
-LANG_MAP = {"zh": "zh", "en": "en", "auto": ""}
+LANG_MAP = {"zh": "zh", "zh-tw": "zh", "en": "en", "auto": ""}
 MODE_LABELS = {"mix": "系统声音+麦克风", "system": "仅系统声音", "mic": "仅麦克风",
                "import": "导入文件"}
 
@@ -2460,14 +2511,15 @@ class Engine:
             # 模型缺失或损坏不能阻断设置页；开始录音时仍会提示重新配置。
             print(f"[model] SenseVoice 加载失败，请在设置 → 本地模型重新配置：{e}", flush=True)
 
-    def _load_sensevoice(self):
+    def _load_sensevoice(self, lang="zh"):
         d = sv_model_dir()
         if d is None:
             return          # 未配置: 启动不炸, 到 start() 再明确报错
         self._sv = sherpa_onnx.OfflineRecognizer.from_sense_voice(
             model=str(d / ("model.int8.onnx" if (d / "model.int8.onnx").is_file() else "model.onnx")),
             tokens=str(d / "tokens.txt"),
-            num_threads=4, language="zh", use_itn=True)
+            num_threads=4, language=lang, use_itn=True)
+        self._sv_language = lang
 
     def switch(self, name):
         """切换引擎(仅 idle 时调用); 惰性加载 whisper"""
@@ -2503,17 +2555,24 @@ class Engine:
 
     def recognize(self, samples, lang):
         if self.engine_name == "whisper":
-            return self._recognize_whisper(samples, lang)
-        return self._recognize_sensevoice(samples, lang)
+            return asr_text(self._recognize_whisper(samples, lang), lang)
+        return asr_text(self._recognize_sensevoice(samples, lang), lang)
+
+    def use_language(self, lang):
+        """起录前按需重载 SenseVoice; 放在识别路径里会让首句字幕卡住整次模型加载。"""
+        spoken_lang = LANG_MAP.get(lang, "")
+        if self._sv is not None and getattr(self, "_sv_language", "zh") != spoken_lang:
+            self._load_sensevoice(spoken_lang)
 
     def _recognize_sensevoice(self, samples, lang):
-        self._sv.set_language(LANG_MAP.get(lang, "")) if hasattr(self._sv, "set_language") else None
         stream = self._sv.create_stream()
         stream.accept_waveform(SR, samples)
         self._sv.decode_stream(stream)
         return (stream.result.text or "").strip()
 
     def _recognize_whisper(self, samples, lang):
+        # 实时短句不带提示词: 每句都多一段前缀解码, 静音片段还会把提示词原样吐出来
+        lang = ASR_LANG.get(lang, "")
         if platform.system() == "Windows":
             model = self._load_windows_whisper(whisper_model())
             kw = {"beam_size": 1}
@@ -3100,8 +3159,11 @@ class App:
         with self.lock:
             if self.state != "idle":
                 raise RuntimeError("已有进行中的会话，请先停止")
+            lang = transcription_language(lang)
+            asr_text("中文", lang)
             if ENGINE.engine_name == "sensevoice" and ENGINE._sv is None:
                 raise RuntimeError("未配置 SenseVoice 模型：设置 → 本地模型")
+            ENGINE.use_language(lang)
             self.gen += 1
             self.session = self._new_session(name, mode, lang)
             self.total_samples = 0
@@ -3947,6 +4009,7 @@ class App:
         - 转写本体跑在子进程(whisper_worker.py): mlx_whisper 没有回调参数,
           在主进程里跑就是一块拆不开的整砖, 停止按钮按不动; 子进程 SIGTERM 即死。"""
         audio_path = Path(audio)
+        asr_text("中文", lang)
         tmp_wav = cache_temp_path("pretreat", ".wav")
         chain = None if pretreat is False else pretreat_chain()
         info = {"pretreat": "off", "error": "", "repeat_dropped": 0}
@@ -4032,6 +4095,8 @@ class App:
             info["repeat_dropped"] = len(dropped)
             print(f"[whisper] 跨段复读过滤: 丢弃 {len(dropped)} 段重复, "
                   f"样例「{dropped[0][:24]}…」", flush=True)
+        for seg in new_segs:
+            seg["text"] = asr_text(seg["text"], lang)
         return self._merge_segs(new_segs), info
 
     def _whisper_proc(self, audio_path, lang, total, silence_skip, sid):
@@ -4049,10 +4114,11 @@ class App:
                "--model", str(wm), "--total", str(total or 0),
                "--out", str(out)]
         if lang and lang != "auto":
-            cmd += ["--lang", lang]
+            cmd += ["--lang", ASR_LANG.get(lang, lang)]
         hw = load_hotwords()
-        if hw:
-            cmd += ["--prompt", "以下是常用人名与术语：" + "、".join(hw)]
+        prompt = asr_prompt(lang, hw)
+        if prompt:
+            cmd += ["--prompt", prompt]
         if silence_skip:
             cmd += ["--silence-skip"]
         try:
@@ -4222,7 +4288,7 @@ class App:
         except Exception:
             return []
 
-    def import_audio(self, path, talk="single"):
+    def import_audio(self, path, talk="single", lang=None):
         """导入音视频: 秒建项目并排队, 抽轨+转写都在 worker 里跑(批量不堵口)。
         talk: single=本地 Whisper | cloud=云端转写。本地队列串行, 云端 2 路并行。"""
         src = Path(path or "")
@@ -4242,7 +4308,7 @@ class App:
         while d.exists():
             d = SESSIONS_DIR / f"{stem}-{stamp}-{i}"; i += 1
         d.mkdir(parents=True)
-        lang = (self.session or {}).get("lang", "zh") if self.session else "zh"
+        lang = transcription_language(lang)
         (d / "session.json").write_text(json.dumps({
             "name": name, "started": time.strftime("%Y-%m-%d %H:%M:%S"),
             "stamp": stamp, "mode": "import", "lang": lang, "talk": talk,
@@ -4322,6 +4388,7 @@ class App:
             sj = d / "session.json"
             meta = json.loads(sj.read_text(encoding="utf-8"))
             meta["segments"] = new_segs
+            meta["lang"] = lang
             meta["pretreat"] = info["pretreat"]
             meta["transcribe_src"] = str(src.name)
             meta["refinished"] = "whisper"
@@ -4450,8 +4517,10 @@ class App:
         self._job_begin(sid, "cloud", state="wait")
         # 流程①转写完还要接后制作; 流程②不会走到这里(那条是本地转写+云端后制作)
         target = self._cloud_asr_then_post if cloud_flow() == "asr_post" else self._cloud_asr_bg
+        # 重跑沿用项目自己的语言, 不随全局设置改变旧项目
+        cfg = dict(self.cloud_cfg_full(), lang=transcription_language(meta.get("lang")))
         self._enqueue(sid, "cloud",
-                      lambda: target(d, self.cloud_cfg_full()))
+                      lambda: target(d, cfg))
         return {"ok": True, "id": sid}
 
     def _cloud_asr_then_post(self, d, cfg):
@@ -4467,7 +4536,8 @@ class App:
             t0 = time.time()
             meta = json.loads(sj.read_text(encoding="utf-8"))
             up, temporary_source = self._cloud_recording_source(d, meta)
-            cfg["lang"] = meta.get("lang")
+            cfg.setdefault("lang", meta.get("lang") or "zh")
+            meta["lang"] = cfg["lang"]
             cfg["hotwords"] = load_hotwords()
             # 时长给等待阶段估算用; 拿不到就只显示阶段文字, 不给编造的数字
             cfg["dur"] = float(meta.get("duration") or 0)
@@ -4711,7 +4781,7 @@ class App:
             meta = json.loads(sj.read_text(encoding="utf-8"))
             orig = [s for s in (meta.get("segments") or []) if s.get("text")]
             hw_note = "、".join(load_hotwords()[:80])
-            _L = {"zh": "中文", "en": "英文", "ja": "日文", "ko": "韩文", "yue": "粤语"}
+            _L = {"zh": "简体中文", "zh-tw": "繁体中文", "en": "英文", "ja": "日文", "ko": "韩文", "yue": "粤语"}
             lang_note = _L.get(meta.get("lang") or "", "")
             lines = self._cloud_lines(orig)
             # 长稿分片(按行, ~6000 字/片), 每片独立精修后原序拼回
@@ -4728,6 +4798,7 @@ class App:
             # 润色要求可由用户在设置里自定义(cloud_prompt); 但"逐行同格式、不得增删"
             # 这句是端上解析的硬契约, 必须固定追加, 否则对位闸门全线失效。
             CONTRACT = ("逐行改写正文，不得增删句子、不得改写时间戳与说话人标签、不得翻译；"
+                        "中英混说时保留原话中的中文和英文；"
                         "输出与输入行数一致，每行保持原格式 [分:秒] S01｜正文；"
                         "不要输出任何解释或额外标记。")
             DEFAULT_SYS = ("你是逐字稿校对器，处理语音识别输出中的同音错字、标点缺失与"
@@ -4736,7 +4807,7 @@ class App:
             if hw_note:
                 SYS += ("\n本场涉及的专有名词，按这些写法校正：" + hw_note)
             if lang_note:
-                SYS += ("\n仅使用" + lang_note + "输出。")
+                SYS += ("\n识别语言设置：" + lang_note + "；保留各语言原文，中文遵循所选简繁体。")
             # 分片之间互不依赖 → 4 路并行。串行时总耗时 = 片数 × 单片耗时(实测
             # 该转写模型单片约 110 秒, 4 片 7.3 分钟); 并行后 ≈ 最慢的一片。
             from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -4804,6 +4875,8 @@ class App:
             ex.shutdown(wait=True)
             # 按片号原序拼回, 并行完成顺序不能影响稿子顺序
             refined = [x for i in sorted(results) for x in results[i]]
+            for seg in refined:
+                seg["text"] = asr_text(seg["text"], meta.get("lang"))
             if not meta.get("segments_pre_cloud"):
                 meta["segments_pre_cloud"] = orig      # 一级备份, 可还原
             meta["segments"] = self._merge_segs(refined) if not any(
@@ -4997,7 +5070,7 @@ class App:
         sj.write_text(json.dumps(meta, ensure_ascii=False, indent=1),
                       encoding="utf-8")
         self._uncancel(sid)
-        lang = meta.get("lang") or "zh"
+        lang = transcription_language(meta.get("lang"))
         self._job_begin(sid, "import", state="wait")
         if meta.get("mode") == "import":
             self._enqueue(sid, "local",
@@ -5024,7 +5097,7 @@ class App:
         meta = json.loads(sj.read_text(encoding="utf-8"))
         if self._recording_audio_source(d, meta) is None:
             raise RuntimeError("该项目没有音频，无法重跑")
-        lang = (meta or {}).get("lang", "zh")
+        lang = transcription_language(meta.get("lang"))
         self._uncancel(sid)
         self._job_begin(sid, "refine", state="wait")
         self._enqueue(sid, "local",
@@ -5064,6 +5137,7 @@ class App:
             meta["pretreat"] = (info["pretreat"] if info["pretreat"] != "off"
                                 else (meta.get("audio_pretreat") or "off"))
             meta["refinished"] = "whisper+silence" if silence_skip else "whisper"
+            meta["lang"] = lang
             meta["transcribe_src"] = source.name
             sj_path.write_text(json.dumps(meta, ensure_ascii=False, indent=1),
                                encoding="utf-8")
@@ -6131,6 +6205,7 @@ class Handler(BaseHTTPRequestHandler):
         elif u.path == "/api/settings":
             s = load_settings()
             s["record_mode"] = recording_mode()
+            s["asr_language"] = transcription_language()
             s["last_pretreat"] = load_setting("last_pretreat")
             k = cloud_key()
             # 真实 key 和密文都不下发, 只给缩短形态; 解不开时给个 stale 标记
@@ -6315,7 +6390,7 @@ class Handler(BaseHTTPRequestHandler):
                 if requested_mode in RECORDING_MODES:
                     save_setting("record_mode", selected_mode)
                 return self._json(APP.start(selected_mode,
-                                            body.get("lang", "zh"), body.get("name", "")))
+                                            body.get("lang"), body.get("name", "")))
             if u.path == "/api/microphone_modes":
                 return self._json(open_microphone_modes(body.get("mode", "")))
             if u.path == "/api/pause":
@@ -6332,7 +6407,7 @@ class Handler(BaseHTTPRequestHandler):
                 ids, errs = [], []
                 for p in paths:
                     try:
-                        r = APP.import_audio(p, talk)
+                        r = APP.import_audio(p, talk, body.get("lang"))
                         ids.append({"id": r["id"], "name": r["name"]})
                     except Exception as e:
                         errs.append({"path": p, "error": str(e)[:120]})
@@ -6560,6 +6635,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json({"ok": False, "error": "密钥请走专用保存接口"}, 400)
                 if kk == "record_mode" and body.get("value") not in RECORDING_MODES:
                     return self._json({"ok": False, "error": "无效的录音来源"}, 400)
+                if kk == "asr_language" and body.get("value") not in ("zh", "zh-tw", "en", "auto"):
+                    return self._json({"ok": False, "error": "无效的转写语言"}, 400)
                 save_setting(kk, body.get("value"))
                 return self._json({"ok": True})
             if u.path == "/api/hotword_templates/save":

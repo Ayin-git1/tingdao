@@ -10,7 +10,7 @@ function setup(state='idle'){
   const sibling={inert:false},alreadyInert={inert:true};
   let tick,requests=0,resolve,reject;
   const pending=new Promise((yes,no)=>{resolve=yes;reject=no;});
-  const ctx={state,view:null,transcriptViewGeneration:0,selected:new Set(),mode:'mic',langSel:'zh',recordingImageStopping:false,recordingImageUploads:[],sessionName:'',
+  const ctx={state,view:null,transcriptViewGeneration:0,selected:new Set(),mode:'mic',langSel:'zh',languageReady:Promise.resolve(),recordingImageStopping:false,recordingImageUploads:[],sessionName:'',
     clearTranscriptTextSelection(){ctx.selectionCleared=true;},
     hideTranscriptFormatTools(){element('transcriptFormatTools').hidden=true;element('transcriptFormatPalette').hidden=true;},
     document:{body:{children:[sibling,alreadyInert,element('recordLoading')]},activeElement:null},window:{addEventListener(){}},

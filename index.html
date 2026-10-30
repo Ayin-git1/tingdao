@@ -3429,10 +3429,11 @@ html:not([data-material="mimetic"]) #setBody #materialAdvanced{display:none;}
           <button data-v="sensevoice" class="on">SenseVoice</button>
           <button data-v="whisper">Whisper</button>
         </div>
-        <div class="st">识别语言</div>
-        <button class="devfield" id="fldLang"><span class="dv" id="dvLang">中文</span>
+        <div class="st">转写语言</div>
+        <button class="devfield" id="fldLang"><span class="dv" id="dvLang">简体中文</span>
           <svg class="ui-icon cv" width="10" height="6" viewBox="0 0 10 6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M1 1l4 4 4-4"/></svg>
         </button>
+        <div class="ptinfo">本地与云端共用；支持中英混说，保留英文，中文按所选简繁体输出。</div>
        </div>
       </div>
      </div>
@@ -5444,6 +5445,7 @@ $('fab').onclick = async ()=>{
       selected.clear();                       // 清掉遗留多选, 防止选择条浮在屏幕外
       renderSelState();
       const name = defaultName();
+      await languageReady;
       const d = await api('/api/start', {mode, lang:langSel, name});
       if(!d.ok && d.error){ toast(d.error); return; }
       transcriptViewGeneration++;
@@ -6007,12 +6009,21 @@ $('devpop').addEventListener('click', async e=>{
 });
 // 二级选择器打开时由统一滚动隔离锁住设置长卷；滚动不再自动关闭选择器。
 
-/* 识别语言 */
-const LANGS = [{v:'zh', t:'中文'}, {v:'en', t:'English'}, {v:'auto', t:'自动识别'}];
+/* 本地与云端共用的转写语言 */
+const LANGS = [{v:'zh', t:'简体中文'}, {v:'zh-tw', t:'繁体中文'},
+               {v:'en', t:'英语'}, {v:'auto', t:'自动识别'}];
 let langSel = 'zh';
-PICK.lang = {field: $('fldLang'), disp: $('dvLang'), title: '识别语言',
+const languageReady = api('/api/settings').then(st=>{
+  if(LANGS.some(item=>item.v===st.asr_language)) langSel = st.asr_language;
+  $('dvLang').textContent = LANGS.find(item=>item.v===langSel).t;
+}).catch(()=>{});
+PICK.lang = {field: $('fldLang'), disp: $('dvLang'), title: '转写语言',
              opts: () => LANGS, cur: () => langSel,
-             onPick: async (v) => { langSel = v; }};
+             onPick: async (v) => {
+               await languageReady;
+               try{ await savePersonalSetting('asr_language', v); langSel = v; }
+               catch(err){ toast('转写语言保存失败，请重试'); }
+             }};
 $('fldLang').onclick = (e)=>{ e.stopPropagation(); pickOpen('lang', $('fldLang')); };
 
 /* ---- 麦克风输入源: SCK 内录不碰输出设备, 这是唯一需要确认的设备('' = 系统默认输入) ---- */
@@ -11514,7 +11525,8 @@ async function doImport(talk){
   // 后端秒建项目目录(抽轨在队列里跑), 先挂占位页让用户立刻看见"已经在做了"
   const stem = (list[0].path.split('/').pop() || '导入').replace(/\.[^.]+$/,'').slice(0,52);
   enterPendingView(stem);
-  const d = await api('/api/import', {paths: list.map(x=>x.path), talk});
+  await languageReady;
+  const d = await api('/api/import', {paths: list.map(x=>x.path), talk, lang:langSel});
   delete jobs['__pending__'];
   if(d.ok && d.ids && d.ids.length){
     view = null;                         // 绕开"同一 id 不重载"的短路

@@ -91,7 +91,7 @@ Windows 安装版已包含 FFmpeg。安装 Python 后重开 PowerShell，并确�
 
 <h2 id="data"><img src="./assets/readme/badges/data.svg" height="40" alt="文件与数据"></h2>
 
-源码 zip 包含 `app.py`（后端）、`index.html`（界面）、`whisper_worker.py` / `whisper_worker_windows.py`（本地精修）、`tingdao-mix.swift`（macOS 采集助手源码）、`requirements.txt` 和 `tauri-shell/` 原生窗口壳。打包时程序本体会先复制到 `tauri-shell/program/`（macOS）或由 `npm run stage:windows` 复制到 `tauri-shell/program-windows/`（Windows），这两个目录是生成产物，不入库。项目录音、文稿、设置、热词和日志保存在用户数据目录，处理缓存在其中的 `.cache/`，均不写入应用安装目录。
+源码 zip 包含 `app.py`（后端）、`index.html`（界面）、`whisper_worker.py` / `whisper_worker_windows.py`（本地精修）、`tingdao-mix.swift`（macOS 采集助手源码）、`opencc/`（随包附带的中文简繁转换库）、`requirements.txt` 和 `tauri-shell/` 原生窗口壳。打包时程序本体会先复制到 `tauri-shell/program/`（macOS）或由 `npm run stage:windows` 复制到 `tauri-shell/program-windows/`（Windows），这两个目录是生成产物，不入库。项目录音、文稿、设置、热词和日志保存在用户数据目录，处理缓存在其中的 `.cache/`，均不写入应用安装目录。
 
 <h2 id="limitations"><img src="./assets/readme/badges/limitations.svg" height="40" alt="已知限制"></h2>
 

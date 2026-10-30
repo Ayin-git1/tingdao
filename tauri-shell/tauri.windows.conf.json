@@ -10,6 +10,7 @@
       "program-windows/index.html",
       "program-windows/whisper_worker.py",
       "program-windows/whisper_worker_windows.py",
+      "program-windows/opencc/",
       "program-windows/sounds/",
       "program-windows/assets/",
       "program-windows/ffmpeg/"

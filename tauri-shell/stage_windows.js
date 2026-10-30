@@ -22,6 +22,8 @@ fs.mkdirSync(path.join(destination, 'sounds'), { recursive: true });
 for (const file of files) {
   fs.copyFileSync(path.join(root, file), path.join(destination, file));
 }
+// 简繁转换库随包分发，放在 app.py 旁边即可被直接导入，不依赖用户 venv。
+fs.cpSync(path.join(root, 'opencc'), path.join(destination, 'opencc'), { recursive: true });
 for (const file of fs.readdirSync(path.join(root, 'sounds'))) {
   if (file.endsWith('.mp3')) {
     fs.copyFileSync(path.join(root, 'sounds', file), path.join(destination, 'sounds', file));

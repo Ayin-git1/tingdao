@@ -1,4 +1,5 @@
 import ast
+from functools import lru_cache
 import json
 import io
 from contextlib import redirect_stdout
@@ -29,12 +30,13 @@ class WhisperWorkerPipeTests(unittest.TestCase):
                    and n.name in {'_whisper_proc', 'cancel_job', 'is_cancelled'}]
         nodes = [n for n in tree.body if
                  (isinstance(n, ast.ClassDef) and n.name in {'WhisperStdout', 'Cancelled'})
-                 or (isinstance(n, ast.FunctionDef) and n.name == '_ts_secs')
+                 or (isinstance(n, ast.FunctionDef) and n.name in
+                     {'_ts_secs', 'asr_prompt', 'asr_text', '_asr_converter'})
                  or (isinstance(n, ast.Assign) and any(
-                     isinstance(t, ast.Name) and t.id in {'_SEG_LINE', '_TS'} for t in n.targets))]
+                     isinstance(t, ast.Name) and t.id in {'_SEG_LINE', '_TS', 'ASR_LANG'} for t in n.targets))]
         nodes.append(ast.ClassDef(name='AuditApp', bases=[], keywords=[], body=methods,
                                   decorator_list=[]))
-        self.ns = dict(json=json, os=os, platform=platform, re=re, subprocess=subprocess,
+        self.ns = dict(json=json, os=os, platform=platform, re=re, subprocess=subprocess, lru_cache=lru_cache,
                        sys=sys, tempfile=tempfile, threading=threading,
                        whisper_model=lambda: self.root,
                        cache_temp_path=lambda *args: self.root / 'result.json',
