@@ -34,6 +34,7 @@ import tempfile
 import time
 import uuid
 import wave
+import zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs, unquote, quote
@@ -100,6 +101,64 @@ DATA_DIR = (Path(os.environ["TINGDAO_DATA"]).expanduser()
             if os.environ.get("TINGDAO_DATA") else _documents_dir() / "transcripts")
 CACHE_DIR = DATA_DIR / ".cache"
 LOG_FILE = DATA_DIR / ".tingdao.log"
+
+
+def long_document_cache(meta, source, signature):
+    """长稿派生索引可随时删除；布局坐标由前端按当前字号/宽度缓存。"""
+    if float(meta.get("duration") or 0) <= 7200:
+        return None
+    key = hashlib.sha256(str(source.resolve()).encode()).hexdigest()
+    target = CACHE_DIR / f"long-document-{key}.json"
+    try:
+        if not CACHE_DIR.is_symlink() and not target.is_symlink():
+            saved = json.loads(target.read_text(encoding="utf-8"))
+            index = saved["index"]
+            if (saved.get("version") == 2 and saved.get("source") == signature
+                    and isinstance(index.get("order"), list)
+                    and sorted(index["order"]) == list(range(len(index["order"])))
+                    and isinstance(index.get("segmentTimes"), list)
+                    and all(isinstance(t, (int, float)) and math.isfinite(t)
+                            for t in index["segmentTimes"])
+                    and index["segmentTimes"] == sorted(index["segmentTimes"])
+                    and len(index.get("segmentTimes", [])) == len(meta.get("segments", []))):
+                return index
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        pass
+    items = []
+    outline = (meta.get("outline") or []) if meta.get("summary") else []
+    legacy = bool(outline) and all(item.get("level") in (2, 4) for item in outline)
+    for heading in outline:
+        raw = heading.get("level")
+        level = (1 if raw == 2 else 2) if legacy else raw
+        if level in (1, 2):
+            items.append((float(heading.get("t") or 0), 0, len(items)))
+    for segment in meta.get("segments", []):
+        items.append((float(segment.get("t") or 0), 1, len(items)))
+    for note in meta.get("notes", []):
+        if str(note.get("text") or "").strip() or any(
+                node.get("type") == "image" for node in note.get("content", [])
+                if isinstance(node, dict)):
+            items.append((float(note.get("t") or 0), 2, len(items)))
+    index = {"order": [item[2] for item in sorted(items)],
+             "segmentTimes": sorted(float(seg.get("t") or 0) for seg in meta.get("segments", []))}
+    tmp = None
+    try:
+        if CACHE_DIR.is_symlink() or target.is_symlink():
+            return index
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        tmp = target.with_name(f"{target.name}.{uuid.uuid4().hex}.tmp")
+        tmp.write_text(json.dumps({"version": 2, "source": signature, "index": index}),
+                       encoding="utf-8")
+        os.replace(tmp, target)
+    except OSError:
+        pass  # 缓存写入失败仍允许打开原稿。
+    finally:
+        if tmp is not None:
+            try:
+                tmp.unlink(missing_ok=True)
+            except OSError:
+                pass
+    return index
 
 
 def cache_temp_path(prefix, suffix):
@@ -888,6 +947,8 @@ def cloud_cfg():
         "note_think": bool(s.get("cloud_note_think", True)),
         "summary_think": bool(s.get("cloud_summary_think", True)),
         "summary_prompt": (s.get("cloud_summary_prompt") or "").strip(),
+        # 长文稿按约 1 小时一段顺序生成目录; 默认关=整篇一次生成
+        "summary_windows": bool(s.get("cloud_summary_windows", False)),
         "asr_model": (s.get("cloud_asr_model") or "").strip(),
         # 后处理提示词: 用户自定义的润色要求; 为空则用内置那段"逐字稿校对器"
         "prompt": (s.get("cloud_prompt") or "").strip(),
@@ -1161,8 +1222,11 @@ def note_tpl_del(tpl_id):
 
 def cloud_chat(cfg, messages, temperature=0.3, max_tokens=None, timeout=300,
                retries=0, backoff=2.0, ignore_length=False, ceiling=65536,
-               think_off=False, usage_out=None):
+               think_off=False, usage_out=None, on_tokens=None):
     """调 chat/completions（两家协议该路径通用）。失败抛 RuntimeError(带可读原因)。
+
+    on_tokens 传入时改走流式, 边收边回调 on_tokens(估计已出 token 数)，收完再回调一次
+    on_tokens(0, final=实际 completion_tokens)。只给界面显示「已生成多少 token」用。
 
     输出预算策略(重要): 默认【不传 max_tokens】, 让服务商按该模型自己的上限输出。
     这样再也不会出现"max_tokens 越界"的 400(各家上限天差地别, 客户端不该去猜), 也不
@@ -1201,11 +1265,14 @@ def cloud_chat(cfg, messages, temperature=0.3, max_tokens=None, timeout=300,
                     payload["enable_thinking"] = False
                 else:
                     payload["reasoning_effort"] = "minimal"
+            if on_tokens:
+                payload["stream"] = True
+                payload["stream_options"] = {"include_usage": True}
             r = requests.post(
                 _chat_endpoint(cfg),
                 headers={"Authorization": f"Bearer {cfg['api_key']}"},
                 json=payload,
-                timeout=timeout)
+                timeout=timeout, stream=bool(on_tokens))
         except requests.exceptions.Timeout:
             last = "云端请求超时"
             r = None
@@ -1219,7 +1286,10 @@ def cloud_chat(cfg, messages, temperature=0.3, max_tokens=None, timeout=300,
             else:
                 # 200 → 取正文 + finish_reason; 401/402/404/其它 → 由 _cloud_ok 抛人话(不重试)
                 try:
-                    content, fr, usage = _cloud_ok(r, cfg)
+                    if on_tokens and r.status_code == 200:
+                        content, fr, usage = _cloud_stream_read(r, on_tokens)
+                    else:
+                        content, fr, usage = _cloud_ok(r, cfg)
                 except RuntimeError as e:
                     # 升额后服务商反而报错(多半是该模型不支持这么高的 max_tokens): 别把
                     # 400 原文甩给用户, 低额度那次的截断本就是同一症状, 退回清晰的截断提示。
@@ -1772,6 +1842,44 @@ def _cloud_ok(r, cfg):
         raise RuntimeError("返回格式不是标准兼容转写结构")
 
 
+def _cloud_stream_read(r, on_tokens):
+    """读流式 chat/completions(SSE)，返回值与 _cloud_ok 一致: (正文, finish_reason, usage)。
+    思考内容不进正文，只计入「已生成」的数字: 用户等的正是这段思考时间。"""
+    parts, fr, usage, chars, last = [], None, {}, 0, 0.0
+    try:
+        for raw in r.iter_lines():
+            if not raw or not raw.startswith(b"data:"):
+                continue
+            data = raw[5:].strip()
+            if data == b"[DONE]":
+                break
+            try:
+                j = json.loads(data)
+            except ValueError:
+                continue
+            if j.get("usage"):
+                usage = j["usage"]
+            for ch in j.get("choices") or []:
+                d = ch.get("delta") or {}
+                piece = d.get("content") or ""
+                parts.append(piece)
+                chars += len(piece) + len(d.get("reasoning_content") or "")
+                fr = ch.get("finish_reason") or fr
+            now = time.monotonic()
+            if now - last > 0.5:             # 限频: 每次滚动动画能走完再换下一个数
+                last = now
+                on_tokens(chars / 1.4)       # 中文大约 1.4 字一个 token，收完再用实数校正
+    except Exception as e:
+        raise RuntimeError(f"流式读取中断: {type(e).__name__}")
+    u = usage or {}
+    print(f"[cloud] finish={fr}"
+          f" in={u.get('prompt_tokens', '?')} out={u.get('completion_tokens', '?')}"
+          f" think={((u.get('completion_tokens_details') or {}).get('reasoning_tokens') or 0)}"
+          " stream", flush=True)
+    on_tokens(0, final=int(u.get("completion_tokens") or chars / 1.4))
+    return "".join(parts).strip(), fr, u
+
+
 # 输出设备名不再写死: 启动时探测本机真实设备, 设置里可手动指定。
 # 这个常量只作为"什么都探测不到"时的最后兜底。
 BUILTIN_FALLBACK = "MacBook Pro扬声器"
@@ -1848,10 +1956,139 @@ def outline_transcript(segs):
         r"接下来|下面(?:我们)?(?:再)?(?:来)?(?:讲|看|说|聊|进入|介绍)|"
         r"我们(?:再)?来(?:讲|看|说|聊)|换个话题|回到(?:刚才|前面|上面)|"
         r"今天(?:我们)?(?:要)?(?:讲|聊|分享|学)|刚才(?:我们)?(?:讲|说)(?:了|完)|"
+        r"下一个(?:是|就是|呢)|再往后|(?:直接)?跳到|(?:回来|再来)看|最后一个(?:是|就是|呢)|"
         r"第[一二三四五六七八九十\d]+(?:部分|个(?:问题|话题|主题)|章|节|讲)")
     text = "\n".join(f"[{n}] {'★ ' if cue.search(row) else ''}{row}"
                      for n, row in enumerate(rows, 1))
     return text, times
+
+
+# 超长稿的目录按窗口顺序生成(思路同 Chapter-Llama, CVPR 2025): 每窗约 1 小时，
+# 用和短稿同一份提示词；下一窗从上一窗最后一个 H1 那行重读，被窗口截断的
+# 那一章由下一窗看全了再写。实测 9 小时稿一次直出会合并标题、行号凭印象估。
+OUTLINE_WINDOW_CHARS = 25000
+
+
+def outline_rows(reply):
+    """从目录回复里取出 (行号, 层级, 标题)；没写层级标记时层级为 None。
+    模型常带列表序号、加粗、反引号、「H1：」冒号，归章时还常干脆只写「[行号] 标题」，
+    这里一并容忍，免得整段被当成没写。"""
+    item = re.compile(
+        r"^\s*(?:[-*+]\s+|\d+[.)、]\s*)?(?:#{1,4}\s*)?[`*]*\[(\d{1,5})\][`*]*\s*"
+        r"(?:[`*]*(?:H([1-3])|(#{1,3}))[`*]*\s*[:：]?\s*)?(.+?)\s*$")
+    rows = []
+    for line in (reply or "").splitlines():
+        m = item.match(line)
+        if m:
+            level = (int(m.group(2)) if m.group(2) else
+                     len(m.group(3)) if m.group(3) else None)
+            title = m.group(4).strip(" `*|")
+            if title:
+                rows.append((int(m.group(1)), level, title))
+    return rows
+
+
+def run_outline_windows(numbered, ask, limit=OUTLINE_WINDOW_CHARS, progress=None):
+    """按窗口顺序生成目录，返回拼好的 <outline> 稿和各窗原始回复。
+    ask(窗口稿, 前文大章标题列表) → 该窗的目录回复。"""
+    rows = numbered.splitlines()
+    nums = [int(re.match(r"\[(\d+)\]", r).group(1)) for r in rows]
+    done, replies, start, k = [], [], 0, 0
+    est = max(1, round(len(numbered) / limit))
+    while start < len(rows):
+        end, size = start, 0
+        while end < len(rows) and (end == start or size + len(rows[end]) <= limit):
+            size += len(rows[end]) + 1
+            end += 1
+        if len(rows) - end < 20:          # 尾巴只剩几行就并进这一窗，免得单独成章
+            end = len(rows)
+        k += 1
+        if progress:
+            progress(k, max(k, est))
+        first, last = nums[start], nums[end - 1]
+        reply = ask("\n".join(rows[start:end]), [t for _, lv, t in done if lv == 1])
+        replies.append(reply)
+        got = [(n, lv or 2, t) for n, lv, t in outline_rows(reply) if first <= n <= last]
+        # 从上一窗最后一章重读时，这章的标题沿用上一窗: 实测模型会拿这章里的案例给它改名，
+        # 主对象就丢了。没在这一行写 H1 的也补回去，这一行之后、下个 H1 之前的条目归到它下面
+        carried = next((r for r in done if r[0] == first and r[1] == 1), None)
+        if carried:
+            got = [carried] + [r for r in got if not (r[0] == first and r[1] == 1)]
+        # 这一窗从 first 起重写，上一窗在这之后的条目作废
+        done = [r for r in done if r[0] < first] + got
+        if end >= len(rows):
+            break
+        # 下一窗从这一窗最后一个 H1 重读；离窗口开头太近(整窗一章)就不回退，免得原地打转
+        heads = [n for n, lv, _ in got if lv == 1 and n > first]
+        nxt = nums.index(heads[-1]) if heads else end
+        start = nxt if nxt - start > (end - start) // 4 else end
+    out, prev_h1 = [], None
+    for n, lv, t in sorted(done, key=lambda r: (r[0], r[1])):
+        if lv == 1:
+            if t == prev_h1:
+                continue                  # 跨窗续写同一章时模型会重复写同名 H1
+            prev_h1 = t
+        out.append(f"[{n}] H{lv} {t}")
+    return "<outline>\n" + "\n".join(out) + "\n</outline>", replies
+
+
+def chapter_digest(outline, per=6):
+    """给合并大章用的提纲: [大章编号] 标题，下面缩进列前几个 H2。只看标题不看原文。"""
+    lines, k = [], 0
+    for item in outline:
+        if item["level"] == 1:
+            k += 1
+            lines.append(f"[{k}] {item['title']}")
+            shown = 0
+        elif item["level"] == 2 and k and shown < per:
+            lines.append(f"    - {item['title']}")
+            shown += 1
+    return "\n".join(lines), k
+
+
+def title_anchored(title, inside, outside):
+    """title 和 inside 里某个标题开头说的是同一个主角: 头两个字相同(标题一般把主角放
+    最前，后面「需求」「结果」「应用」这类描述词撞上了不算)。头两个字在 outside 里
+    3 个以上标题开头出现过的(「咨询」这类空泛词)也不算数。"""
+    def grams(t):
+        t = re.sub(r"[^\w]", "", t)
+        return {t[:2]} if len(t) >= 2 else set()
+    common = {}
+    for t in outside:
+        for g in grams(t):
+            common[g] = common.get(g, 0) + 1
+    own = {g for g in grams(title) if common.get(g, 0) < 3}
+    return any(own & grams(t) for t in inside)
+
+
+def merge_outline_chapters(outline, reply):
+    """按模型给每章标的「主/附」归并大章: 附章并到前面最近的主章下面(H1→H2、H2→H3、
+    H3 仍是 H3)，主章原样保留、主章之间永不合并。行号/时间全沿用原值，一条都不删。
+    没标到的章当主章；一章都没标到就原样返回。宁可多一章，不吞掉一章:
+    标了附、但标题跟它要并进去的那章一个词都对不上的，也当主章(实测便宜模型会把
+    一串各讲各的章全标成附)。"""
+    marks = {}
+    for line in (reply or "").splitlines():
+        m = re.match(r"^\s*(?:[-*+]\s+)?[`*]*\[(\d+)\][`*]*\s*[:：]?\s*[`*]*(主|附)", line)
+        if m:
+            marks[int(m.group(1))] = m.group(2)
+    if not marks:
+        return outline
+    heads = [o["title"] for o in outline if o["level"] == 1]
+    fold, group = set(), []
+    for k, title in enumerate(heads, 1):
+        rest = [t for j, t in enumerate(heads, 1) if j != k and heads[j - 1] not in group]
+        if k > 1 and marks.get(k) == "附" and title_anchored(title, group, rest):
+            fold.add(k)
+            group.append(title)
+        else:
+            group = [title]
+    out, k = [], 0
+    for item in outline:
+        if item["level"] == 1:
+            k += 1
+        out.append(dict(item, level=min(3, item["level"] + 1)) if k in fold else item)
+    return out
 
 
 def parse_summary_outline(reply, segs, line_times=None):
@@ -2875,6 +3112,47 @@ class WinRec:
         return self.returncode
 
 
+def _export_safe_name(name, limit=60):
+    return re.sub(r'[\\/:*?"<>|\r\n\t]+', " ", str(name or "")).strip(" .")[:limit].strip() or "文稿"
+
+
+def export_bundle_name(names, now=None):
+    """导出包默认文件名: 听道文稿_日期_文稿名.zip; 多份时文稿名换成份数。"""
+    day = (now or datetime.now()).strftime("%Y-%m-%d")
+    tail = _export_safe_name(names[0], 40) if len(names) == 1 else f"{len(names)}份"
+    return f"听道文稿_{day}_{tail}.zip"
+
+
+def build_export_zip(items, out):
+    """items = [(项目目录, 文稿名)]。每份文稿一个文件夹: 文稿 md、课后笔记、笔记图片;
+    录音和内部缓存不进包。先写临时文件再换名, 中途失败不会留下半个包。"""
+    out = Path(out)
+    tmp = out.with_name(f".{out.name}.{uuid.uuid4().hex[:8]}.part")
+    used = set()
+    try:
+        with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as zf:
+            for d, name in items:
+                base = _export_safe_name(name)
+                folder, n = base, 2
+                while folder in used:
+                    folder, n = f"{base} ({n})", n + 1
+                used.add(folder)
+                md = d / "transcript.md"
+                if md.is_file():
+                    zf.write(md, f"{folder}/{base}.md")
+                note = d / NOTE_FILE
+                if note.is_file():
+                    zf.write(note, f"{folder}/课后笔记.md")
+                images = d / NOTE_IMAGE_DIR
+                if images.is_dir():
+                    for f in sorted(images.iterdir()):
+                        if f.is_file():
+                            zf.write(f, f"{folder}/{NOTE_IMAGE_DIR}/{f.name}")
+        os.replace(tmp, out)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
 class App:
     def __init__(self):
         self.lock = threading.RLock()
@@ -2965,6 +3243,16 @@ class App:
         if pct is not None:
             j["pct"] = max(0, min(99, int(pct)))
         self.emit(type="refine_stage", id=sid, stage=j["stage"], pct=j["pct"])
+
+    def tokens(self, n):
+        """当前任务累计已生成的 token 数，推给前端做滚动数字; 只在任务表里有条目时生效。"""
+        sid = self._jsid()
+        j = self.progs.get(sid) if sid else None
+        if j is None:
+            return
+        j["tokens"] = int(n)
+        self.emit(type="refine_stage", id=sid, stage=j.get("stage", ""),
+                  pct=j.get("pct"), tokens=j["tokens"])
 
     def pct(self, n):
         """给进度拦截器当回调: 只动百分比, 不改阶段文字。"""
@@ -4975,6 +5263,18 @@ class App:
             prompt_extra = ("\n补充要求（不得违反上方格式与事实约束）：" + prompt_extra
                             if prompt_extra else "")
             self.stage("生成 AI 摘要中")
+            # 摘要+各窗目录+合并累计「已生成 token」: 长稿要等十来分钟，给界面一个在动的数
+            meter = {"done": 0, "shown": 0}
+
+            def on_tokens(est, final=None):
+                if final is not None:
+                    meter["done"] += final
+                    cur = meter["done"]
+                else:
+                    cur = meter["done"] + int(est)
+                meter["shown"] = max(meter["shown"], cur)   # 只增不减，校正时不倒退
+                self.tokens(meter["shown"])
+
             full = " ".join(clean_uploaded_transcript(
                 "\n".join(s["text"] for s in segs)).splitlines()).strip()
             sum_instr = ("用中文为这段逐字稿写摘要。第一行固定输出一个概括全篇的大标题，"
@@ -4987,7 +5287,7 @@ class App:
             summary = (cloud_chat(scfg, [
                 {"role": "system", "content": sum_instr},
                 {"role": "user", "content": full}],
-                temperature=0.2, think_off=think_off) or "").strip()
+                temperature=0.2, think_off=think_off, on_tokens=on_tokens) or "").strip()
             self._ck(d.name)()
             if not summary:
                 raise RuntimeError("模型没返回摘要内容")
@@ -5001,26 +5301,57 @@ class App:
                 "<outline>\n[行号] H1 标题\n[行号] H2 标题\n[行号] H3 标题\n</outline>\n"
                 "规则：\n"
                 "1. 行号从逐字稿里照抄，从小到大排列。\n"
-                "2. 讲者换到一个新话题时，写一行 H1。\n"
-                "3. 行号后面带 ★ 的行，讲者说了「接下来」「下面讲」这类话，"
-                "常常是新话题的开始。是新话题就写 H1，不是就跳过。\n"
-                "4. 每个 H1 下面写几行 H2，一般 2 到 5 行，"
-                "写这个话题里讲的几个要点。\n"
-                "5. H2 下面可以写 H3，标出讲到的具体例子、方法或对比，"
-                "方便跳转。没有值得标的就不写。\n"
-                "6. 第一行必须是 H1。H2 写在 H1 下面，H3 写在 H2 下面。\n"
-                "7. 每个标题不超过 15 个字，不加序号和标点。\n"
-                "8. 一直写到逐字稿最后一行。"
+                "2. H1：新的章节或新话题，哪里开始了新章节由你自己判断。"
+                "有的地方已经在讲新内容，但和前面还有些联系，你要判断它主要是在讲新的东西"
+                "（写 H1），还是在补充前面的内容（写 H2）。带 ★ 的行讲者说了"
+                "「接下来」「下面讲」这类话，可以参考。"
+                "H1 标题写这一章主要讲什么，不要拿章里的例子、案例、插话这些次要内容当标题。\n"
+                "3. H2：这个 H1 里的重要节点，只写讲者充分展开说明了的。\n"
+                "4. H3：这个 H2 里特别重要的细节，没有就不写。\n"
+                "5. 第一行必须是 H1。每个标题不超过 15 个字，不加序号和标点。\n"
+                "6. 一直写到逐字稿最后一行。"
                 + prompt_extra +
                 "\n示例：\n<outline>\n[1] H1 开场介绍\n[3] H2 本次内容安排\n"
                 "[40] H1 第一个主题\n[42] H2 基本概念\n[57] H2 举例说明\n"
                 "[61] H3 第一个例子\n"
                 "</outline>")
             numbered, line_times = outline_transcript(segs)
-            outline_reply = (cloud_chat(scfg, [
-                {"role": "system", "content": outline_instr},
-                {"role": "user", "content": numbered}],
-                temperature=0.2, think_off=think_off) or "").strip()
+
+            def ask(text, prior):
+                # 覆盖要求贴在稿子末尾再说一遍，模型写目录前最后读到的就是它。
+                # 不能给"每隔多少行一个标题"这类数字: 实测模型会按间隔凑行号,
+                # 标题顺序对、行号整体错位一个多小时。
+                m = re.match(r"\[(\d+)\]", text.splitlines()[-1] if text else "")
+                last = m.group(1) if m else len(line_times)
+                head = ""
+                if prior:
+                    head = ("（这是一份长逐字稿的中间一段。前面已经写好的大章如下，"
+                            "按同样的粗细划分大章；最后一章可能还没讲完，"
+                            "如果这一段开头还在讲它，第一行 H1 照抄它的标题：\n"
+                            + "\n".join(f"- {t}" for t in prior[-30:]) + "）\n\n")
+                # 不加"换了讲解对象就另起标题": 实测会把例子、背景、插话都升成章节
+                tail = (f"\n\n（逐字稿到第 {last} 行为止。现在写目录，一直写到第 {last} 行附近。"
+                        "每个标题的行号，照抄讲者开始讲这个内容的那一行，不要估算。）")
+                return (cloud_chat(scfg, [
+                    {"role": "system", "content": outline_instr},
+                    {"role": "user", "content": head + text + tail}],
+                    temperature=0.2, retries=1, think_off=think_off,
+                    on_tokens=on_tokens) or "").strip()
+
+            raw = {}
+            if not cfg.get("summary_windows") or len(numbered) <= OUTLINE_WINDOW_CHARS * 2:
+                outline_reply = ask(numbered, [])
+                raw["outline"] = outline_reply
+            else:
+                def checked_ask(text, prior):
+                    self._ck(d.name)()
+                    return ask(text, prior)
+
+                outline_reply, replies = run_outline_windows(
+                    numbered, checked_ask,
+                    progress=lambda k, n: self.stage(f"生成章节标题中（第 {k}/{n} 段）"))
+                print(f"[summary] 目录分 {len(replies)} 窗顺序生成", flush=True)
+                raw["windows"] = replies
             self._ck(d.name)()
             _, outline = parse_summary_outline(outline_reply, segs, line_times)
             if not outline:
@@ -5033,6 +5364,51 @@ class App:
                          f"层级标记 {level_marks} 个，outline 包装={'有' if wrapped else '无'}")
                 print(f"[summary] 目录回复格式: {shape}", flush=True)
                 raise RuntimeError("模型没返回有效章节标题（" + shape + "）")
+
+            # 每段只看得到约 1 小时原文，「话题」多大算一章没有全局尺度: 实测同一
+            # 对象的讲解、应用、案例常被拆成好几章。这里只看大章和小节标题，让模型逐章
+            # 判断「新对象」还是「前一章的补充」，代码把补充并进前一章。不让模型自己分组:
+            # 分组出错会把独立的大章整片吞掉，逐章判断出错最多是多一章。
+            digest, n_ch = chapter_digest(outline)
+            if n_ch >= 3:
+                merge_instr = (
+                    "任务：下面是一份逐字稿目录里按顺序排列的大章。[数字] 是大章编号，"
+                    "下面缩进的是它的小节。逐章拿它和紧挨着的上一章比，判断它是「主」还是「附」。\n"
+                    "附：这一章和上一章讲的是同一件事，只是换了一个方面，比如它的另一面、"
+                    "展开、应用、例子、案例、练习、答疑。\n"
+                    "主：这一章是一个新的章节，或者一个和上一章关联不大的新话题。\n"
+                    "只输出下面这种格式，每章一行，不要输出其他内容：\n"
+                    "<labels>\n[1] 主\n[2] 附\n[3] 主\n</labels>\n"
+                    "规则：\n"
+                    "1. 每一章都要标，按编号顺序，第 1 章标主。\n"
+                    "2. 案例、故事、举例里出现的人和事不算新的主角，讲它们的章标附。\n"
+                    "3. 拿不准就标主。"
+                    + prompt_extra)
+                self.stage("整理大章中")
+                try:
+                    raw["merge"] = (cloud_chat(scfg, [
+                        {"role": "system", "content": merge_instr},
+                        {"role": "user", "content": digest}],
+                        temperature=0, retries=1, think_off=think_off,
+                        on_tokens=on_tokens) or "").strip()
+                    self._ck(d.name)()
+                    merged = merge_outline_chapters(outline, raw["merge"])
+                    after = sum(1 for o in merged if o["level"] == 1)
+                    print(f"[summary] 大章整理 {n_ch} → {after}"
+                          + ("（没拿到标注，保留原样）" if merged is outline else ""),
+                          flush=True)
+                    outline = merged
+                except Cancelled:
+                    raise
+                except Exception as e:
+                    # 整理只是锦上添花: 失败就用原目录，不让整次摘要白跑
+                    print(f"[summary] 大章整理失败，保留原目录: {e}", flush=True)
+            # 原始回复落盘: 拼接/解析/合并再出错时可以直接重拼，不用再花一遍钱重跑
+            try:
+                (d / "outline_raw.json").write_text(json.dumps(
+                    raw, ensure_ascii=False, indent=1), encoding="utf-8")
+            except Exception:
+                pass
 
             meta["summary"] = summary
             meta["outline"] = outline
@@ -6006,7 +6382,11 @@ class App:
             raise RuntimeError("会话不存在")
         sj = d / "session.json"
         if sj.exists():
+            source_stat = sj.stat()
             meta = json.loads(sj.read_text(encoding="utf-8"))
+            if float(meta.get("duration") or 0) > 7200:
+                meta["longDocument"] = long_document_cache(
+                    meta, sj, [source_stat.st_mtime_ns, source_stat.st_size])
             meta["name"] = self._clean_title(meta.get("name", sid))
             # 试听优先走未处理的 WAV 母带。旧项目没有 audioMaster 字段时，
             # 仍能直接发现既有 audio.wav；再退回旧的回放/兼容文件。
@@ -6133,6 +6513,92 @@ class App:
         else:
             subprocess.Popen(["open", "-R", str(d)])
         return {"ok": True}
+
+    def copy_markdown_file(self, sid, text):
+        """把文稿写成 .md 文件并以文件形式放进系统剪贴板, 可直接粘贴到访达/聊天窗口"""
+        if sid in (".", "..") or "/" in sid or "\\" in sid:
+            raise RuntimeError("非法路径")
+        if not (SESSIONS_DIR / sid).is_dir():
+            raise RuntimeError("项目不存在")
+        name = re.sub(r'[\\/:*?"<>|\r\n\t]+', " ", self.load(sid).get("name") or "").strip()[:80]
+        out = CACHE_DIR / "clipboard" / sid
+        shutil.rmtree(out, ignore_errors=True)
+        out.mkdir(parents=True, exist_ok=True)
+        f = out / f"{name or sid}.md"
+        f.write_text(text or "", encoding="utf-8")
+        if platform.system() == "Windows":
+            cmd = ["powershell", "-NoProfile", "-Command",
+                   "Set-Clipboard -LiteralPath $args[0]", str(f)]
+        elif platform.system() == "Darwin":
+            # JXA 写 NSURL: 访达、微信、邮件等都按文件粘贴
+            cmd = ["osascript", "-l", "JavaScript", "-e",
+                   "function run(argv){ObjC.import('AppKit');"
+                   "const pb=$.NSPasteboard.generalPasteboard;pb.clearContents;"
+                   "return pb.writeObjects($([$.NSURL.fileURLWithPath(argv[0])]));}", str(f)]
+        else:
+            raise RuntimeError("当前系统不支持复制文件")
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+        if result.returncode != 0:
+            raise RuntimeError((result.stderr or "").strip() or "写入剪贴板失败")
+        return {"ok": True, "file": f.name}
+
+
+    def pick_save_path(self, default_name):
+        """系统原生「存储为」对话框, 默认落在桌面; 取消返回空串。
+        文件名走 argv / 环境变量传进去, 不拼进脚本, 免得名字里的引号把脚本截断。"""
+        if platform.system() == "Windows":
+            script = ("[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false);"
+                      "Add-Type -AssemblyName System.Windows.Forms;"
+                      "$d = New-Object System.Windows.Forms.SaveFileDialog;"
+                      "$d.Title = '导出文稿'; $d.Filter = 'ZIP 压缩包|*.zip';"
+                      "$d.FileName = $env:TINGDAO_EXPORT_NAME; $d.OverwritePrompt = $true;"
+                      "$d.InitialDirectory = [Environment]::GetFolderPath('Desktop');"
+                      "if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { $d.FileName }")
+            try:
+                result = subprocess.run(
+                    ["powershell", "-NoProfile", "-STA", "-Command", script],
+                    capture_output=True, text=True, encoding="utf-8", timeout=900,
+                    env={**os.environ, "TINGDAO_EXPORT_NAME": default_name},
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            except Exception as e:
+                raise RuntimeError(f"无法打开保存对话框：{type(e).__name__}")
+            if result.returncode:
+                raise RuntimeError((result.stderr or "保存对话框启动失败").strip()[:180])
+            return (result.stdout or "").strip()
+        result = subprocess.run(
+            ["osascript", "-e", "on run argv",
+             "-e", 'return POSIX path of (choose file name with prompt "导出文稿" '
+                   'default name (item 1 of argv) default location (path to desktop folder))',
+             "-e", "end run", default_name],
+            capture_output=True, text=True, timeout=900)
+        return (result.stdout or "").strip() if result.returncode == 0 else ""
+
+    def export_sessions(self, ids):
+        """把一份或多份文稿打成 zip 分享: 先问保存位置, 再写包。用户取消返回 cancelled。"""
+        ids = [str(x) for x in (ids or []) if str(x)]
+        if not ids:
+            raise RuntimeError("没有可导出的文稿")
+        items = []
+        for sid in dict.fromkeys(ids):
+            if sid in (".", "..") or "/" in sid or "\\" in sid:
+                raise RuntimeError("非法路径")
+            d = SESSIONS_DIR / sid
+            if not d.is_dir():
+                raise RuntimeError("项目不存在")
+            name = sid
+            try:
+                name = json.loads((d / "session.json").read_text(encoding="utf-8")).get("name") or sid
+            except Exception:
+                pass
+            items.append((d, name))
+        target = self.pick_save_path(export_bundle_name([n for _, n in items]))
+        if not target:
+            return {"ok": False, "cancelled": True}
+        out = Path(target)
+        if out.suffix.lower() != ".zip":
+            out = out.with_name(out.name + ".zip")
+        build_export_zip(items, out)
+        return {"ok": True, "path": str(out), "count": len(items)}
 
 
 APP = App()
@@ -6699,6 +7165,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(APP.open_note_image(body.get("id", ""), body.get("file", "")))
             if u.path == "/api/reveal":
                 return self._json(APP.reveal(body.get("id", "")))
+            if u.path == "/api/export_sessions":
+                # 阻塞到用户在保存对话框里选完或取消(ThreadingHTTPServer, 不堵别的请求)
+                return self._json(APP.export_sessions(body.get("ids") or []))
+            if u.path == "/api/copy_md_file":
+                return self._json(APP.copy_markdown_file(body.get("id", ""), body.get("text", "")))
             if u.path == "/api/engine":
                 if APP.state != "idle":
                     return self._json({"ok": False, "error": "请在空闲时切换引擎"}, 400)

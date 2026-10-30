@@ -179,9 +179,11 @@ class WindowsAuditTests(unittest.TestCase):
                     fn=load(method, 'App', json=json, time=time, Cancelled=Cancelled,
                             cloud_chat=chat, MD_RULES='', cloud_think_off_for=lambda *a:False,
                             clean_uploaded_transcript=lambda x:x, outline_transcript=lambda s:('body',{}),
+                            OUTLINE_WINDOW_CHARS=25000, run_outline_windows=None,
+                            chapter_digest=lambda o:('',0), merge_outline_chapters=None,
                             parse_summary_outline=lambda *a:('',[{'t':0,'title':'title'}]), NOTE_FILE='note.md',
                             cloud_err_kind=lambda e:'error', cloud_err_text=lambda *a:'error')
-                    app=SimpleNamespace(_ck=ck, _cancel=cancelled, stage=Mock(), emit=Mock(), _write_md=Mock())
+                    app=SimpleNamespace(_ck=ck, _cancel=cancelled, stage=Mock(), tokens=Mock(), emit=Mock(), _write_md=Mock())
                     cfg={'provider':'test','model':'test'}
                     if method=='_study_note_bg': fn(app,d,cfg,{'name':'note','prompt':'prompt'},[{'text':'body'}])
                     else: fn(app,d,cfg)

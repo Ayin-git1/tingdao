@@ -26,6 +26,7 @@ function setup(times = []) {
   const context = vm.createContext({
     player:{currentTime:0, paused:false, ended:false}, rows, times,
     syncPlayerUI(){}, updateTranscriptAnchorActive(){}, savePos(){},
+    invalidateTranscriptScrollPositions(){},
     followTo(hit){followed.push(hit);}, userScrolling:false, segEngaged:false,
     document:{createElement(){return makeRow(0);}},
     $(){return {appendChild(){}};}, fmt:String, esc:String, fixDot(){return '';},

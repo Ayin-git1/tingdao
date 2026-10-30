@@ -524,7 +524,8 @@
                            max-height:min(420px,calc(100vh - 180px)); padding:0; overflow:visible;
                            background:transparent; box-shadow:none; isolation:isolate;
                            pointer-events:none; transform:translateY(-50%);}
-  .transcript-outline-backdrop{position:absolute; z-index:0; inset:-100vh -46px -84px -260px;
+  /* 底边按「目录撑满最大高度」时的位置算, 目录短时模糊区也不会跟着缩短 */
+  .transcript-outline-backdrop{position:absolute; z-index:0; inset:-100vh -46px calc(50% - min(210px,50vh - 90px) - 84px) -260px;
                            pointer-events:none; opacity:0; background:rgba(255,255,255,.08);
                            backdrop-filter:blur(18px) saturate(.82); -webkit-backdrop-filter:blur(18px) saturate(.82);
                            mask-image:linear-gradient(to left,#000 0%,#000 30%,rgba(0,0,0,.28) 65%,transparent 100%);
@@ -597,6 +598,19 @@
   .refine-dots{display:none; align-items:center; gap:7px; margin-left:auto; padding-left:24px;}
   .refine-card.is-busy .refine-dots{display:flex;}
   .refine-dots[hidden]{display:none;}
+  /* 摘要生成中的「已生成 token」: 每位数字一条 0-9 竖列，换数时整列滚到目标位 */
+  .refine-tokens{display:flex; align-items:baseline; gap:6px; margin-left:auto; padding-left:24px;
+                 color:var(--g-ink); white-space:nowrap;}
+  .refine-tokens[hidden]{display:none;}
+  .refine-tokens:not([hidden]) + .refine-dots{margin-left:0; padding-left:16px;}
+  .odo{display:inline-flex; font-size:var(--fs-hero); font-weight:600; line-height:1.15;
+       font-variant-numeric:tabular-nums; letter-spacing:-.2px;}
+  .odo-d{display:inline-block; height:1.15em; overflow:hidden;
+         -webkit-mask-image:linear-gradient(to bottom, transparent, #000 22%, #000 78%, transparent);
+                 mask-image:linear-gradient(to bottom, transparent, #000 22%, #000 78%, transparent);}
+  .odo-col{display:block; transition:transform .42s cubic-bezier(.22,.8,.24,1); will-change:transform;}
+  .odo-col>i{display:block; height:1.15em; font-style:normal;}
+  .refine-tokens-unit{color:var(--refine-sub); font-size:var(--fs-meta); font-weight:600; letter-spacing:.02em;}
   .refine-dot{width:7px; height:7px; border-radius:50%; background:var(--g); opacity:.42;
               animation:refineDot 1.2s ease-in-out infinite;}
   .refine-dot:nth-child(2){animation-delay:.16s;}
@@ -610,6 +624,7 @@
   .feedzone.refining #feed{pointer-events:none; opacity:.55; transition:opacity var(--fade);}
   @media (prefers-reduced-motion:reduce){
     .refine-card.is-busy::before,.refine-card.is-busy::after,.refine-dot{animation:none;}
+    .odo-col{transition:none;}
     .refine-card.is-busy::before,.refine-card.is-busy::after{opacity:.58;}
     .refine-dot:nth-child(1){opacity:.72;}.refine-dot:nth-child(2){opacity:.52;}.refine-dot:nth-child(3){opacity:.34;}
   }
@@ -835,6 +850,8 @@
   .sk-body .tsb{height:11px; border-radius:var(--radius-1); background:#f0f1f4;}
   /* 骨架期间真内容隐身(保留高度→不跳版), 动画结束再渐显 */
   body.side-skel #feed, body.side-skel #hpGrid{opacity:0;}
+  /* 隐身并不会停止布局：推挤期间固定正文列宽，落定后再按最终宽度换行一次。 */
+  body.side-skel #feed{width:var(--side-feed-width,auto);}
   body.side-promoting.side-skel #feed, body.side-promoting.side-skel #hpGrid,
   body.side-promoting.side-skel .skel{transition:none;}
 
@@ -1008,6 +1025,7 @@
   .cloudpop .thinksw.on::after{left:15px;}
   .cloudpop .thinksw:disabled{cursor:not-allowed; opacity:.45; background:var(--soft); border-color:var(--line);}
   .cloudpop .thinksw:disabled::after{background:var(--gry-icon);}
+  .cloudpop .sw-line{position:relative; padding-right:44px;}
   .cloudpop .swcap{font-size:var(--fs-micro); color:var(--sub); line-height:1.4; margin:-2px 0 8px;}
   .cloudpop .swcap b{color:var(--gd); font-weight:600;}
   @keyframes popDrop{from{opacity:0; transform:translateY(-12px) scale(.97);}
@@ -1972,37 +1990,6 @@
   .tplpop .tpl.editing .eops button[data-a="cancel"]{background:none; color:var(--sub);
                        border:1px solid var(--line); flex:none; padding:6px 14px;}
 
-  /* 二次确认浮层: 与设置弹层同一套设计语言 */
-  .confirm{display:none; position:fixed; z-index:var(--z-pop-lift); inset:0; margin:auto; width:340px;
-            height:max-content;
-           background:rgba(255,255,255,.98); border:1px solid var(--line); border-radius:var(--radius-3);
-           max-width:calc(100vw - 32px); max-height:calc(100vh - 32px); overflow-y:auto;
-           box-shadow:0 2px 6px rgba(20,30,50,.04),0 20px 60px rgba(20,30,50,.12); padding:20px;}
-  #popCloud{width:360px;}
-  .confirm.show{display:block; animation:popDrop .36s cubic-bezier(.16,1,.3,1);}
-  .confirm h5{font-size:var(--fs-hero); font-weight:600; line-height:1.4; letter-spacing:-.3px; margin-bottom:12px;}
-  .confirm p{font-size:var(--fs-ctl); color:var(--txt); line-height:1.8;}
-  .confirm .confirm-hint{font-size:var(--fs-meta); color:var(--sub); margin-top:8px;}
-  .confirm .crow{display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; margin-top:18px;}
-  .confirm .crow button{min-height:32px; padding:6px 12px; border-radius:var(--radius-3);}
-  .confirm .crow button:focus-visible{outline:2px solid var(--g); outline-offset:3px;}
-  .confirm .cghost{border:none; background:none; color:var(--sub); font-size:var(--fs-ctl);
-                   padding:6px 11px; border-radius:var(--radius-3); cursor:pointer; font-family:inherit;
-                   transition:background var(--hov);}
-  .confirm .cghost:hover{background:var(--hover);}
-  .confirm .cgo{border:none; background:var(--txt); color:var(--card); font-size:var(--fs-ctl); font-weight:600;
-                padding:6px 13px; border-radius:var(--radius-3); cursor:pointer; font-family:inherit;
-                transition:background var(--hov);}
-  .confirm .cgo:hover{background:var(--gd); color:var(--gd-on);}
-  /* 云端确认：标题、文件数据、决策说明分层，保持上传与取消的语义可见。 */
-  #popStopCloud .sc-meta{display:flex; flex-wrap:wrap; gap:6px 16px; color:var(--sub);
-    font-size:var(--fs-meta); line-height:1.6; font-variant-numeric:tabular-nums; margin-bottom:12px;}
-  #popStopCloud .sc-detail{font-size:var(--fs-ctl); line-height:1.8; color:var(--txt); margin:0;}
-  .confirm .pb-list{max-height:180px; overflow:auto; margin:0 0 4px; padding-left:0; list-style:decimal inside;
-    font-size:var(--fs-ctl); line-height:1.8; color:var(--txt);}
-  .confirm .pb-list li{white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
-  .confirm .pb-list .pb-dur{color:var(--sub); margin-left:6px;}
-  #popStopCloud .sc-hint{font-size:var(--fs-meta); line-height:1.8; color:var(--sub); margin:8px 0 0;}
 
   /* ============ 多选选择条: 固定在侧栏底部, 距窗口底边 16px ============ */
   .selbar{position:fixed; left:12px; bottom:16px; width:266px; z-index:var(--z-selbar);
@@ -2572,43 +2559,133 @@
   .tn-actions .tn-save:hover{background:#ffe9a3;}
 
 
-  /* ============ 删除确认弹窗 ============ */
-  .modal{display:none; position:fixed; inset:0; z-index:var(--z-menu); background:rgba(0,0,0,.18);
-         align-items:center; justify-content:center;}
-  .modal.show{display:flex;}
-  .mbox{background:var(--card); border:1px solid var(--line); border-radius:var(--radius-3); box-shadow:0 2px 6px rgba(20,30,50,.04),0 20px 60px rgba(20,30,50,.12);
-        padding:20px; width:340px; max-width:calc(100vw - 32px); max-height:calc(100vh - 32px); overflow-y:auto;
-        animation:popIn .38s cubic-bezier(.18,.9,.28,1.15);}
-  @keyframes popIn{from{transform:translateY(16px) scale(.95); opacity:0;} to{transform:none; opacity:1;}}
-  .mtitle{font-size:var(--fs-hero); font-weight:600; line-height:1.4; letter-spacing:-.3px;}
-  .msub{font-size:var(--fs-ctl); color:var(--txt); margin-top:12px; line-height:1.8;}
-  .mcheck{display:flex; align-items:flex-start; gap:8px; margin-top:14px; font-size:var(--fs-ctl); line-height:1.8;
-          cursor:pointer; user-select:none;}
-  .mcheck input{width:15px; height:15px; margin-top:5px; flex:none; accent-color:var(--txt);}
-  .mrow{display:flex; flex-wrap:wrap; justify-content:flex-end; gap:8px; margin-top:18px;}
-  .mbtn{border:none; border-radius:var(--radius-3); min-height:32px; padding:6px 12px; font-family:inherit; font-size:var(--fs-ctl); font-weight:600;
-        cursor:pointer; transition:background var(--hov), color var(--hov);}
-  .mbtn.gray{background:transparent; color:var(--sub); font-weight:400;}
-  .mbtn.gray:hover{background:var(--hover);}
-  .mbtn.red{background:var(--warn); color:#fff;}
-  .mbtn.red:hover{background:color-mix(in srgb, #e0362d 60%, transparent);}
-  .mbtn:focus-visible{outline:2px solid var(--g); outline-offset:3px;}
-  #stopmodal .mbtn.red{background:var(--txt); color:var(--card);}
-  #stopmodal .mbtn.red:hover{background:var(--gd); color:var(--gd-on);}
+  /* ============ 弹窗：先看清要动的是哪一条，再按键确认 ============
+     两种壳共用同一张卡：.modal 自带遮罩（删除 / 结束录音 / 快捷键），.confirm 借全局 #popscrim。
+     卡内统一为 标题 → 说明 → 对象卡 → 底部操作栏；键位见 JS「弹窗键位」。 */
+  .modal{display:none; position:fixed; inset:0; z-index:var(--z-menu); background:rgba(20,22,20,.24);
+         align-items:center; justify-content:center; padding:16px;}
+  .modal.show{display:flex; animation:dlgFade .2s ease;}
+  .confirm{display:none; position:fixed; z-index:var(--z-pop-lift); inset:0; margin:auto; height:max-content;}
+  .confirm.show{display:block;}
+  .mbox,.confirm{--dlg-line:color-mix(in srgb, var(--line) 72%, transparent);
+         width:452px; max-width:calc(100vw - 32px); max-height:calc(100vh - 32px); overflow-y:auto;
+         background:var(--card); border-radius:var(--radius-3); text-align:left;
+         box-shadow:0 0 0 1px rgba(0,0,0,.06),0 2px 6px rgba(20,30,50,.05),0 28px 70px rgba(20,30,50,.22);}
+  .modal.show .mbox,.confirm.show{animation:dlgRise .3s cubic-bezier(.16,1,.3,1) both;}
+  #keymodal .mbox{width:560px;}
+  @keyframes dlgRise{from{opacity:0; transform:translateY(8px);} to{opacity:1; transform:none;}}
+  @keyframes dlgFade{from{opacity:0;} to{opacity:1;}}
+  .dlg-body{padding:22px 22px 18px;}
+  .dlg-title{font-size:var(--fs-hero); font-weight:600; line-height:1.4; letter-spacing:-.2px;}
+  .dlg-sub{font-size:var(--fs-caption); line-height:1.7; color:var(--sub); margin-top:6px;}
+  .dlg-sub:empty{display:none;}
+  /* 对象卡：被操作的那一条 */
+  .dlg-obj{margin-top:16px; border-radius:10px; background:var(--soft); border:1px solid var(--dlg-line); overflow:hidden;}
+  .dlg-row{display:flex; align-items:center; gap:14px; padding:12px 14px; min-height:58px;}
+  .dlg-row + .dlg-row,.dlg-extra .dlg-row{border-top:1px solid var(--dlg-line);}
+  .dlg-ico{flex:none; width:40px; height:40px; border-radius:10px; display:grid; place-items:center;
+           background:var(--g-tint); color:var(--gd);}
+  .dlg-ico svg{width:22px; height:22px;}
+  .dlg-ico.quiet{background:var(--card); color:var(--gry-ink); box-shadow:inset 0 0 0 1px var(--dlg-line);}
+  .dlg-ico.grp{background:color-mix(in srgb, var(--dot, var(--gry-ink)) 14%, transparent);}
+  .dlg-ico.grp i{width:12px; height:12px; border-radius:50%; background:var(--dot, var(--gry-ink));}
+  .dlg-ico.live{background:color-mix(in srgb, var(--warn) 12%, transparent);}
+  .dlg-ico.live i{width:10px; height:10px; border-radius:50%; background:var(--warn);
+                  box-shadow:0 0 0 4px color-mix(in srgb, var(--warn) 20%, transparent); animation:dlgBeat 1.2s ease-in-out infinite;}
+  .dlg-ico.live.paused i{animation:none; opacity:.5;}
+  @keyframes dlgBeat{50%{opacity:.35; transform:scale(.8);}}
+  .dlg-meta{flex:1; min-width:0;}
+  .dlg-meta b{display:block; font-size:var(--fs-ctl); font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .dlg-meta small{display:block; font-size:var(--fs-meta); color:var(--sub); margin-top:2px; font-variant-numeric:tabular-nums;
+                  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  /* 勾选扩大范围时多出的一行：从上方展开 */
+  .dlg-extra{max-height:0; opacity:0; overflow:hidden; transition:max-height .28s cubic-bezier(.16,1,.3,1), opacity .2s;}
+  .dlg-extra.on{max-height:80px; opacity:1;}
+  /* 数据出本机：本机 → 云端 */
+  .dlg-flow{display:flex; align-items:center; gap:10px; padding:10px 14px; border-top:1px solid var(--dlg-line);
+            font-size:var(--fs-meta); color:var(--sub);}
+  .dlg-flow span{white-space:nowrap;}
+  .dlg-flow .arrow{flex:1; height:1px; background:var(--gry-scr); position:relative;}
+  .dlg-flow .arrow::after{content:""; position:absolute; right:0; top:-3px; border:3.5px solid transparent;
+                          border-left:6px solid var(--gry-scr); border-right:0;}
+  .dlg-flow .arrow::before{content:""; position:absolute; left:0; top:-2px; width:5px; height:5px; border-radius:50%;
+                           background:var(--g); animation:dlgTravel 2.4s cubic-bezier(.16,1,.3,1) infinite;}
+  @keyframes dlgTravel{from{left:0; opacity:0;} 15%{opacity:1;} 85%{opacity:1;} to{left:calc(100% - 8px); opacity:0;}}
+  /* 提醒条：代价与风险 */
+  .dlg-note{display:flex; gap:10px; margin-top:12px; padding:10px 12px; border-radius:10px; font-size:var(--fs-caption); line-height:1.6;
+            background:var(--note-wash); border:1px solid var(--notebd); color:var(--noteink);}
+  .dlg-note[hidden]{display:none;}
+  .dlg-note svg{flex:none; width:16px; height:16px; margin-top:2px;}
+  .dlg-note.bad{background:color-mix(in srgb, var(--warn) 9%, transparent); border-color:transparent; color:var(--warn);}
+  .dlg-note a{color:inherit; font-weight:600; text-underline-offset:3px; cursor:pointer;}
+  /* 文件列表：批量导入 / 导入出错 */
+  .dlg-files{list-style:none; counter-reset:f; max-height:208px; overflow:auto;}
+  .dlg-files li{counter-increment:f; display:flex; align-items:center; gap:12px; padding:9px 14px; font-size:var(--fs-caption);
+                transition:margin .3s cubic-bezier(.16,1,.3,1), border-radius .3s, background .3s;}
+  .dlg-files li + li{border-top:1px solid var(--dlg-line);}
+  .dlg-files li::before{content:counter(f, decimal-leading-zero); width:18px; flex:none;
+                        font:600 11px/1 ui-monospace,Menlo,monospace; color:var(--sub);}
+  .dlg-files .nm{flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .dlg-files .du{font-size:var(--fs-meta); color:var(--sub); font-variant-numeric:tabular-nums;}
+  .dlg-files .why{font-size:var(--fs-meta); color:var(--warn); white-space:nowrap; max-width:50%; overflow:hidden; text-overflow:ellipsis;}
+  .dlg-files.err li::before{content:""; width:6px; height:6px; border-radius:50%; background:var(--warn); margin:0 6px;}
+  .dlg-total{display:flex; justify-content:space-between; padding:9px 14px; font-size:var(--fs-meta); color:var(--sub);
+             border-top:1px solid var(--dlg-line); font-variant-numeric:tabular-nums;}
+  /* 悬停「分别转换」：每个文件拆开成独立的一份；悬停「合并为一份」：连成一体 */
+  .dlg-obj.split{background:transparent; border-color:transparent;}
+  .dlg-obj.split .dlg-files li{margin-top:6px; border-radius:9px; background:var(--soft); border:1px solid var(--dlg-line);}
+  .dlg-obj.split .dlg-files li:first-child{margin-top:0;}
+  .dlg-obj.split .dlg-total{display:none;}
+  .dlg-obj.merge{box-shadow:0 0 0 2px var(--g-tint); border-color:color-mix(in srgb, var(--g) 50%, transparent);}
+  .dlg-obj.merge .dlg-files li + li{border-top-style:dashed;}
+  .dlg-mode{font-size:var(--fs-meta); color:var(--sub); margin-top:10px; min-height:20px;}
+  .dlg-mode b{color:var(--txt); font-weight:600;}
+  /* 选项行：点一行就执行 */
+  .dlg-opts{margin-top:16px; display:grid; gap:8px;}
+  .dlg-opt{display:flex; align-items:center; gap:14px; width:100%; padding:14px; border-radius:10px; border:1px solid var(--dlg-line);
+           background:var(--soft); font:inherit; color:inherit; text-align:left; cursor:pointer;
+           transition:background var(--hov), border-color var(--hov), transform .12s;}
+  .dlg-opt:hover{border-color:var(--line); background:color-mix(in srgb, var(--soft) 55%, var(--card));}
+  .dlg-opt:active{transform:scale(.985);}
+  .dlg-opt b{display:block; font-size:var(--fs-ctl); font-weight:600;}
+  .dlg-opt small{display:block; font-size:var(--fs-meta); color:var(--sub); margin-top:2px; line-height:1.6;}
+  /* 底部操作栏 */
+  .dlg-foot{display:flex; align-items:center; gap:8px; padding:12px 14px 12px 22px;
+            background:color-mix(in srgb, var(--soft) 55%, var(--card)); border-top:1px solid var(--dlg-line);}
+  .dlg-foot .left{flex:1; min-width:0; font-size:var(--fs-meta); color:var(--sub);}
+  .dlg-check{display:flex; align-items:center; gap:8px; font-size:var(--fs-caption); color:var(--sub); white-space:nowrap;
+             cursor:pointer; user-select:none;}
+  .dlg-check input{width:14px; height:14px; accent-color:var(--warn);}
+  .dbtn{font-family:inherit; font-size:var(--fs-caption); height:32px; padding:0 10px 0 12px; border-radius:9px; border:none;
+        background:transparent; color:var(--sub); display:inline-flex; align-items:center; gap:8px; cursor:pointer; white-space:nowrap;
+        transition:background var(--hov), color var(--hov), transform .12s cubic-bezier(.16,1,.3,1), opacity .2s;}
+  .dbtn:hover{background:var(--hover);}
+  .dbtn:active{transform:scale(.97);}
+  .dbtn:focus-visible,.dlg-opt:focus-visible{outline:2px solid var(--g); outline-offset:2px;}
+  .dbtn.go{background:var(--txt); color:var(--card); font-weight:600;}
+  .dbtn.go:hover{background:var(--gd); color:var(--gd-on);}
+  .dbtn.danger{background:#d92d23; color:#fff; font-weight:600;}
+  .dbtn.danger:hover{background:#bf261d;}
+  .dbtn.alt{background:var(--card); color:var(--txt); box-shadow:inset 0 0 0 1px var(--line);}
+  .dbtn.alt:hover{background:var(--soft);}
+  .dbtn[disabled]{opacity:.38; cursor:not-allowed; transform:none;}
+  .dbtn .lbl{transition:opacity .14s;}
+  .dbtn kbd,.dlg-opt kbd,.keys kbd{font:500 11px/1 -apple-system,"PingFang SC",sans-serif; min-width:20px; height:18px; padding:0 5px;
+        border-radius:5px; display:inline-grid; place-items:center; background:color-mix(in srgb, var(--txt) 7%, transparent);
+        color:var(--sub); white-space:nowrap; flex:none;}
+  .dbtn.go kbd,.dbtn.danger kbd{background:rgba(255,255,255,.22); color:inherit;}
 
   /* toast */
   .toast{position:fixed; bottom:92px; left:50%; transform:translateX(-50%);
          background:var(--txt); color:#fff; font-size:var(--fs-body); padding:9px 20px;
          border-radius:var(--radius-4); opacity:0; pointer-events:none; transition:opacity .25s; z-index:var(--z-toast);}
-  #keymodal .mbox{width:360px;}
-  /* 快捷键卡：模态壳复用 .modal/.mbox，这里只排两列 */
-  .keys{display:grid; grid-template-columns:auto 1fr; gap:8px 14px; margin-top:4px;
-        font-size:var(--fs-ctl); color:var(--txt); text-align:left;}
-  .keys kbd{justify-self:start; background:var(--soft); border:1px solid var(--line);
-            border-radius:var(--radius-1); padding:1px 7px; font-size:var(--fs-meta); font-family:inherit;
-            color:var(--sub); white-space:nowrap;}
+  /* 快捷键卡：分组两列，说明在左、键位在右 */
+  .keys{margin-top:14px; display:grid; grid-template-columns:1fr 1fr; gap:0 28px;}
+  .keys h4{grid-column:span 2; font-size:var(--fs-meta); font-weight:600; color:var(--sub); margin:12px 0 4px;}
+  .keys h4:first-child{margin-top:0;}
+  .keys .k{display:flex; align-items:center; justify-content:space-between; gap:12px; padding:6px 0;
+           font-size:var(--fs-caption); border-bottom:1px solid var(--dlg-line);}
   html:not([data-platform="mac"]) .keys .mac-only{display:none;}   /* 连续互通相机只有 macOS 有 */
-  .keys i{display:block; font-size:var(--fs-meta); line-height:1.7; font-style:normal; color:var(--sub);}
   .toast.show{opacity:.96;}
 
   /* ============ 侧栏分组色点：悬浮呼吸 / 点击回弹 / 呼出标签色板 ============
@@ -2772,7 +2849,6 @@
   html[data-appearance="dark"] .tplpop .tpl.editing input,
   html[data-appearance="dark"] .tplpop .tpl.editing textarea,
   html[data-appearance="dark"] .gpop .cpal .sw.none,
-  html[data-appearance="dark"] .mbox { background:var(--card); }
   html[data-appearance="dark"] .hwpop,
   html[data-appearance="dark"] .spkpop,
   html[data-appearance="dark"] .cloudpop,
@@ -2785,7 +2861,6 @@
   html[data-appearance="dark"] .gpop,
   html[data-appearance="dark"] .tagpal { background:var(--material-rest-background); }
   html[data-appearance="dark"] .drawer,
-  html[data-appearance="dark"] .confirm { background:rgba(42,43,47,.96); }
   html[data-appearance="dark"] body.sidehide.side-peek .sidebar::before {background:var(--material-rest-background);}
   html[data-appearance="dark"] .setpop,
   html[data-appearance="dark"] .findbar { background:var(--material-rest-background); }
@@ -2799,6 +2874,10 @@
   html[data-appearance="dark"] .pal-scrim { background:rgba(12,13,15,.56); }
   html[data-appearance="dark"] #subscrim { background:rgba(12,13,15,.48); }
   html[data-appearance="dark"] .modal { background:rgba(0,0,0,.54); }
+  html[data-appearance="dark"] .mbox,
+  html[data-appearance="dark"] .confirm { box-shadow:0 0 0 1px rgba(255,255,255,.07),0 28px 70px rgba(0,0,0,.55); }
+  html[data-appearance="dark"] .dbtn.danger { background:var(--warn); color:#1d1110; }
+  html[data-appearance="dark"] .dbtn.go kbd { background:rgba(0,0,0,.12); }
   html[data-appearance="dark"] .gearbtn.lift,
   html[data-appearance="dark"] .sbtn.lift { background:var(--card); box-shadow:0 0 0 1.5px var(--card); }
   html[data-appearance="dark"] .rc.new { background:linear-gradient(180deg,var(--card),var(--gsoft)); }
@@ -2842,7 +2921,6 @@
   html[data-appearance="dark"] .notepop .send,
   html[data-appearance="dark"] .tplpop .go,
   html[data-appearance="dark"] .tplpop .tpl.editing .eops button,
-  html[data-appearance="dark"] .confirm .cgo,
   html[data-appearance="dark"] .setclose:hover,
   html[data-appearance="dark"] #tip,
   html[data-appearance="dark"] .toast { color:#17191b; }
@@ -2853,7 +2931,6 @@
   html[data-appearance="dark"] .recpill.rec:hover { color:var(--txt); }
   html[data-appearance="dark"] .recpill.rec:hover .wavebg b { background:var(--g-badge); }
   html[data-appearance="dark"] .recpill.rec:hover .wavebg b.on { background:var(--g-glow); }
-  html[data-appearance="dark"] .mbtn.red { color:#1d1110; }
   html[data-appearance="dark"] .nameconfirm::before,
   html[data-appearance="dark"] .hchk:checked::after { color:var(--g-on); border-color:var(--g-on); }
   html[data-appearance="dark"] .setclose:hover {
@@ -3021,10 +3098,7 @@
 #setBody #sec-appearance .reading-group>.st:first-child,#setBody #sec-appearance .reading-group>.ptinfo{grid-column:1 / -1;}
 #setBody #sec-appearance .reading-group>label{grid-row:3;}
 #setBody #sec-appearance .reading-group>.st{margin-top:0!important;}
-#setBody #sec-appearance .copy-group{grid-column:1 / -1;border-top:1px solid var(--line);padding-top:20px;display:grid;grid-template-columns:170px 1fr;column-gap:28px;align-items:center;}
-#setBody #sec-appearance .copy-group>.st{margin:0;}
-#setBody #sec-appearance .copy-group>.ptinfo{grid-column:2;}
-@media(max-width:700px){#setBody #sec-appearance .appearance-grid{grid-template-columns:1fr;}#setBody #sec-appearance .appearance-grid .material-group{grid-template-columns:1fr;}#setBody #sec-appearance .material-preview{grid-column:1;grid-row:auto;}#setBody #sec-appearance .reading-group,#setBody #sec-appearance .copy-group{display:block;}#setBody #sec-appearance .reading-group>label{margin-bottom:14px;}}
+@media(max-width:700px){#setBody #sec-appearance .appearance-grid{grid-template-columns:1fr;}#setBody #sec-appearance .appearance-grid .material-group{grid-template-columns:1fr;}#setBody #sec-appearance .material-preview{grid-column:1;grid-row:auto;}#setBody #sec-appearance .reading-group{display:block;}#setBody #sec-appearance .reading-group>label{margin-bottom:14px;}}
 
 #setBody #sec-appearance #themeGroup{display:grid;grid-template-columns:1fr auto;gap:10px 12px;align-content:start;align-items:center;}
 #setBody #sec-appearance #themeGroup>.st{margin-bottom:0!important;}
@@ -3520,6 +3594,9 @@ html:not([data-material="mimetic"]) #setBody #materialAdvanced{display:none;}
           <textarea id="summaryPrompt" rows="4" placeholder="留空则用内置要求。这里的补充要求会同时应用于摘要与目录，不能覆盖格式和事实约束。"></textarea>
           <div class="row"><button class="bsave" id="summaryPromptSave">保存提示词</button></div>
         </div>
+        <div class="st sw-line">长文稿分段生成目录
+          <button class="thinksw" id="swWindows" role="switch" aria-checked="false" title="分段生成目录：开=长文稿按段依次生成；关=整篇一次生成"></button></div>
+        <div class="swcap">超过约 2 小时的文稿按每段约 1 小时依次生成目录；关闭则整篇一次生成。</div>
         <div class="st">笔记模型 <span style="font-weight:400;color:var(--sub);">生成笔记专用模型，留空则用文稿精修模型</span></div>
         <div class="inrow has-switch"><input type="text" id="cloudNoteModel" placeholder="笔记模型名（文字用）" spellcheck="false">
           <button class="thinksw" id="swNote" role="switch" aria-checked="true" title="深度思考：开=更高精度；关=更省 token（仅支持关闭的模型可关）"></button></div>
@@ -3657,14 +3734,6 @@ html:not([data-material="mimetic"]) #setBody #materialAdvanced{display:none;}
        <label class="personal-range"><span>紧</span><input id="transcriptLineHeight" type="range" min="1.5" max="2.2" step="0.05" value="1.75"><span>松</span><output id="transcriptLineHeightValue">1.75</output></label>
        <div class="ptinfo">即时应用到逐字稿，重启后保留。</div>
        </section>
-       <section class="appearance-group copy-group">
-        <div class="st">默认复制方式</div>
-        <button class="devfield" id="defaultCopyFormatButton" type="button" aria-expanded="false" aria-controls="copypop">
-          <span class="dv" id="defaultCopyFormatValue">不带时间戳 · 纯文本</span>
-          <svg class="ui-icon cv" width="10" height="6" viewBox="0 0 10 6" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M1 1l4 4 4-4"/></svg>
-        </button>
-        <div class="ptinfo">普通点击文稿复制按钮会直接使用此格式；按住 Option / Alt 再点击可临时选择。</div>
-       </section>
 
       </div>
      </div>
@@ -3758,54 +3827,78 @@ html:not([data-material="mimetic"]) #setBody #materialAdvanced{display:none;}
     <div id="spkList"></div>
   </div>
 
-  <div class="confirm" id="popSilence">
-    <h5>跳过静音并重新转写？</h5>
-    <p>减少静音段产生的重复内容。完成后将替换本项目的文稿与逐字稿。</p>
-    <p class="confirm-hint">清晰单人录音的实测中，可能误删约 9% 的轻声讲话，耗时约为原来的 1.4 倍。</p>
-    <div class="crow">
-      <button class="cghost" id="silCancel">取消</button>
-      <button class="cgo" id="silGo">开始重跑</button>
+  <div class="confirm" id="popSilence" role="alertdialog" aria-labelledby="silTitle">
+    <div class="dlg-body">
+      <div class="dlg-title" id="silTitle">跳过静音并重新转写？</div>
+      <p class="dlg-sub">减少静音段产生的重复内容。完成后会替换本项目的文稿与逐字稿。</p>
+      <div class="dlg-obj" id="silObj"></div>
+      <div class="dlg-note"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2.2 14.5 13.4H1.5z"/><path d="M8 6.6v3M8 11.6h0"/></svg>
+        <span>清晰单人录音的实测中，可能误删约 9% 的轻声讲话。</span></div>
+    </div>
+    <div class="dlg-foot"><div class="left"></div>
+      <button class="dbtn" id="silCancel" data-dlg="cancel">取消 <kbd>esc</kbd></button>
+      <button class="dbtn go" id="silGo" data-dlg="go">开始重跑 <kbd>↩</kbd></button>
     </div>
   </div>
 
-  <div class="confirm" id="popStopCloud">
-    <h5 id="scTitle">上传录音并转写？</h5>
-    <div id="scBody"></div>
-    <div class="crow">
-      <button class="cghost" id="scCancel">暂不上传</button>
-      <button class="cgo" id="scGo">上传转写</button>
+  <div class="confirm" id="popStopCloud" role="alertdialog" aria-labelledby="scTitle">
+    <div class="dlg-body">
+      <div class="dlg-title" id="scTitle">上传录音并转写？</div>
+      <p class="dlg-sub" id="scSub"></p>
+      <div class="dlg-obj"><div id="scObj"></div>
+        <div class="dlg-flow"><span id="scFrom">本机录音</span><i class="arrow"></i><span id="scDest">你配置的云端接口</span></div></div>
+      <div class="dlg-note bad" id="scNote" hidden><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="8" cy="8" r="6.4"/><path d="M8 4.8v3.6M8 11h0"/></svg>
+        <span>地址、Key 或转写模型还没填齐。<a id="scFix">打开云端设置</a></span></div>
+    </div>
+    <div class="dlg-foot"><div class="left" id="scHint"></div>
+      <button class="dbtn" id="scCancel" data-dlg="cancel"><span class="lbl" id="scCancelLbl">暂不上传</span> <kbd>esc</kbd></button>
+      <button class="dbtn go" id="scGo" data-dlg="go"><span class="lbl" id="scGoLbl">上传转写</span> <kbd>↩</kbd></button>
     </div>
   </div>
 
-  <div class="confirm" id="popAlert" role="alertdialog">
-    <h5 id="paTitle"></h5>
-    <ol class="pb-list" id="paList"></ol>
-    <p class="confirm-hint" id="paHint"></p>
-    <div class="crow">
-      <button class="cgo" id="paOk">知道了</button>
+  <div class="confirm" id="popAlert" role="alertdialog" aria-labelledby="paTitle">
+    <div class="dlg-body">
+      <div class="dlg-title" id="paTitle"></div>
+      <p class="dlg-sub" id="paHint"></p>
+      <div class="dlg-obj" id="paObj"><ol class="dlg-files err" id="paList"></ol></div>
+    </div>
+    <div class="dlg-foot"><div class="left"></div>
+      <button class="dbtn go" id="paOk" data-dlg="go">知道了 <kbd>↩</kbd></button>
     </div>
   </div>
 
-  <div class="confirm" id="popBatch">
-    <h5 id="pbTitle">这几个文件怎么处理？</h5>
-    <ol class="pb-list" id="pbList"></ol>
-    <p class="confirm-hint">合并：按上面的顺序接成一份文稿；分别：每个文件各建一个项目。</p>
-    <div class="crow">
-      <button class="cghost" id="pbCancel">取消</button>
-      <button class="cghost" id="pbSplit">分别转换</button>
-      <button class="cgo" id="pbMerge">合并为一份</button>
+  <div class="confirm" id="popBatch" role="dialog" aria-labelledby="pbTitle">
+    <div class="dlg-body">
+      <div class="dlg-title" id="pbTitle">这几个文件怎么处理？</div>
+      <div class="dlg-obj" id="pbObj">
+        <ol class="dlg-files" id="pbList"></ol>
+        <div class="dlg-total"><span>按上面的顺序</span><span id="pbTotal"></span></div>
+      </div>
+      <div class="dlg-mode" id="pbMode"></div>
+    </div>
+    <div class="dlg-foot"><div class="left"></div>
+      <button class="dbtn" id="pbCancel" data-dlg="cancel">取消 <kbd>esc</kbd></button>
+      <button class="dbtn alt" id="pbSplit" data-mode="split">分别转换</button>
+      <button class="dbtn go" id="pbMerge" data-mode="merge" data-dlg="go">合并为一份 <kbd>↩</kbd></button>
     </div>
   </div>
 
-  <div class="confirm" id="popCloud">
-    <h5>选择云端处理方式</h5>
-    <p><b>云端转写</b><br>上传录音至你配置的接口，重新转写。</p>
-    <p style="margin-top:12px"><b>文字后处理</b><br>仅上传文字，修正错字与标点，录音留在本机。</p>
-    <p class="confirm-hint">摘要可单独生成。</p>
-    <div class="crow">
-      <button class="cghost" id="clCancel">取消</button>
-      <button class="cgo" id="clRefine" style="background:var(--soft);color:var(--txt);">文字后处理</button>
-      <button class="cgo" id="clGo">云端转写</button>
+  <div class="confirm" id="popCloud" role="dialog" aria-labelledby="clTitle">
+    <div class="dlg-body">
+      <div class="dlg-title" id="clTitle">选择云端处理方式</div>
+      <div class="dlg-opts">
+        <button class="dlg-opt" id="clGo" data-dlg-key="1">
+          <span class="dlg-ico" data-ico="cloud"></span>
+          <span class="dlg-meta"><b>云端转写</b><small>上传录音至你配置的接口，重新转写。</small></span><kbd>1</kbd>
+        </button>
+        <button class="dlg-opt" id="clRefine" data-dlg-key="2">
+          <span class="dlg-ico" data-ico="refine"></span>
+          <span class="dlg-meta"><b>文字后处理</b><small>仅上传文字，修正错字与标点，录音留在本机。</small></span><kbd>2</kbd>
+        </button>
+      </div>
+    </div>
+    <div class="dlg-foot"><div class="left">摘要可单独生成</div>
+      <button class="dbtn" id="clCancel" data-dlg="cancel">取消 <kbd>esc</kbd></button>
     </div>
   </div>
 
@@ -3825,8 +3918,11 @@ html:not([data-material="mimetic"]) #setBody #materialAdvanced{display:none;}
       <button class="tpb f-only" id="btnFind" data-tip="搜索文稿">
         <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
       </button>
-      <button class="tpb f-only" id="btnCopy" data-tip="复制逐字稿">
+      <button class="tpb f-only" id="btnCopy" data-tip="复制为 .md 文件">
         <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+      </button>
+      <button class="tpb f-only" id="btnExport" data-tip="导出文稿（打包分享）">
+        <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7.5 7.5 12 3l4.5 4.5"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>
       </button>
       <button class="tpb f-only" id="btnDel" data-tip="归档项目">
         <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7.5h16v12a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19.5zM3 4h18v3.5H3zM9 12h6"/></svg>
@@ -3853,6 +3949,7 @@ html:not([data-material="mimetic"]) #setBody #materialAdvanced{display:none;}
         <div class="refine-title" id="refineTitle">文稿精修中</div>
         <div class="refine-subtitle" id="refineSubtitle">完成后可生成 AI 摘要</div>
       </div>
+      <div class="refine-tokens" id="refineTokens" aria-hidden="true" hidden><span class="odo" id="refineOdo"></span><span class="refine-tokens-unit">tokens</span></div>
       <div class="refine-dots" id="refineDots" aria-hidden="true"><i class="refine-dot"></i><i class="refine-dot"></i><i class="refine-dot"></i></div>
       <button class="refine-action" id="btnGenerateSummary" type="button" hidden>生成</button>
     </div>
@@ -3939,6 +4036,9 @@ html:not([data-material="mimetic"]) #setBody #materialAdvanced{display:none;}
   <button class="tpb" id="btnGroup" data-tip="把选中项放进分组">
     <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h10M4 18h6"/><circle cx="18" cy="15" r="3.2"/></svg>
   </button><span class="glabel">分组</span>
+  <button class="tpb" id="btnExportBatch" data-tip="把选中文稿打包导出">
+    <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7.5 7.5 12 3l4.5 4.5"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>
+  </button>
   <button class="tpb" id="btnDelBatch" data-tip="归档选中项目">
     <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7.5h16v12a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19.5zM3 4h18v3.5H3zM9 12h6"/></svg>
   </button>
@@ -3966,6 +4066,9 @@ html:not([data-material="mimetic"]) #setBody #materialAdvanced{display:none;}
   </button>
   <button class="hmi" data-act="copy">
     <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>复制文稿
+  </button>
+  <button class="hmi" data-act="export">
+    <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7.5 7.5 12 3l4.5 4.5"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg><span class="hmi-label">导出分享</span>
   </button>
   <button class="hmi" data-act="batch">
     <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7l2 2 4-4"/><path d="M3 17l2 2 4-4"/><path d="M12 7h9"/><path d="M12 17h9"/></svg>批量操作
@@ -3998,12 +4101,15 @@ html:not([data-material="mimetic"]) #setBody #materialAdvanced{display:none;}
 
 <!-- 删组确认: 与删录音同款 modal 骨架, 只问一次不连环问 -->
 <div class="modal" id="grpdelmodal">
-  <div class="mbox">
-    <div class="mtitle" id="grpDelTitle">删除分组？</div>
-    <div class="msub" id="grpDelSub">组内项目会回到未分组，文稿与录音都不动。</div>
-    <div class="mrow">
-      <button class="mbtn gray" id="grpDelCancel">取消</button>
-      <button class="mbtn red" id="grpDelConfirm">删除分组</button>
+  <div class="mbox" role="alertdialog" aria-labelledby="grpDelTitle">
+    <div class="dlg-body">
+      <div class="dlg-title" id="grpDelTitle">删除分组？</div>
+      <p class="dlg-sub" id="grpDelSub">组内项目会回到未分组，文稿与录音都不动。</p>
+      <div class="dlg-obj" id="grpDelObj"></div>
+    </div>
+    <div class="dlg-foot"><div class="left"></div>
+      <button class="dbtn" id="grpDelCancel" data-dlg="cancel">取消 <kbd>esc</kbd></button>
+      <button class="dbtn danger" id="grpDelConfirm" data-dlg="go">删除分组 <kbd>↩</kbd></button>
     </div>
   </div>
 </div>
@@ -4140,13 +4246,16 @@ html:not([data-material="mimetic"]) #setBody #materialAdvanced{display:none;}
 </div>
 
 <div class="modal" id="delmodal">
-  <div class="mbox">
-    <div class="mtitle" id="delTitle">把录音移到废纸篓？</div>
-    <div class="msub" id="delSub">文稿会留在原处。废纸篓里随时能拖回来。</div>
-    <label class="mcheck"><input type="checkbox" id="delFull"> 同时移走文稿（整个项目）</label>
-    <div class="mrow">
-      <button class="mbtn gray" id="delCancel">取消</button>
-      <button class="mbtn red" id="delConfirm">移到废纸篓</button>
+  <div class="mbox" role="alertdialog" aria-labelledby="delTitle">
+    <div class="dlg-body">
+      <div class="dlg-title" id="delTitle">把录音移到废纸篓？</div>
+      <p class="dlg-sub" id="delSub">文稿会留在原处。废纸篓里随时能拖回来。</p>
+      <div class="dlg-obj"><div id="delObj"></div><div class="dlg-extra" id="delExtra"></div></div>
+    </div>
+    <div class="dlg-foot">
+      <div class="left"><label class="dlg-check"><input type="checkbox" id="delFull"> 同时移走文稿（整个项目）</label></div>
+      <button class="dbtn" id="delCancel" data-dlg="cancel">取消 <kbd>esc</kbd></button>
+      <button class="dbtn danger" id="delConfirm" data-dlg="go"><span class="lbl" id="delGoLbl">移到废纸篓</span> <kbd>↩</kbd></button>
     </div>
   </div>
 </div>
@@ -4156,38 +4265,48 @@ html:not([data-material="mimetic"]) #setBody #materialAdvanced{display:none;}
   <div class="record-loading-text" id="recordLoadingText" role="status" aria-live="polite"></div>
 </div>
 <div class="modal" id="stopmodal">
-  <div class="mbox">
-    <div class="mtitle">结束录音？</div>
-    <div class="msub">将保存本次逐字稿与录音到本地文件夹。</div>
-    <div class="mrow">
-      <button class="mbtn gray" id="stopCancel">取消</button>
-      <button class="mbtn red" id="stopConfirm">结束并保存</button>
+  <div class="mbox" role="alertdialog" aria-labelledby="stopTitle">
+    <div class="dlg-body">
+      <div class="dlg-title" id="stopTitle">结束录音？</div>
+      <p class="dlg-sub">本次逐字稿与录音会保存到本地文件夹。</p>
+      <div class="dlg-obj"><div class="dlg-row"><span class="dlg-ico live" id="stopIco"><i></i></span>
+        <span class="dlg-meta"><b id="stopName"></b><small id="stopMeta"></small></span></div></div>
+    </div>
+    <div class="dlg-foot"><div class="left"></div>
+      <button class="dbtn" id="stopCancel" data-dlg="cancel">继续录 <kbd>esc</kbd></button>
+      <button class="dbtn go" id="stopConfirm" data-dlg="go">结束并保存 <kbd>↩</kbd></button>
     </div>
   </div>
 </div>
 
 <div class="modal" id="keymodal">
-  <div class="mbox">
-    <div class="mtitle">键盘快捷键</div>
-    <div class="keys">
-      <kbd>空格</kbd><span>播放 / 暂停<i>（查看稿且有录音时）</i></span>
-      <kbd>按住 →</kbd><span>临时以 2 倍速播放<i>（松开恢复原倍速）</i></span>
-      <kbd>↑ / ↓</kbd><span>上一句 / 下一句，并跳到那一刻回放</span>
-      <kbd data-mac-shortcut="⌘ F" data-windows-shortcut="Ctrl+F">⌘ F</kbd><span>在文稿里查找内容</span>
-      <kbd data-mac-shortcut="⌘ K" data-windows-shortcut="Ctrl+K">⌘ K</kbd><span>搜索项目或分组<i>（命令面板）</i></span>
-      <kbd data-mac-shortcut="⌘ N" data-windows-shortcut="Ctrl+N">⌘ N</kbd><span>记一条时间线笔记<i>（非录音时=课后笔记）</i></span>
-      <kbd class="mac-only">⌘ ⇧ P</kbd><span class="mac-only">直接用 iPhone 拍照插入<i>（录音时）</i></span>
-      <kbd data-mac-shortcut="⌘ E" data-windows-shortcut="Ctrl+E">⌘ E</kbd><span>复制不带时间戳的纯文本</span>
-      <kbd data-mac-shortcut="⌥ 点击复制" data-windows-shortcut="Alt+点击复制">⌥ 点击复制</kbd><span>临时选择复制方式</span>
-      <kbd data-mac-shortcut="⌘ B" data-windows-shortcut="Ctrl+B">⌘ B</kbd><span>打开 / 收起左侧项目栏</span>
-      <kbd data-mac-shortcut="⌘ ⇧ B" data-windows-shortcut="Ctrl+Shift+B">⌘ ⇧ B</kbd><span>打开 / 收起右侧课后笔记</span>
-      <kbd id="recordShortcutKey" data-mac-shortcut="⌘ ⇧ R" data-windows-shortcut="Ctrl+Shift+R">⌘ ⇧ R</kbd><span>开始录音<i>（空闲时）</i></span>
-      <kbd data-mac-shortcut="⌘ ," data-windows-shortcut="Ctrl+,">⌘ ,</kbd><span>打开 / 收起设置</span>
-      <kbd>双击</kbd><span>就地改这一句<i> · Enter 落稿 · Esc 放弃</i></span>
-      <kbd data-mac-shortcut="⌘ /" data-windows-shortcut="Ctrl+/">⌘ /</kbd><span>打开这张卡</span>
-      <kbd>Esc</kbd><span>关掉当前弹层 / 放弃编辑</span>
+  <div class="mbox" role="dialog" aria-labelledby="keyTitle">
+    <div class="dlg-body">
+      <div class="dlg-title" id="keyTitle">键盘快捷键</div>
+      <div class="keys">
+      <h4>回放</h4>
+      <div class="k"><span>播放 / 暂停</span><kbd>空格</kbd></div>
+      <div class="k"><span>临时 2 倍速（松开恢复）</span><kbd>按住 →</kbd></div>
+      <div class="k"><span>上一句 / 下一句</span><kbd>↑ / ↓</kbd></div>
+      <div class="k"><span>就地改这一句</span><kbd>双击</kbd></div>
+      <h4>记录</h4>
+      <div class="k"><span>开始录音（空闲时）</span><kbd id="recordShortcutKey" data-mac-shortcut="⌘ ⇧ R" data-windows-shortcut="Ctrl+Shift+R">⌘ ⇧ R</kbd></div>
+      <div class="k"><span>记一条时间线笔记</span><kbd data-mac-shortcut="⌘ N" data-windows-shortcut="Ctrl+N">⌘ N</kbd></div>
+      <div class="k mac-only"><span>用 iPhone 拍照插入</span><kbd>⌘ ⇧ P</kbd></div>
+      <div class="k"><span>复制纯文本</span><kbd data-mac-shortcut="⌘ E" data-windows-shortcut="Ctrl+E">⌘ E</kbd></div>
+      <div class="k"><span>临时选择复制方式</span><kbd data-mac-shortcut="⌥ 点击复制" data-windows-shortcut="Alt+点击复制">⌥ 点击复制</kbd></div>
+      <h4>窗口</h4>
+      <div class="k"><span>在文稿里查找</span><kbd data-mac-shortcut="⌘ F" data-windows-shortcut="Ctrl+F">⌘ F</kbd></div>
+      <div class="k"><span>搜索项目或分组</span><kbd data-mac-shortcut="⌘ K" data-windows-shortcut="Ctrl+K">⌘ K</kbd></div>
+      <div class="k"><span>左侧项目栏</span><kbd data-mac-shortcut="⌘ B" data-windows-shortcut="Ctrl+B">⌘ B</kbd></div>
+      <div class="k"><span>右侧课后笔记</span><kbd data-mac-shortcut="⌘ ⇧ B" data-windows-shortcut="Ctrl+Shift+B">⌘ ⇧ B</kbd></div>
+      <div class="k"><span>设置</span><kbd data-mac-shortcut="⌘ ," data-windows-shortcut="Ctrl+,">⌘ ,</kbd></div>
+      <div class="k"><span>关掉弹层 / 放弃编辑</span><kbd>esc</kbd></div>
+      </div>
     </div>
-    <div class="mrow"><button class="mbtn gray" id="keyClose">知道了</button></div>
+    <div class="dlg-foot"><div class="left">随时按 <span data-mac-shortcut="⌘ /" data-windows-shortcut="Ctrl+/">⌘ /</span> 打开这张卡</div>
+      <button class="dbtn go" id="keyClose" data-dlg="go">知道了 <kbd>↩</kbd></button>
+    </div>
   </div>
 </div>
 
@@ -4248,7 +4367,8 @@ function paintRfnPct(){
 function syncJobs(st){
   jobs = {};
   (st.jobs || []).forEach(j=>{ jobs[j.id] = {kind:j.kind||'refine', state:j.state||'run',
-                                             stage:j.stage||'', pct:(j.pct==null?null:j.pct)}; });
+                                             stage:j.stage||'', pct:(j.pct==null?null:j.pct),
+                                             tokens:j.tokens||0}; });
   refiningId = st.refining || null;
   refiningKind = st.refiningKind || 'refine';
   refineStage = st.refineStage || ''; refinePct = (st.refinePct==null)?null:st.refinePct;
@@ -4809,6 +4929,37 @@ function updateRefineUI(){
   $('nameInput').readOnly = refineBusy;
   document.querySelector('.topbar').classList.toggle('locked', refineBusy);
   $('audiobar').classList.toggle('locked', refineBusy);
+  paintRefineLive();
+}
+
+/* 摘要生成中: 副标题跟着阶段走(第几段/合并中)，右侧数字跟着已生成 token 滚动。
+   长稿要等十来分钟，至少让人看见它在干活。 */
+function paintRefineLive(){
+  const job = view && jobs[view.id];
+  if(!job || job.kind !== 'summary' || !['run','wait'].includes(job.state)){
+    $('refineTokens').hidden = true;
+    return;
+  }
+  const n = job.state === 'run' ? (job.tokens || 0) : 0;
+  $('refineTokens').hidden = !(n > 0);
+  if(n > 0) paintOdo($('refineOdo'), n);
+  const stage = job.state === 'run' && job.stage && job.stage !== '生成 AI 摘要中' ? job.stage : '';
+  $('refineSubtitle').textContent = stage || '完成后将显示摘要';
+}
+function paintOdo(el, n){
+  const s = Math.max(0, Math.floor(n)).toLocaleString('en-US');
+  if(el.dataset.shape !== s.replace(/\d/g, '0')){
+    // 位数变了才重建; 新建的列先停在 0，强制一次排版后再滚到目标位
+    el.innerHTML = [...s].map(c => /\d/.test(c)
+      ? '<span class="odo-d"><span class="odo-col">' +
+        '0123456789'.split('').map(d => '<i>' + d + '</i>').join('') + '</span></span>'
+      : '<span class="odo-sep">' + c + '</span>').join('');
+    el.dataset.shape = s.replace(/\d/g, '0');
+    void el.offsetWidth;
+  }
+  const cols = el.querySelectorAll('.odo-col');
+  let i = 0;
+  for(const c of s) if(/\d/.test(c)) cols[i++].style.transform = `translateY(${-Number(c) * 1.15}em)`;
 }
 
 /* 后台停止入口: 本地=后台 SIGTERM 子进程; 云端=打标记链路自查。视觉卡片不显示按钮 */
@@ -4894,8 +5045,10 @@ function handleEvent(e){
   }
   if(e.type === 'refine_stage'){
     const j = jobs[e.id];
-    if(j){ j.stage = e.stage || ''; if(e.pct !== undefined) j.pct = e.pct; }
+    if(j){ j.stage = e.stage || ''; if(e.pct !== undefined) j.pct = e.pct;
+           if(e.tokens !== undefined) j.tokens = e.tokens; }
     paintRfnPct();          // 侧栏各「精修中/转写中」标签就地跟上自己的数字
+    paintRefineLive();      // 摘要卡片: 当前阶段 + 已生成 token 滚动数字
   }
   if(e.type === 'refinish_start'){
     jobs[e.id] = {kind: e.kind || 'refine', state: e.state || 'run', stage: '', pct: null};
@@ -4909,12 +5062,11 @@ function handleEvent(e){
   if(e.type === 'cloud_confirm'){
     // 云端模式停录: 弹一次确认, 点「上传」才传; 不点就停在实时字幕稿
     // (popStopCloud 这个壳导入流程也在用, 标题/按钮/取消都显式设回停录语义, 防互相污染)
-    $('scTitle').textContent = '上传录音并转写？';
-    $('scBody').innerHTML = `<div class="sc-meta"><span>时长 ${fmt(e.dur||0)}</span>${e.mb ? `<span>约 ${e.mb} MB</span>` : ''}</div>` +
-      '<p class="sc-detail">录音将上传至你配置的云端接口，并按用量计费。</p><p class="sc-hint">暂不上传将保留实时字幕稿，可稍后在项目中上传。</p>';
-    $('scCancel').textContent = '暂不上传';
-    $('scGo').textContent = '上传转写';
-    $('scGo').disabled = false;
+    const it = (lastHistRaw || []).find(x=>x.id === e.id);
+    fillCloudConfirm({title:'上传录音并转写？', sub:'录音将上传至你配置的云端接口，并按用量计费。',
+      ico:'rec', name:(it && it.name) || sessionName || '本次录音',
+      meta:`时长 ${fmt(e.dur||0)}${e.mb ? ` · 约 ${e.mb} MB` : ''}`, from:'本机录音',
+      hint:'暂不上传会保留实时字幕稿', cancel:'暂不上传', go:'上传转写', ready:true});
     $('scCancel').onclick = ()=>{ closePops(); toast('已保留实时字幕稿，未上传'); };
     closePops();
     const p = $('popStopCloud');
@@ -5080,7 +5232,7 @@ function addSeg(seg, live){
     // 多人稿带 spk: 时间戳后加一枚说话人数字徽标(灰阶, 不抢正文)
     const kb = seg.spk ? `<span class="spkb spk-c${spkIdx(seg.spk)}" data-spk="${esc(seg.spk)}">${esc(String(seg.spk).replace(/^S0*/, ''))}</span>` : '';
     div.dataset.raw = seg.text || '';
-    div.innerHTML = `<span class="ts">${fmt(seg.t)}</span><span class="tx"><span class="tx-focus">${kb}${transcriptFormattedHtml(seg,seg.text || '…')}${fixDot(div)}</span></span>`;
+    div.innerHTML = `<span class="ts">${fmt(seg.t)}</span><span class="tx"><span class="tx-focus">${kb}${transcriptFormattedHtml(seg,seg.text || '…')}${fixDot(div,seg)}</span></span>`;
     $('feed').appendChild(div);
     segEls.push(div);
     segTimes.push(parseFloat(div.dataset.t));
@@ -5201,6 +5353,7 @@ function applyStatus(d){
   pill.className = 'statepill ' + (state==='recording'?'rec':state==='paused'?'paused':'idle');
   $('stateTxt').textContent = state==='recording'?'录制中':state==='paused'?'已暂停':state==='stopping'?'正在收尾…':'未开始';
   $('timer').textContent = fmt(d.elapsed);
+  if($('stopmodal').classList.contains('show')) syncStopCard();
   if(RECORD_MODES.includes(d.mode)) recMode = d.mode;
   syncPauseButton();
   syncSourceButton();
@@ -5493,10 +5646,20 @@ $('fab').onclick = async ()=>{
     }catch(e){toast('录音启动失败：'+(e.message || '请重试'));}
     finally{hideRecordLoading();}
   } else {
+    syncStopCard();
     $('stopmodal').classList.add('show');   // 用样式化弹窗替代原生 confirm
   }
 };
 $('stopCancel').onclick = ()=> $('stopmodal').classList.remove('show');
+/* 结束录音对象卡：名字 + 正在走的计时 + 已转写字数（时间码不计） */
+function syncStopCard(){
+  $('stopName').textContent = $('nameInput').value.trim() || sessionName || '本次录音';
+  const n = ($('feed').innerText || '').replace(/\d{1,2}:\d{2}(:\d{2})?/g,'').replace(/\s/g,'').length;
+  const words = n >= 10000 ? `${(n/10000).toFixed(1)} 万` : String(n);
+  $('stopMeta').textContent = `${state === 'paused' ? '已暂停' : '正在录音'} ${$('timer').textContent}`
+    + (n ? ` · 已转写约 ${words} 字` : '');
+  $('stopIco').classList.toggle('paused', state === 'paused');
+}
 $('stopmodal').addEventListener('click', e=>{ if(e.target === $('stopmodal')) $('stopmodal').classList.remove('show'); });
 $('stopConfirm').onclick = async ()=>{
   if(recordingImageStopping || recordLoadingBusy)return;
@@ -5649,7 +5812,6 @@ function closePops(){
   $('btnSort')?.classList.remove('lift');
   document.querySelector('.sbsection-add')?.classList.remove('lift');
   $('btnCopy').classList.remove('lift');
-  $('defaultCopyFormatButton').classList.remove('open');
   copyMenuTrigger = null;
   $('popscrim').classList.remove('show');
   pickClose();
@@ -5747,6 +5909,7 @@ $('cacheClear').onclick=async()=>{
     showCacheInfo(info);
     if(info.ok){
       noteImagePreloads.clear();
+      invalidateTranscriptScrollPositions();
       const internals=window.__TAURI_INTERNALS__;
       if(internals&&typeof internals.invoke==='function')
         await internals.invoke('plugin:webview|clear_all_browsing_data',{label:'main'});
@@ -6178,6 +6341,7 @@ async function loadTalkState(){
     thinkCap = st.cloud_think_cap || {};
     chatThink = st.cloud_chat_think !== false;
     summaryThink = st.cloud_summary_think !== false;
+    paintWindows(st.cloud_summary_windows === true);
     noteThink = st.cloud_note_think !== false;
   }catch(e){}
   paintTalk(); paintProvider(); paintFlow(); paintFmt(); paintCloudSummary();
@@ -6422,6 +6586,16 @@ for(const [id, key] of [['cloudUrl','cloud_base_url'],
   });
 }
 bindThink('chat'); bindThink('summary'); bindThink('note');
+function paintWindows(on){
+  const sw = $('swWindows');
+  sw.classList.toggle('on', on); sw.setAttribute('aria-checked', on ? 'true' : 'false');
+}
+$('swWindows').addEventListener('click', async e=>{
+  e.stopPropagation();
+  const on = !$('swWindows').classList.contains('on');
+  paintWindows(on);
+  await api('/api/setting',{key:'cloud_summary_windows', value:on});
+});
 /* key 单独一条路(不再混进上面的通用循环: 那个循环会把回填的掩码当真 key 写回配置)。
    只有用户真的输入了内容才提交; 提交后立刻清空输入框, 缩短形态退回 placeholder,
    所以前端任何时刻都不持有可能被误提交的真实 key。 */
@@ -6562,6 +6736,9 @@ $('spkpop').addEventListener('mouseleave', ()=>{ const i=$('spkpop').querySelect
 function silPop(open){
   const p = $('popSilence');
   if(open){
+    const dur = (view && view.duration) || 0;
+    $('silObj').innerHTML = dlgRow('doc', $('nameInput').value.trim() || (view && view.name) || '当前项目',
+      (dur ? fmt(dur)+' · ' : '') + '重跑预计约 1.4 倍时长', 'quiet');
     closePops(); p.classList.add('show'); $('popscrim').classList.add('show');
     $('btnSilence').classList.add('lift');
   } else {
@@ -6754,14 +6931,15 @@ $('setAppearance').addEventListener('click', e=>{
 });
 const COMPLETION_SOUNDS = ['warm', 'distant'];
 const COPY_FORMATS = [
-  {value:'ts', label:'带时间戳', detail:'Markdown'},
+  {value:'md', label:'Markdown 文件', detail:'.md'},
+  {value:'ts', label:'带时间戳', detail:'逐行'},
   {value:'plain', label:'不带时间戳', detail:'纯文本'},
   {value:'script', label:'分说话人', detail:'剧本式'},
 ];
 function copyFormatFor(value){
-  return COPY_FORMATS.find(format=>format.value===value) || COPY_FORMATS.find(format=>format.value==='plain');
+  return COPY_FORMATS.find(format=>format.value===value) || COPY_FORMATS[0];
 }
-let defaultCopyFormat = 'plain';
+const defaultCopyFormat = 'md';
 let completionSound = 'warm';
 let completionSoundEnabled = true;
 let completionSoundVolume = 14;
@@ -6939,7 +7117,6 @@ async function loadCompletionSoundState(){
     savedThemeColor=window.tingdaoThemeColor.get();
     if(st.record_start_shortcut && /^[a-z0-9]$/i.test(st.record_start_shortcut.key || ''))
       recordStartShortcut = {key:st.record_start_shortcut.key.toLowerCase(), shift:!!st.record_start_shortcut.shift};
-    defaultCopyFormat = copyFormatFor(st.default_copy_format).value;
     applyTranscriptReading(fs, lh);
   }catch(e){
     completionSound = 'warm';
@@ -6949,7 +7126,6 @@ async function loadCompletionSoundState(){
   syncThemeColorUI();
   syncPersonalRanges();
   syncRecordShortcutUI();
-  syncDefaultCopyFormatUI();
 }
 $('setCompletionSound').addEventListener('click', async e=>{
   const b = e.target.closest('button[data-v]');
@@ -8664,14 +8840,9 @@ let copyMenuPurpose = 'copy';
 let copyMenuTrigger = null;
 function renderCopyFormatMenu(){
   const selected = copyFormatFor(defaultCopyFormat).value;
-  $('copypop').innerHTML = `<div class="st" id="copyPopTitle">${copyMenuPurpose==='setting'?'默认复制方式':'复制逐字稿'}</div>`
+  $('copypop').innerHTML = '<div class="st" id="copyPopTitle">复制逐字稿</div>'
     + '<i class="sortind" id="copyind"></i>'
     + COPY_FORMATS.map(format=>`<button data-v="${format.value}" class="${format.value===selected?'on':''}">${format.label}<span class="ck">${format.detail}</span></button>`).join('');
-}
-function syncDefaultCopyFormatUI(){
-  const format = copyFormatFor(defaultCopyFormat);
-  $('defaultCopyFormatValue').textContent = `${format.label} · ${format.detail}`;
-  $('defaultCopyFormatButton').setAttribute('aria-label', `默认复制方式：${format.label}，${format.detail}`);
 }
 function closeCopyFormatMenu(){
   const wasCopyMenu = copyMenuPurpose === 'copy';
@@ -8718,25 +8889,48 @@ $('btnCopy').onclick = e=>{
   if(e.altKey){ openCopyFormatMenu($('btnCopy'), 'copy'); return; }
   copyAs(defaultCopyFormat);
 };
-$('defaultCopyFormatButton').onclick = e=>{
-  e.stopPropagation();
-  openCopyFormatMenu($('defaultCopyFormatButton'), 'setting');
-};
+/* 与后端 _write_md 生成的 transcript.md 同一结构 */
+function transcriptMarkdown(d, segs){
+  const lines = [`# ${d.name || ''}`, ''];
+  if(d.started || d.duration) lines.push(`- 开始: ${d.started || ''} | 时长: ${fmt(d.duration || 0)}`, '');
+  const labels = d.spkLabels || {};
+  segs.forEach(x=>lines.push(`[${fmt(x.t)}] ${x.spk ? '〔'+(labels[x.spk] || spkLabel(x.spk))+'〕' : ''}${x.text}`));
+  const summary = (d.summary || '').trim();
+  if(summary) lines.push('', '## 摘要', '', summary);
+  if(d.notes && d.notes.length){
+    lines.push('', '## 时间线笔记', '');
+    d.notes.forEach(n=>{
+      const body = (n.content || []).map(node=>
+        node.type === 'quote' ? '\n> ' + String(node.text || '').replace(/\n/g, '\n> ') + '\n'
+        : node.type === 'text' ? String(node.text || '')
+        : node.type === 'image' && node.file ? `\n![${String(node.name || '图片').replace(/]/g, '')}](${node.file})\n`
+        : '').join('');
+      lines.push(`- [${fmt(n.t)}] ${body || n.text || ''}`);
+    });
+  }
+  return lines.join('\n') + '\n';
+}
 async function copyAs(kind, sid){
   const target = sid || (view && view.id);
   if(!target){ toast('请先选择一个项目'); return; }
   const d = await api('/api/session/'+encodeURIComponent(target));
   const segs = (d.segments || []).filter(x=>x.text);
   let text = '';
-  if(kind === 'ts')
+  if(kind === 'md')
+    text = transcriptMarkdown(d, segs);
+  else if(kind === 'ts')
     text = segs.map(x=>`[${fmt(x.t)}] ${x.spk ? spkLabel(x.spk)+'｜' : ''}${x.text}`).join('\n');
   else if(kind === 'plain')
     text = segs.map(x=>x.text).join('\n');
   else
     text = segs.map(x=> x.spk ? `${spkLabel(x.spk)}：${x.text}` : x.text).join('\n');
-  if(d.notes && d.notes.length)
+  if(kind !== 'md' && d.notes && d.notes.length)
     text += '\n' + d.notes.map(n=> (kind === 'ts' ? `[笔记 ${fmt(n.t)}] ${n.text}` : `（笔记）${n.text}`)).join('\n');
   if(!text){ toast('该项目没有文稿内容'); return; }
+  if(kind === 'md'){
+    const r = await api('/api/copy_md_file', {id: target, text}).catch(()=>null);
+    if(r && r.ok){ toast(`已复制文件「${r.file}」，可直接粘贴`); return; }
+  }
   try{ await navigator.clipboard.writeText(text); }
   catch(err){
     const ta = document.createElement('textarea');
@@ -8744,7 +8938,8 @@ async function copyAs(kind, sid){
     ta.select(); document.execCommand('copy'); ta.remove();
   }
   const n = segs.length, w = text.length;
-  toast(kind === 'plain' ? `已复制 ${n} 句纯文本 · ${w} 字`
+  toast(kind === 'md' ? `文件复制失败，已改为复制 Markdown 文本 · ${w} 字`
+        : kind === 'plain' ? `已复制 ${n} 句纯文本 · ${w} 字`
         : kind === 'script' ? `已复制 ${n} 句（分说话人）· ${w} 字`
         : `已复制 ${n} 句（带时间戳）· ${w} 字`);
 }
@@ -8753,18 +8948,6 @@ $('copypop').addEventListener('click', e=>{
   if(!b) return;
   e.stopPropagation();
   const format = copyFormatFor(b.dataset.v).value;
-  if(copyMenuPurpose === 'setting'){
-    const previous = defaultCopyFormat;
-    defaultCopyFormat = format;
-    syncDefaultCopyFormatUI();
-    closeCopyFormatMenu();
-    savePersonalSetting('default_copy_format', format).catch(()=>{
-      defaultCopyFormat = previous;
-      syncDefaultCopyFormatUI();
-      toast('默认复制方式保存失败，已恢复上次选择');
-    });
-    return;
-  }
   closePops();
   copyAs(format);
 });
@@ -8784,6 +8967,30 @@ let delTargets = [], delArchiveDelete = false;
 $('btnDel').onclick = ()=>{ if(view) archiveProjects([view.id]); };
 $('btnDelBatch').onclick = ()=>{ if(selected.size) archiveProjects([...selected]); };
 
+/* 导出分享: 打成 zip(文稿 md + 课后笔记 + 笔记图片), 保存位置由系统对话框问, 文件名后端按日期起 */
+let exportBusy = false;
+function exportIdsForMenu(id){
+  // 条目在多选里: 菜单导出 = 整批打包; 否则只导出这一份
+  return selected.has(id) && selected.size > 1 ? [...selected] : [id];
+}
+async function exportSessions(ids){
+  const ready = ids.filter(id=>{ const it = lastHistRaw.find(x=>x.id===id); return !it || !it.pending; });
+  if(!ready.length){ toast('没有可导出的文稿'); return; }
+  if(exportBusy) return;               // 保存对话框还开着, 不叠第二个
+  exportBusy = true;
+  try{
+    const r = await api('/api/export_sessions', {ids: ready});
+    if(r.error) toast(r.error);
+    else if(r.ok) toast(r.count > 1 ? `已导出 ${r.count} 份文稿` : '文稿已导出');
+  }catch(e){ toast('导出失败'); }
+  finally{ exportBusy = false; }
+}
+$('btnExport').onclick = ()=>{
+  if(!view){ toast('请先选择一个项目'); return; }
+  exportSessions([view.id]);
+};
+$('btnExportBatch').onclick = ()=>{ if(selected.size) exportSessions([...selected]); };
+
 function openDelModal(ids, options={}){
   delTargets = ids;
   delArchiveDelete = !!options.archiveDelete;
@@ -8794,17 +9001,52 @@ function openDelModal(ids, options={}){
   if(delArchiveDelete){
     $('delTitle').textContent = many ? `删除 ${ids.length} 个归档项目？` : '删除这个归档项目？';
     $('delSub').textContent = '项目将移到系统废纸篓，可从废纸篓中找回。';
-    $('delConfirm').textContent = '删除项目';
+    $('delGoLbl').textContent = '删除项目';
   }else{
     $('delTitle').textContent = many ? `把 ${ids.length} 个项目的录音移到废纸篓？` : '把录音移到废纸篓？';
     $('delSub').textContent = many
       ? '默认只移走选中项目的音频，文稿全部保留；废纸篓里随时能拖回来。'
       : '文稿会留在原处；废纸篓里随时能拖回来。';
-    $('delConfirm').textContent = '移到废纸篓';
+    $('delGoLbl').textContent = '移到废纸篓';
   }
+  renderDelObj();
   $('delmodal').classList.add('show');
 }
 $('delCancel').onclick = ()=> $('delmodal').classList.remove('show');
+/* 删除对象卡：单个项目写清名字、时长、日期；多个项目写数量和前两个名字。
+   勾选「同时移走文稿」时多出文稿那一行，按钮跟着改口 */
+function delItems(){ return delTargets.map(id=>(lastHistRaw||[]).find(x=>x.id === id) || {id, name:id}); }
+function renderDelObj(){
+  const list = delItems(), one = list.length === 1 ? list[0] : null;
+  const names = list.slice(0,2).map(x=>x.name).join('、') + (list.length > 2 ? ' 等' : '');
+  const totDur = list.reduce((a,x)=>a+(x.duration||0), 0);
+  const when = it => ((it.date||'').slice(5,10)).replace('-','月').replace(/^0/,'') + ((it.date||'').length >= 10 ? '日' : '');
+  if(delArchiveDelete){
+    $('delObj').innerHTML = dlgRow(list.length > 1 ? 'files' : 'doc', one ? one.name : `${list.length} 个归档项目`,
+      one ? [when(one), one.duration ? fmt(one.duration) : ''].filter(Boolean).join(' · ') : names, 'quiet');
+  }else{
+    $('delObj').innerHTML = dlgRow('rec', one ? one.name : `${list.length} 个项目的录音`,
+      one ? ['录音', one.duration ? fmt(one.duration) : '', when(one)].filter(Boolean).join(' · ')
+          : `${names}${totDur ? ' · 共 '+fmt(totDur) : ''}`);
+    const notes = list.reduce((a,x)=>a+(x.notes||0), 0);
+    $('delExtra').innerHTML = dlgRow('doc', one ? one.name : `${list.length} 份文稿`,
+      '文稿' + (notes ? ` · ${notes} 条笔记` : ''), 'quiet');
+  }
+  syncDelFull(false);
+}
+function syncDelFull(animate = true){
+  const on = !delArchiveDelete && $('delFull').checked;
+  $('delExtra').classList.toggle('on', on);
+  if(delArchiveDelete) return;
+  const many = delTargets.length > 1;
+  $('delSub').textContent = on ? '录音和文稿一起移走。废纸篓里随时能拖回来。'
+    : many ? '默认只移走选中项目的音频，文稿全部保留；废纸篓里随时能拖回来。' : '文稿会留在原处；废纸篓里随时能拖回来。';
+  const lbl = $('delGoLbl'), text = on ? '移走整个项目' : '移到废纸篓';
+  if(!animate){ lbl.textContent = text; return; }
+  lbl.style.opacity = 0;
+  setTimeout(()=>{ lbl.textContent = text; lbl.style.opacity = 1; }, 120);
+}
+$('delFull').onchange = ()=> syncDelFull();
 $('delmodal').addEventListener('click', e=>{ if(e.target === $('delmodal')) $('delmodal').classList.remove('show'); });
 $('delConfirm').onclick = async ()=>{
   const archiveDelete = delArchiveDelete;
@@ -9474,7 +9716,11 @@ let grpDelTarget = '';
 function askGroupDelete(name, count){
   grpDelTarget = name;
   $('grpDelTitle').textContent = `删除分组「${name}」？`;
-  $('grpDelSub').textContent = `组内 ${count} 个项目会回到未分组，文稿与录音都不动。`;
+  $('grpDelSub').textContent = '组内项目会回到未分组，文稿与录音都不动。';
+  const dur = (lastHistRaw||[]).filter(x=>(x.group||'') === name).reduce((a,x)=>a+(x.duration||0), 0);
+  $('grpDelObj').innerHTML = dlgRow('', name, `${count} 个项目${dur ? ' · 共 '+fmt(dur) : ''}`, 'grp');
+  const c = TAG_COLORS[groupMeta.colors[name]];
+  $('grpDelObj').querySelector('.dlg-ico').style.setProperty('--dot', c || 'var(--gry-ink)');
   $('grpdelmodal').classList.add('show');
 }
 $('grpDelCancel').onclick = ()=> $('grpdelmodal').classList.remove('show');
@@ -9781,7 +10027,8 @@ $('hmenu').addEventListener('click', e=>{
   if(!it) return;
   if(it.pending){ toast('正在抽取音轨，稍候…'); return; }
   if(act === 'rename') startItemRename(it.id);
-  else if(act === 'copy') copyAs('plain', it.id);
+  else if(act === 'copy') copyAs('md', it.id);
+  else if(act === 'export') exportSessions(exportIdsForMenu(it.id));
   else if(act === 'batch'){ selected.add(it.id); renderSelState(); _histSig=''; refreshHistory(); }
   else if(act === 'favorite') setSessionFlags([it.id], {favorite:!it.favorite});
   else if(act === 'archive') archiveProjects([it.id]);
@@ -9917,7 +10164,7 @@ function transcriptOutlineNavigationItems(outline){
     return {index,start:Number(item&&((item.t??item.start))),level,title:String((item||{}).title||'').trim()};
   }).filter(item=>item.title&&[1,2,3].includes(item.level)&&Number.isFinite(item.start));
 }
-function transcriptContentItems(segments,notes,outline){
+function transcriptContentItems(segments,notes,outline,cachedOrder=null){
   const items=[];
   const source=outline||[], legacy=source.length>0&&source.every(item=>[2,4].includes(Number(item&&item.level)));
   for(const heading of source){
@@ -9929,6 +10176,10 @@ function transcriptContentItems(segments,notes,outline){
     const hasImages=Array.isArray(note&&note.content)&&note.content.some(node=>node&&node.type==='image');
     if(String(note&&note.text||'').trim()||hasImages) items.push({type:'note',noteIndex,...note});
   }
+  if(Array.isArray(cachedOrder)&&cachedOrder.length===items.length
+      &&new Set(cachedOrder).size===items.length
+      &&cachedOrder.every(index=>Number.isInteger(index)&&index>=0&&index<items.length))
+    return cachedOrder.map(index=>items[index]);
   const priority={heading:0,seg:1,note:2};
   return items.sort((a,b)=>Number(a.t)-Number(b.t)||priority[a.type]-priority[b.type]);
 }
@@ -10034,17 +10285,23 @@ function setTranscriptAnchorActiveIndex(active,time=player.currentTime||0){
   updateTranscriptOutlineActive(time);
   updateTranscriptAnchorWidths();
 }
+let transcriptOutlineCurrentItem=null;
 function updateTranscriptOutlineActive(time){
   const items=Array.from(document.querySelectorAll('#transcriptAnchors .transcript-outline-item'));
   let currentItem=null;
   for(const item of items){
     if(Number(item.dataset.anchorStart)<=time) currentItem=item;
   }
-  items.forEach(item=>{
-    const current=item===currentItem;
-    item.classList.toggle('active',current);
-    item.setAttribute('aria-current',current?'true':'false');
-  });
+  if(currentItem===transcriptOutlineCurrentItem)return;
+  if(transcriptOutlineCurrentItem){
+    transcriptOutlineCurrentItem.classList.remove('active');
+    transcriptOutlineCurrentItem.setAttribute('aria-current','false');
+  }
+  transcriptOutlineCurrentItem=currentItem;
+  if(currentItem){
+    currentItem.classList.add('active');
+    currentItem.setAttribute('aria-current','true');
+  }
 }
 function updateTranscriptAnchorActive(time){
   if(transcriptAnchorCanFollowScroll(player.paused,player.ended)){
@@ -10054,17 +10311,35 @@ function updateTranscriptAnchorActive(time){
   const active=transcriptAnchorIndex(Math.max(0,Number(time)||0),transcriptAnchorState);
   setTranscriptAnchorActiveIndex(active,Math.max(0,Number(time)||0));
 }
+function transcriptScrollSegmentIndex(rows,targetY,wrapTop,scrollTop,positions=null){
+  const target=targetY-wrapTop+scrollTop;
+  let lo=0,hi=rows.length;
+  while(lo<hi){
+    const mid=Math.floor((lo+hi)/2);
+    let top=positions?.get(mid);
+    if(top===undefined){
+      top=rows[mid].getBoundingClientRect().top-wrapTop+scrollTop;
+      positions?.set(mid,top);
+    }
+    if(top<=target)lo=mid+1;else hi=mid;
+  }
+  return lo-1;
+}
+const transcriptScrollPositions=new Map();
+function invalidateTranscriptScrollPositions(){
+  transcriptScrollPositions.clear();
+}
+function transcriptScrollTime(){
+  const wrap=$('feedwrap'),rect=wrap.getBoundingClientRect();
+  const positions=Number(view?.duration)>7200?transcriptScrollPositions:null;
+  const hit=transcriptScrollSegmentIndex(segEls,rect.top+wrap.clientHeight*.4,
+    rect.top,wrap.scrollTop,positions);
+  return hit>=0?Number(segEls[hit].dataset.t)||0:0;
+}
 function updateTranscriptAnchorFromScroll(){
   if(!transcriptAnchorState.length||!segEls.length||!transcriptAnchorCanFollowScroll(player.paused,player.ended)) return;
-  const wrap=$('feedwrap'), rect=wrap.getBoundingClientRect();
-  const targetY=rect.top+wrap.clientHeight*.4;
-  const segments=segEls.map(el=>({top:el.getBoundingClientRect().top,t:el.dataset.t}));
-  const active=transcriptAnchorScrollIndex(targetY,segments,transcriptAnchorState);
-  let time=0;
-  for(const segment of segments){
-    if(segment.top>targetY) break;
-    time=Number(segment.t)||0;
-  }
+  const time=transcriptScrollTime();
+  const active=transcriptAnchorIndex(time,transcriptAnchorState);
   if(active>=0&&active!==transcriptAnchorActiveIndex) setTranscriptAnchorActiveIndex(active,time);
   else updateTranscriptOutlineActive(time);
 }
@@ -10080,12 +10355,7 @@ function centerTranscriptOutline(){
   hideTranscriptFormatTools();
   let time=player.currentTime||0;
   if(transcriptAnchorCanFollowScroll(player.paused,player.ended)){
-    const wrap=$('feedwrap'), targetY=wrap.getBoundingClientRect().top+wrap.clientHeight*.4;
-    time=0;
-    for(const el of segEls){
-      if(el.getBoundingClientRect().top>targetY) break;
-      time=Number(el.dataset.t)||0;
-    }
+    time=transcriptScrollTime();
   }
   const items=Array.from(scroll.querySelectorAll('.transcript-outline-item'));
   let current=items[0];
@@ -10165,6 +10435,24 @@ function renderTranscriptAnchors(duration,segments,summary,outline,activeOverrid
   if(!Number.isInteger(activeOverride)) updateTranscriptAnchorFromScroll();
 }
 $('feedwrap').addEventListener('scroll',scrollFrameUpdate(updateTranscriptAnchorFromScroll),{passive:true});
+// 只保留当前文稿的位置；内容、样式和容器尺寸变化后按需重测。
+function transcriptLayoutChanged(records){
+  const layoutClasses=value=>(value||'').split(/\s+/)
+    .filter(name=>name&&!['cur','hl','find-land'].includes(name)).sort().join(' ');
+  return records.some(record=>record.type!=='attributes'||record.attributeName!=='class'
+    ||layoutClasses(record.oldValue)!==layoutClasses(record.target.getAttribute('class')));
+}
+const transcriptLayoutObserver=new MutationObserver(records=>{
+  if(transcriptLayoutChanged(records))invalidateTranscriptScrollPositions();
+});
+transcriptLayoutObserver.observe($('feed'),{childList:true,subtree:true,characterData:true,
+  attributes:true,attributeOldValue:true,attributeFilter:['class','style']});
+const transcriptSizeObserver=new ResizeObserver(invalidateTranscriptScrollPositions);
+transcriptSizeObserver.observe($('feed'));
+transcriptSizeObserver.observe($('feedwrap'));
+$('feed').addEventListener('load',invalidateTranscriptScrollPositions,true);
+document.fonts?.addEventListener('loadingdone',invalidateTranscriptScrollPositions);
+
 $('transcriptAnchors').addEventListener('mouseenter',centerTranscriptOutline);
 $('transcriptAnchors').addEventListener('focusin',event=>{
   if(!$('transcriptAnchors').contains(event.relatedTarget)) centerTranscriptOutline();
@@ -10243,7 +10531,7 @@ async function loadSession(sid, keepList){
     $('feed').appendChild(sm);
   }
   const outline=d.summary&&Array.isArray(d.outline)?d.outline:[];
-  const merged=transcriptContentItems(d.segments,d.notes,outline);
+  const merged=transcriptContentItems(d.segments,d.notes,outline,d.longDocument?.order);
   if(!merged.length){
     $('emptyText').textContent = '（该项目无语音内容）';
     $('empty').style.display='flex'; $('feed').style.display='none';
@@ -10254,6 +10542,7 @@ async function loadSession(sid, keepList){
       else if(m.type==='seg') addSeg(m, false);
     }
     renderTimelineNotes();
+    if(d.longDocument&&d.longDocument.segmentTimes?.length===segEls.length) segTimes=d.longDocument.segmentTimes;
     $('feedwrap').scrollTop = 0;
   }
   $('nameInput').value = d.name;
@@ -10810,6 +11099,7 @@ window.addEventListener('resize',hideTranscriptFormatTools);
    segEngaged: 用户是否正卡在某个段的操作态（改字 / 底部结果条 / 选中文字）。
    只要处于操作态就不自动跟随；退出该状态后再等 2.5s，才滑回正在播放的那句。 */
 function resetPlaybackSegments(){
+  invalidateTranscriptScrollPositions();
   if(currentSegEl) currentSegEl.classList.remove('cur');
   currentSegEl = null;
   segEls = []; segTimes = [];
@@ -10956,8 +11246,7 @@ function segOf(el){
   const t = parseFloat(el.dataset.t);
   return ((view && view.segments) || []).find(x => Math.abs(x.t - t) < 0.01);
 }
-function fixDot(el){
-  const seg = segOf(el);
+function fixDot(el,seg=segOf(el)){
   if(!seg || !seg.ed) return '';
   const when = new Date(seg.ed * 1000).toLocaleString('zh-CN',
     {month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit'});
@@ -11443,6 +11732,7 @@ function skelActivate(){
   const hasFeed = !welcome && feedEl && feedEl.children.length > 0;
   if(!hasGrid && !hasFeed) return false;          // 没东西会重排(空主页/空正文) → 不盖
   const target = welcome ? grid : feedEl;
+  if(hasFeed) feedEl.style.setProperty('--side-feed-width',`${feedEl.getBoundingClientRect().width}px`);
   $('skel').style.top = ((fw ? fw.offsetTop : 0) + (target.offsetTop || 0)) + 'px';  // 对齐真实重排块起点, 避开问候/标题
   document.body.classList.add('side-skel');
   return true;
@@ -11531,8 +11821,13 @@ function importProceed(){
 }
 function showAlert(title, items, hint){
   $('paTitle').textContent = title;
-  $('paList').innerHTML = (items||[]).map(t=>`<li title="${esc(t)}">${esc(t)}</li>`).join('');
-  $('paList').style.display = items && items.length ? '' : 'none';
+  // 「文件名：原因」拆成两栏，原因靠右用红字
+  $('paList').innerHTML = (items||[]).map(t=>{
+    const k = String(t).indexOf('：');
+    const nm = k > 0 ? t.slice(0,k) : t, why = k > 0 ? t.slice(k+1) : '';
+    return `<li title="${esc(t)}"><span class="nm">${esc(nm)}</span>${why?`<span class="why">${esc(why)}</span>`:''}</li>`;
+  }).join('');
+  $('paObj').style.display = items && items.length ? '' : 'none';
   $('paHint').textContent = hint || '';
   closePops();
   $('popAlert').classList.add('show'); $('popscrim').classList.add('show');
@@ -11543,10 +11838,82 @@ function showBadFiles(names){
   showAlert(`有 ${names.length} 个文件无法读取`, names,
     '这些文件可能是空的或已损坏，这次没有导入任何文件。请换掉它们后重新选择。');
 }
+/* ---- 弹窗公共件：对象卡的一行、云端上传确认、批量导入预演、键位 ---- */
+const DLG_ICO = {
+  rec: '<path d="M3.5 9v2M7 6.5v7M10.5 4v12M14 7v6M17.5 8.5v3"/>',
+  doc: '<path d="M5.5 2.8h6l3.5 3.5v10.9H5.5z"/><path d="M11.5 2.8v3.5H15M8 10.5h4.5M8 13.5h4.5"/>',
+  files: '<path d="M7.5 2.8h5l3 3V14h-8z"/><path d="M12.5 2.8v3h3"/><path d="M4.5 6.5v10.7h7.5"/>',
+  cloud: '<path d="M6 15.5h8.5a3.5 3.5 0 0 0 .4-7A5 5 0 0 0 5.2 9.6 3 3 0 0 0 6 15.5Z"/><path d="M10 13V9m-1.8 1.6L10 8.8l1.8 1.8"/>',
+  refine: '<path d="M4 5h12M4 9h12M4 13h7"/><path d="m13 14 1.6 1.6L17.5 12.5"/>'
+};
+function dlgIco(key){
+  return DLG_ICO[key] ? `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${DLG_ICO[key]}</svg>` : '<i></i>';
+}
+function dlgRow(ico, title, meta, cls = ''){
+  return `<div class="dlg-row"><span class="dlg-ico ${cls}">${dlgIco(ico)}</span>`
+    + `<span class="dlg-meta"><b>${esc(title)}</b>${meta ? `<small>${esc(meta)}</small>` : ''}</span></div>`;
+}
+document.querySelectorAll('[data-ico]').forEach(el=>{ el.innerHTML = dlgIco(el.dataset.ico); });
+// 停录上传与导入上传共用 popStopCloud：每次把全部文字和按钮语义重新写一遍，防互相污染
+function fillCloudConfirm(o){
+  $('scTitle').textContent = o.title;
+  $('scSub').textContent = o.sub;
+  $('scObj').innerHTML = dlgRow(o.ico, o.name, o.meta);
+  $('scFrom').textContent = o.from;
+  $('scHint').textContent = o.hint;
+  $('scCancelLbl').textContent = o.cancel;
+  $('scGoLbl').textContent = o.go;
+  $('scGo').disabled = !o.ready;
+  $('scNote').hidden = !!o.ready;
+}
+$('scFix').onclick = ()=>{
+  importPending = [];
+  closePops();
+  activeSettingsSection = 'cloud';
+  $('btnSet').click();
+};
+// 批量导入：悬停哪个按钮，文件列表就先预演成那种结果
+const PB_TIP = {merge:'<b>合并为一份</b>：按上面的顺序接成一份文稿',
+                split:'<b>分别转换</b>：每个文件各建一个项目'};
+function pbPreview(mode){
+  $('pbObj').className = 'dlg-obj' + (mode ? ' '+mode : '');
+  $('pbMode').innerHTML = mode ? PB_TIP[mode] : '把鼠标移到按钮上，看看两种结果';
+}
+['pbSplit','pbMerge'].forEach(id=>{
+  const b = $(id);
+  b.addEventListener('mouseenter', ()=>pbPreview(b.dataset.mode));
+  b.addEventListener('focus', ()=>pbPreview(b.dataset.mode));
+  b.addEventListener('mouseleave', ()=>pbPreview(null));
+  b.addEventListener('blur', ()=>pbPreview(null));
+});
+/* 弹窗键位：Esc = 取消钮（只有一个按钮时就是它），回车 = 主按钮，数字键 = 选项行。
+   焦点正停在弹窗里的某个按钮上时，回车交给那个按钮自己。 */
+function topDialog(){
+  const open = [...document.querySelectorAll('.modal.show .mbox, .confirm.show')];
+  return open[open.length - 1] || null;
+}
+document.addEventListener('keydown', e=>{
+  if(e.metaKey || e.ctrlKey || e.altKey || e.isComposing) return;
+  const d = topDialog(); if(!d) return;
+  let b = null;
+  if(e.key === 'Escape') b = d.querySelector('[data-dlg="cancel"]') || d.querySelector('[data-dlg="go"]');
+  else if(e.key === 'Enter'){
+    const a = document.activeElement;
+    if(a && d.contains(a) && a.tagName === 'BUTTON') return;
+    b = d.querySelector('[data-dlg="go"]');
+  }
+  else if(/^[1-9]$/.test(e.key)) b = d.querySelector(`[data-dlg-key="${e.key}"]`);
+  if(!b) return;
+  e.preventDefault(); e.stopImmediatePropagation();
+  if(!b.disabled) b.click();
+}, true);
 function askImportBatch(){
   $('pbTitle').textContent = `已选 ${importPending.length} 个文件，怎么处理？`;
   $('pbList').innerHTML = importPending.map(x=>
-    `<li title="${esc(x.path)}">${esc(x.path.split(/[\\/]/).pop())}${x.dur?`<span class="pb-dur">${fmt(x.dur)}</span>`:''}</li>`).join('');
+    `<li title="${esc(x.path)}"><span class="nm">${esc(x.path.split(/[\\/]/).pop())}</span>${x.dur?`<span class="du">${fmt(x.dur)}</span>`:''}</li>`).join('');
+  const totDur = importPending.reduce((a,x)=>a+(x.dur||0), 0);
+  $('pbTotal').textContent = totDur ? `合计 ${fmt(totDur)}` : '';
+  pbPreview(null);
   closePops();
   $('popBatch').classList.add('show'); $('popscrim').classList.add('show');
   $('pbCancel').onclick = ()=>{ importPending = []; closePops(); };
@@ -11559,27 +11926,22 @@ function askImportCloud(){
   const n = importMerge ? 1 : importPending.length;
   const totMb = importPending.reduce((a,x)=>a+(x.mb||0), 0);
   const totDur = importPending.reduce((a,x)=>a+(x.dur||0), 0);
-  const metaTxt = (importMerge && importPending.length>1 ? `合并 ${importPending.length} 个文件为一份 · `
-                 : n>1 ? `共 ${n} 个文件 · ` : '')
-                + (totDur ? `总时长 ${fmt(totDur)}` : '时长未知')
-                + (totMb ? ` · 合计约 ${Math.round(totMb)} MB` : '');
-  if(cloudFlow === 'local_post'){
-    $('scTitle').textContent = '开始云端文字处理？';
-    $('scBody').innerHTML = `<div class="sc-meta">${metaTxt}</div><p class="sc-detail">音频留在本机，由 Whisper 转写。仅文字发送至云端做后处理。</p><p class="sc-hint">取消后不会导入这批文件。</p>`;
-    $('scGo').textContent = '开始';
-  } else {
-    $('scTitle').textContent = '上传音频并转写？';
-    $('scBody').innerHTML = `<div class="sc-meta">${metaTxt}</div><p class="sc-detail">音频将上传至你配置的云端接口，并按用量计费。</p><p class="sc-hint">取消后不会导入这批文件。</p>`;
-    $('scGo').textContent = '上传转写';
-  }
-  $('scCancel').textContent = '取消导入';
   // 云端没配置齐时不给按(判据同导入弹窗旧逻辑: 看填齐没, 不看还没测过的 cloudOK)
   const ready = !!( $('cloudUrl').value.trim() && ($('cloudKey').value.trim() || cloudKeyStored)
                     && $('cloudModel').value.trim());
+  const name = n === 1 && importPending.length === 1
+    ? importPending[0].path.split(/[\\/]/).pop()
+    : (importMerge ? `合并 ${importPending.length} 个文件为一份` : `${n} 个文件`);
+  const meta = (totDur ? `总时长 ${fmt(totDur)}` : '时长未知') + (totMb ? ` · 合计约 ${Math.round(totMb)} MB` : '');
+  const post = cloudFlow === 'local_post';
+  fillCloudConfirm({ready, name, meta, ico: importPending.length > 1 ? 'files' : 'rec',
+    title: post ? '开始云端文字处理？' : '上传音频并转写？',
+    sub: post ? '音频留在本机，由 Whisper 转写。仅文字发送至云端做后处理。' : '音频将上传至你配置的云端接口，并按用量计费。',
+    from: post ? '转写后的文字' : '本机音频', go: post ? '开始' : '上传转写',
+    hint:'取消后不会导入这批文件', cancel:'取消导入'});
   closePops();
   const p = $('popStopCloud');
   p.classList.add('show'); $('popscrim').classList.add('show');
-  $('scGo').disabled = !ready;
   $('scCancel').onclick = ()=>{ importPending = [];
     closePops(); toast('已取消导入，未上传'); };
   $('scGo').onclick = ()=>{

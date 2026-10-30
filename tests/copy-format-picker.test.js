@@ -12,16 +12,17 @@ function copyFormatModule() {
   return Function(`${html.slice(start, end)}; return {COPY_FORMATS, copyFormatFor};`)();
 }
 
-test('copy format picker exposes all copy formats and falls back to plain text', () => {
+test('copy format picker exposes all copy formats and falls back to the Markdown document', () => {
   const {COPY_FORMATS, copyFormatFor} = copyFormatModule();
 
   assert.deepEqual(
     COPY_FORMATS.map(({value, label, detail}) => ({value, label, detail})),
     [
-      {value: 'ts', label: '带时间戳', detail: 'Markdown'},
+      {value: 'md', label: 'Markdown 文件', detail: '.md'},
+      {value: 'ts', label: '带时间戳', detail: '逐行'},
       {value: 'plain', label: '不带时间戳', detail: '纯文本'},
       {value: 'script', label: '分说话人', detail: '剧本式'},
     ],
   );
-  assert.equal(copyFormatFor('missing').value, 'plain');
+  assert.equal(copyFormatFor('missing').value, 'md');
 });

@@ -130,6 +130,7 @@ test(`exitView defers history refresh until the sidebar selection transition is 
   global.savePos = force => savedPositions.push({force, id: global.view.id});
   global.editBarOff = () => {};
   global.resetTranscriptNoteLayer = () => {};
+  global.invalidateTranscriptScrollPositions = () => {};
   global.spkOrder = ['speaker'];
   global.spkPop = () => {};
   global.player = {pause() {}, removeAttribute() {}};

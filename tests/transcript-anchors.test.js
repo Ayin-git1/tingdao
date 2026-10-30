@@ -31,7 +31,7 @@ function outlineNavigationItems() {
 }
 
 function contentItems() {
-  const match = html.match(/function transcriptContentItems\(segments,notes,outline\)\{[\s\S]*?\n\}/);
+  const match = html.match(/function transcriptContentItems\(segments,notes,outline,cachedOrder=null\)\{[\s\S]*?\n\}/);
   assert.ok(match, 'the transcript content ordering helper must exist');
   return Function(`${match[0]}; return transcriptContentItems;`)();
 }
@@ -231,7 +231,7 @@ test('chapter outline backdrop is a standalone card layer and reaches the app sh
   assert.match(html, /\.topbar\{[^}]*z-index:var\(--z-topbar\)/);
   assert.match(html, /--z-topbar:53;/);
   // The 46px backdrop extension covers the 26px gap (14px rail inset + 12px card inset).
-  assert.match(backdrop[0], /inset:-100vh -46px -84px -260px/);
+  assert.match(backdrop[0], /inset:-100vh -46px calc\(50% - min\(210px,50vh - 90px\) - 84px\) -260px/);
   assert.match(backdrop[0], /pointer-events:none/);
   assert.match(backdrop[0], /background:rgba\(255,255,255,\.08\)/);
   assert.match(backdrop[0], /backdrop-filter:blur\(18px\) saturate\(\.82\)/);
@@ -290,10 +290,13 @@ test('the playing anchor also marks the matching outline title', () => {
 test('directory position follows third-level timestamps independently of chapter anchors', () => {
   const items = [0, 30, 45, 60, 100].map(start => ({
     dataset: {anchorStart:String(start)}, active:false,
-    classList:{toggle(name,value){ items.find(item=>item.classList===this).active=value; }},
+    classList:{
+      add(){items.find(item=>item.classList===this).active=true;},
+      remove(){items.find(item=>item.classList===this).active=false;},
+    },
     setAttribute(name,value){ this[name]=value; },
   }));
-  const update = Function('document', `${functionSource('function updateTranscriptOutlineActive(')}; return updateTranscriptOutlineActive;`)({querySelectorAll(){return items;}});
+  const update = Function('document', `let transcriptOutlineCurrentItem=null; ${functionSource('function updateTranscriptOutlineActive(')}; return updateTranscriptOutlineActive;`)({querySelectorAll(){return items;}});
   for(const [time,index] of [[0,0],[30,1],[45,2],[59,2],[60,3],[105,4],[35,1]]){
     update(time);
     assert.deepEqual(items.map(item=>item.active), items.map((_,i)=>i===index));
@@ -307,12 +310,15 @@ test('scrolling updates directory position even within the same chapter anchor',
     const player={paused:true,ended:false};
     const segEls=[{dataset:{t:'0'},getBoundingClientRect(){return {top:0};}},
       {dataset:{t:'45'},getBoundingClientRect(){return {top:80};}}];
-    function $(){return {clientHeight:250,getBoundingClientRect(){return {top:0};}};}
+    function $(){return {scrollTop:0,clientHeight:250,getBoundingClientRect(){return {top:0};}};}
     let position=-1;
     function updateTranscriptOutlineActive(time){position=time;}
     function setTranscriptAnchorActiveIndex(){throw new Error('chapter anchor did not change');}
     ${functionSource('function transcriptAnchorCanFollowScroll(')}
     ${functionSource('function transcriptAnchorIndex(')}
+    const view=null,transcriptScrollPositions=new Map();
+    ${functionSource('function transcriptScrollSegmentIndex(')}
+    ${functionSource('function transcriptScrollTime(')}
     ${functionSource('function transcriptAnchorScrollIndex(')}
     ${functionSource('function updateTranscriptAnchorFromScroll(')}
     return {update:updateTranscriptAnchorFromScroll,position:()=>position};
@@ -631,7 +637,7 @@ test('opening the outline centers the title for playback or the visible reading 
     const player={paused:false,ended:false,currentTime:160};
     const segEls=[{dataset:{t:'0'},getBoundingClientRect(){return {top:0};}},
       {dataset:{t:'110'},getBoundingClientRect(){return {top:100};}}];
-    const wrap={clientHeight:500,getBoundingClientRect(){return {top:0};}};
+    const wrap={scrollTop:0,clientHeight:500,getBoundingClientRect(){return {top:0};}};
     const rail={querySelector(){return scroll;}};
     function $(id){return id==='feedwrap'?wrap:rail;}
     function updateTranscriptAnchorActive(){}
@@ -639,6 +645,9 @@ test('opening the outline centers the title for playback or the visible reading 
     function clearTranscriptTextSelection(){cleared++;}
     function hideTranscriptFormatTools(){hidden++;}
     ${functionSource('function transcriptAnchorCanFollowScroll(')}
+    const view=null,transcriptScrollPositions=new Map();
+    ${functionSource('function transcriptScrollSegmentIndex(')}
+    ${functionSource('function transcriptScrollTime(')}
     ${source}
     return {player,center:centerTranscriptOutline,get cleared(){return cleared;},get hidden(){return hidden;}};
   `)(scroll,buttons);
