@@ -10,6 +10,14 @@ const root = path.resolve(__dirname, '..');
 const destination = path.join(__dirname, 'program-windows');
 const files = ['app.py', 'index.html', 'whisper_worker.py', 'whisper_worker_windows.py'];
 
+// 干净检出也必须有可嵌入的启动页；实际 UI 待后端就绪后导航加载。
+fs.mkdirSync(path.join(__dirname, 'dist'), { recursive: true });
+fs.writeFileSync(path.join(__dirname, 'dist', 'index.html'),
+  '<!DOCTYPE html><html><head><meta charset="utf-8"><title>听道</title></head><body style="background:transparent"></body></html>', 'utf8');
+fs.mkdirSync(path.join(destination, 'assets'), { recursive: true });
+fs.copyFileSync(path.join(root, 'assets', 'material-preview-lakeside.png'),
+  path.join(destination, 'assets', 'material-preview-lakeside.png'));
+
 fs.mkdirSync(path.join(destination, 'sounds'), { recursive: true });
 for (const file of files) {
   fs.copyFileSync(path.join(root, file), path.join(destination, file));
@@ -21,9 +29,10 @@ for (const file of fs.readdirSync(path.join(root, 'sounds'))) {
 }
 
 // 固定 LGPL 共享构建与校验和，避免打包时静默换成不同来源或许可的二进制。
-const ffmpegZip = 'https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-09-25-15-37/ffmpeg-n9.0.2-8-gb135b25c19-win64-lgpl-shared-9.0.zip';
-const ffmpegSha256 = '5e23e2f924cfdb92a0b4326e6271509254acd3dec75463b1dbbe732622becf64';
-const ffmpegLicense = 'https://raw.githubusercontent.com/FFmpeg/FFmpeg/b135b25c19/COPYING.LGPLv2.1';
+// 月末构建由上游保留两年；普通每日构建会被清理，旧的 09-25 链接已经失效。
+const ffmpegZip = 'https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-09-30-13-08/ffmpeg-n9.0.2-17-g2a571b6068-win64-lgpl-shared-9.0.zip';
+const ffmpegSha256 = '7157177b8a6cb2174c1650ba8c71b363f2c78cba5330f88c4c02cf5b2b880646';
+const ffmpegLicense = 'https://raw.githubusercontent.com/FFmpeg/FFmpeg/2a571b6068/COPYING.LGPLv2.1';
 const ffmpegLicenseSha256 = '246041b6ecf9bc32d718a62c57877c78b5eb397b6467e74ed7ae2626ab189c30';
 
 function download(url, destination, redirects = 0) {
@@ -58,9 +67,10 @@ async function stageFfmpeg() {
     const licenseDigest = crypto.createHash('sha256').update(fs.readFileSync(license)).digest('hex');
     if (licenseDigest !== ffmpegLicenseSha256) throw new Error(`FFmpeg 许可 SHA-256 不匹配: ${licenseDigest}`);
     fs.mkdirSync(extracted);
-    const command = process.platform === 'win32' ? 'powershell.exe' : 'unzip';
+    // Windows 10/11 自带 bsdtar；不依赖 PowerShell 脚本模块或执行策略。
+    const command = process.platform === 'win32' ? 'tar.exe' : 'unzip';
     const args = process.platform === 'win32'
-      ? ['-NoProfile', '-Command', `Expand-Archive -LiteralPath '${archive}' -DestinationPath '${extracted}'`]
+      ? ['-xf', archive, '-C', extracted]
       : ['-q', archive, '-d', extracted];
     const result = spawnSync(command, args, { stdio: 'inherit' });
     if (result.error || result.status !== 0) throw result.error || new Error('FFmpeg 压缩包解压失败');
@@ -86,7 +96,7 @@ async function stageFfmpeg() {
     }
     fs.writeFileSync(path.join(destination, 'FFmpeg-Build.txt'),
       `BtbN FFmpeg LGPL shared build\n${ffmpegZip}\nSHA-256: ${ffmpegSha256}\n` +
-      'FFmpeg source: https://github.com/FFmpeg/FFmpeg/tree/b135b25c19\n' +
+      'FFmpeg source: https://github.com/FFmpeg/FFmpeg/tree/2a571b6068\n' +
       'Build source: https://github.com/BtbN/FFmpeg-Builds\n', 'utf8');
   } finally {
     fs.rmSync(temp, { recursive: true, force: true });

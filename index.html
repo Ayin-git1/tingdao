@@ -2332,6 +2332,9 @@
   #btnNoteTool.note-on,
   #btnNoteTool.note-on:hover{opacity:.3; filter:none;}
   .rcbtn[hidden]{display:none;}
+  /* Windows 没有连续互通相机和 CoreAudio 音量直控；首帧就从 dock 布局隐藏。 */
+  html[data-platform="windows"] #btnCamTool,
+  html[data-platform="windows"] #btnVol{display:none;}
   /* iPhone 拍照圆钮: 菜单选了「拍照」后等 iPhone —— 镜头收放呼吸 + 外圈绿晕(与来源切换同一种"进行中"语气);
      照片回来时快门闪一下, 随后录制图片堆自己的入场动画接力。 */
   #btnCamTool .cam-lens{transform-box:fill-box; transform-origin:center;
@@ -4657,7 +4660,7 @@ function updateChrome(){
   }
   // 右下按钮组: 录制中条状按钮展宽为停止键, 暂停+笔记从左侧滑入
   const dockEntering = rec && !$('dockgrp').classList.contains('rec');
-  if(dockEntering) volRefresh();
+  if(dockEntering && hostPlatform === 'Darwin') volRefresh();
   $('dockgrp').classList.toggle('rec', rec);
   if(!rec) $('btnCamTool').classList.remove('cam-wait');
   if(dockEntering) pushDockButtons();
@@ -5193,7 +5196,7 @@ function paintVolButton(v){
   $('btnVol').title = v == null ? '输出音量（不可控）' : `输出音量 ${v}%`;
 }
 // 录音期间音量可能被键盘音量键改掉: 定时对一次读数(只在 dock 出现时)
-setInterval(()=>{ if(state==='recording'||state==='paused') volRefresh(); }, 4000);
+setInterval(()=>{ if(hostPlatform === 'Darwin' && (state==='recording'||state==='paused')) volRefresh(); }, 4000);
 function volClose(){
   $('volpop').classList.remove('show');
   $('btnVol').classList.remove('on');
@@ -5238,8 +5241,11 @@ const DOCK_PUSH = (()=>{
   const w = 2 * Math.PI / 220, kL = w * w;
   return {T:300, settle:520, v0:.27, kL, cL:2 * .3 * w, kF:kL * .22, cF:2 * .85 * w * Math.sqrt(.22), kc:kL * .8, push:.35};
 })();
+// Windows 三颗按钮的推出距离为 macOS 的 3/5，等比缩短推出段；保留弹簧收敛时间。
+const DOCK_PUSH_WIN = {T:180, settle:480};
 function dockBrakeSim(n){
-  const P = DOCK_PUSH, y = Array(n).fill(0), v = Array(n).fill(P.v0), frames = [];
+  const P = hostPlatform === 'Windows' ? {...DOCK_PUSH, ...DOCK_PUSH_WIN} : DOCK_PUSH;
+  const y = Array(n).fill(0), v = Array(n).fill(P.v0), frames = [];
   for(let t = 0; t <= P.settle; t++){
     if(t % 16 === 0) frames.push(y.slice());
     const f = y.map((yi, i)=> i === 0 ? -P.kL * yi - P.cL * v[i] : -P.kF * yi - P.cF * v[i]);
@@ -5253,7 +5259,7 @@ function dockBrakeSim(n){
 }
 function pushDockButtons(){
   if(matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-  const P = DOCK_PUSH;
+  const P = hostPlatform === 'Windows' ? {...DOCK_PUSH, ...DOCK_PUSH_WIN} : DOCK_PUSH;
   const fabLeft = $('fab').getBoundingClientRect().left;
   const btns = [...$('dockgrp').querySelectorAll('.rcbtn')]
     .filter(b => getComputedStyle(b).display !== 'none')

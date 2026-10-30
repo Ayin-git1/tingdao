@@ -1,6 +1,8 @@
 import ast
 import copy
 import json
+import platform
+import re
 import subprocess
 import threading
 import time
@@ -15,9 +17,11 @@ APP = Path(__file__).parents[1] / 'app.py'
 
 class FinishIOTests(unittest.TestCase):
     def make_app(self, root):
-        cls = next(n for n in ast.parse(APP.read_text()).body if isinstance(n, ast.ClassDef) and n.name == 'App')
+        tree = ast.parse(APP.read_text())
+        cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == 'App')
         methods = [n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name in {'_finish', 'start', 'rename'}]
-        ns = dict(copy=copy, json=json, wave=wave, SR=16000, MASTER_RAW_FILE='raw-master.s16',
+        methods += [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'safe_title']
+        ns = dict(copy=copy, json=json, platform=platform, re=re, wave=wave, SR=16000, MASTER_RAW_FILE='raw-master.s16',
                   pretreat_chain=lambda: '', ffmpeg_path=lambda: 'ffmpeg',
                   time=time, save_setting=lambda *args: None, MODE_LABELS={}, fmt_ts=lambda t: str(t),
                   ENGINE=SimpleNamespace(engine_name='other', new_vad=lambda: None))

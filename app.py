@@ -35,7 +35,7 @@ import uuid
 import wave
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse, parse_qs, unquote
+from urllib.parse import urlparse, parse_qs, unquote, quote
 
 import numpy as np
 import sherpa_onnx
@@ -43,9 +43,10 @@ import sherpa_onnx
 APP_VERSION = "3.1.2"
 
 # Finder/Dock 启动的 GUI 进程 PATH 不含 homebrew, 主动补齐(ffmpeg/SwitchAudioSource 所在)
-for _p in ("/opt/homebrew/bin", "/usr/local/bin"):
-    if _p not in os.environ.get("PATH", ""):
-        os.environ["PATH"] = _p + ":" + os.environ.get("PATH", "")
+if platform.system() == "Darwin":
+    for _p in ("/opt/homebrew/bin", "/usr/local/bin"):
+        if _p not in os.environ.get("PATH", ""):
+            os.environ["PATH"] = _p + os.pathsep + os.environ.get("PATH", "")
 
 
 if platform.system() == "Windows":
@@ -244,7 +245,44 @@ def setup_log():
 # TINGDAO_PORTFILE 指向的临时文件回报给壳; 单独跑则直接用它喂给 pywebview。这里是占位, main() 会改写。
 PORT = 0
 HEADLESS = False
+def make_windows_parent_watcher(parent, shutdown, kernel=None):
+    """启动时持有父进程句柄，避免 Windows getppid 不变或 PID 被复用。"""
+    if kernel is None:
+        import ctypes
+        from ctypes import wintypes
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        kernel.OpenProcess.restype = wintypes.HANDLE
+        kernel.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+        kernel.WaitForSingleObject.restype = wintypes.DWORD
+        kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+        kernel.CloseHandle.restype = wintypes.BOOL
+    handle = kernel.OpenProcess(0x00100000, False, parent)  # SYNCHRONIZE
+    if not handle:
+        print("无法持有父进程句柄，后端退出", flush=True)
+        shutdown.set()
+
+    def watch():
+        if not handle:
+            return
+        try:
+            while not shutdown.is_set():
+                result = kernel.WaitForSingleObject(handle, 1000)
+                if result != 258:  # WAIT_TIMEOUT；退出或等待失败均不留下孤儿后端
+                    print("父进程(壳)已消失或等待失败，后端自行退出", flush=True)
+                    shutdown.set()
+                    return
+        finally:
+            kernel.CloseHandle(handle)
+    return watch
+
+
 SHUTDOWN_REQUEST = threading.Event()
+# 在模型初始化前打开句柄并监听；不能等几十秒加载结束才用 PID 寻找父进程。
+if platform.system() == "Windows" and (
+        "--no-window" in sys.argv[1:] or os.environ.get("TINGDAO_HEADLESS") == "1"):
+    threading.Thread(target=make_windows_parent_watcher(os.getppid(), SHUTDOWN_REQUEST),
+                     daemon=True).start()
 SR = 16000
 MASTER_RAW_FILE = "raw-master.s16"
 # SCK 音频助手: macOS 系统声音(ScreenCaptureKit)+麦克风在助手进程内混成单轨,
@@ -1331,7 +1369,7 @@ def _cloud_asr_openai(cfg, audio_path, timeout=1800, prog=None, cancel=None):
             prog("识别完成", 0.9)
         return out
     dur = probe_dur(p)
-    step = 900.0
+    step = 900
     starts = list(range(0, int(dur), step))
     if len(starts) > 1 and dur - starts[-1] < 120:
         starts.pop()                      # 收尾碎块并入上一块
@@ -1340,7 +1378,7 @@ def _cloud_asr_openai(cfg, audio_path, timeout=1800, prog=None, cancel=None):
     for k, st in enumerate(starts):
         if cancel:
             cancel()                    # 块边界 = 天然检查点
-        blen = min(step, dur - st)
+        blen = (starts[k + 1] if k + 1 < len(starts) else dur) - st
         ck = cache_temp_path("cloud-part", ".m4a")
         r = subprocess.run(
             [ffmpeg_path(), "-y", "-hide_banner", "-loglevel", "error",
@@ -1903,9 +1941,10 @@ def to_trash(p: Path):
     if platform.system() == "Windows":
         # Windows 没有可靠的"搬进目录"写法，走系统自带的 VisualBasic 回收站接口
         kind = "Directory" if p.is_dir() else "File"
+        escaped_path = str(p).replace("'", "''")
         ps = ("Add-Type -AssemblyName Microsoft.VisualBasic;"
               f"[Microsoft.VisualBasic.FileIO.FileSystem]::Delete{kind}"
-              f"('{p}','OnlyErrorDialogs','SendToRecycleBin')")
+              f"('{escaped_path}','OnlyErrorDialogs','SendToRecycleBin')")
         try:
             r = subprocess.run(["powershell", "-NoProfile", "-Command", ps],
                                capture_output=True, text=True, timeout=60)
@@ -2307,6 +2346,8 @@ def volume_state():
 
 
 def volume_set(pct):
+    if platform.system() != "Darwin":
+        raise RuntimeError("当前平台不支持调节输出音量")
     did, nm = volume_target()
     if did is None:
         raise RuntimeError("未找到可控制音量的输出设备")
@@ -2413,14 +2454,18 @@ class Engine:
         self._wh = None
         self._wh_lock = threading.Lock()
         self.vad = None
-        self._load_sensevoice()
+        try:
+            self._load_sensevoice()
+        except Exception as e:
+            # 模型缺失或损坏不能阻断设置页；开始录音时仍会提示重新配置。
+            print(f"[model] SenseVoice 加载失败，请在设置 → 本地模型重新配置：{e}", flush=True)
 
     def _load_sensevoice(self):
         d = sv_model_dir()
         if d is None:
             return          # 未配置: 启动不炸, 到 start() 再明确报错
         self._sv = sherpa_onnx.OfflineRecognizer.from_sense_voice(
-            model=str(d / "model.int8.onnx"),
+            model=str(d / ("model.int8.onnx" if (d / "model.int8.onnx").is_file() else "model.onnx")),
             tokens=str(d / "tokens.txt"),
             num_threads=4, language="zh", use_itn=True)
 
@@ -2506,6 +2551,16 @@ class Engine:
 
 ENGINE = Engine()
 
+def safe_title(name):
+    """保留原有 macOS 命名规则，Windows 额外规避设备名与非法文件名。"""
+    name = (name or "").strip().replace("/", "-").replace(":", "-")
+    if platform.system() == "Windows":
+        name = re.sub(r'[\\:*?"<>|\x00-\x1f\x7f]', '-', name).rstrip('. ')
+        if re.fullmatch(r'(?i:CON|PRN|AUX|NUL|COM[1-9¹²³]|LPT[1-9¹²³])', name.split('.')[0].rstrip()):
+            name = '_' + name
+    return name
+
+
 # ---------------- 应用状态 ----------------
 class WinRec:
     """Windows 系统级录音: WASAPI loopback 采系统声 + WASAPI 采麦克风,
@@ -2526,6 +2581,8 @@ class WinRec:
             raise RuntimeError("Windows 缺少 pyaudiowpatch：请在听道的 venv 里 pip install pyaudiowpatch")
         self.mode = mode
         self.returncode = None
+        self._shutdown_lock = threading.Lock()
+        self._shutdown_done = False
         self._lk = threading.Lock()
         self._q = {"sys": deque(), "mic": deque()}
         self._res = {"sys": None, "mic": None}   # 一拍多出来的零头, 留到下拍
@@ -2533,7 +2590,7 @@ class WinRec:
         self._streams = []
         r, w = os.pipe()
         self.stdout = os.fdopen(r, "rb")
-        self._w = os.fdopen(w, "wb")
+        self._w = os.fdopen(w, "wb", buffering=0)
         er, ew = os.pipe()
         self.stderr = os.fdopen(er, "rb")
         self._ew = os.fdopen(ew, "w", encoding="utf-8", errors="replace")
@@ -2673,18 +2730,27 @@ class WinRec:
             self._shutdown()
 
     def _shutdown(self):
-        for s in self._streams:
+        # wait() 的兜底与泵线程 finally 可能同时到达，只允许释放一次。
+        with self._shutdown_lock:
+            if self._shutdown_done:
+                return
+            # 先向 reader 发 EOF；驱动关闭即使卡住，也不能让读取线程困在管道内。
+            self._close_pipes()
+            for s in self._streams:
+                try:
+                    s.stop_stream()
+                except Exception:
+                    pass
+                try:
+                    s.close()
+                except Exception:
+                    pass
             try:
-                s.stop_stream()
-                s.close()
+                self._pa.terminate()
             except Exception:
                 pass
-        try:
-            self._pa.terminate()
-        except Exception:
-            pass
-        self._close_pipes()
-        self.returncode = 0
+            self.returncode = 0
+            self._shutdown_done = True
 
     def _close_pipes(self):
         for f in (getattr(self, "_w", None), getattr(self, "_ew", None)):
@@ -2706,10 +2772,37 @@ class WinRec:
 
     def kill(self):
         self._stop.set()
+        self._cancel_pipe_io()
+
+    def _cancel_pipe_io(self):
+        """只取消本录音器的在途管道写入，不强杀线程或驱动。"""
+        if platform.system() != "Windows":
+            return
+        import ctypes
+        import msvcrt
+        from ctypes import wintypes
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.CancelIoEx.argtypes = [wintypes.HANDLE, ctypes.c_void_p]
+        kernel.CancelIoEx.restype = wintypes.BOOL
+        for f in (getattr(self, "_w", None), getattr(self, "_ew", None)):
+            try:
+                if f is not None:
+                    kernel.CancelIoEx(msvcrt.get_osfhandle(f.fileno()), None)
+            except (OSError, ValueError, TypeError):
+                pass  # 已关闭，或没有待取消的写入。
 
     def wait(self, timeout=None):
         self._stop.set()
-        self._pth.join(timeout if timeout else 5)
+        self._pth.join(5 if timeout is None else timeout)
+        if self._pth.is_alive():
+            self._cancel_pipe_io()
+            # 驱动代码不可强制终止。后台幂等清理，最多再等一秒；调用方不能在旧设备
+            # 尚未释放时重开 PyAudio。不要在这里同步获取泵线程可能持有的清理锁。
+            cleanup = threading.Thread(target=self._shutdown, daemon=True)
+            cleanup.start()
+            cleanup.join(1)
+            if self.returncode is None:
+                raise subprocess.TimeoutExpired("WinRec shutdown", timeout)
         return self.returncode
 
 
@@ -2742,6 +2835,7 @@ class App:
         self._pcm_q = None
         self.raw_f = None
         self._pending_ff = None
+        self._vad_t0 = 0              # 当前断句器的起点（整段录音样本坐标）
         self.total_samples = 0        # 已喂入 VAD 的总样本(=时间轴)
         self.vad_lang = "zh"
         self.gen = 0                  # 采集代际号：新录音/恢复/暂停完成/停止完成时递增
@@ -2978,7 +3072,7 @@ class App:
     def _new_session(self, name, mode, lang):
         stamp = time.strftime("%Y%m%d-%H%M%S")
         name = (name or "新录音").strip() or "新录音"
-        name = name.replace("/", "-").replace(":", "-")
+        name = safe_title(name) or "新录音"
         d = SESSIONS_DIR / f"{name}-{stamp}"
         i = 1
         while d.exists():
@@ -3015,6 +3109,7 @@ class App:
             self._chunk_t0 = 0
             self.vad_lang = lang
             ENGINE.new_vad()
+            self._vad_t0 = self.total_samples
             self._start_recorder(mode)
             self.state = "recording"
             self.emit(type="status", **self.status())
@@ -3224,8 +3319,17 @@ class App:
         """Windows: WinRec 的接口与 Popen 同形 → 读流/日志/停止收尾全部共用既有
         self.ffmpeg 那套。设备打不开/缺 pyaudiowpatch 在 WinRec.__init__ 同步抛错,
         不需要像 mac 助手那样等 ready 信号。"""
+        pending = getattr(self, "_winrec_closing", None)
+        if pending is not None and pending.poll() is None:
+            raise RuntimeError("上一个录音设备仍在关闭，请稍后再试")
+        self._winrec_closing = None
         self.raw_f = open(self.session["dir"] / "raw.s16", "ab")
-        self.ffmpeg = WinRec(mode, mic_device())
+        try:
+            self.ffmpeg = WinRec(mode, mic_device())
+        except Exception:
+            self.raw_f.close()
+            self.raw_f = None
+            raise
         self._start_pcm_threads()
         threading.Thread(target=self._ffmpeg_err_loop, daemon=True).start()
 
@@ -3346,8 +3450,9 @@ class App:
             if self.session is not session or self.gen != generation:
                 return
             lang = session["lang"]
+            vad_t0 = getattr(self, "_vad_t0", 0)
         text = ENGINE.recognize(seg.samples, lang)
-        item = {"t": round(seg.start / SR, 2),
+        item = {"t": round((vad_t0 + seg.start) / SR, 2),
                 "d": round(len(seg.samples) / SR, 2), "text": text}
         with self.lock:
             if self.session is not session or self.gen != generation:
@@ -3387,6 +3492,8 @@ class App:
                 ff.wait(timeout=4)
             except subprocess.TimeoutExpired:
                 ff.kill()
+                if platform.system() == "Windows" and isinstance(ff, WinRec):
+                    self._winrec_closing = ff
         self.ffmpeg = None
         if self.raw_f:
             with self.capture_lock:
@@ -3415,6 +3522,7 @@ class App:
             if self.session is not session or self.gen != generation or self.state != "recording":
                 return {"ok": True}
             ENGINE.new_vad()  # 重置, 恢复时继续(时间轴按样本数冻结)
+            self._vad_t0 = self.total_samples
             self.chunk_buf = []
             self._chunk_t0 = self.total_samples  # 流式块时间轴与暂停点对齐
             self.gen += 1
@@ -3462,6 +3570,7 @@ class App:
             if self.session is not session or self.gen != generation or self.state != "recording":
                 return {"ok": True, "mode": session["mode"]}
             ENGINE.new_vad()
+            self._vad_t0 = self.total_samples
             self.chunk_buf = []
             self._chunk_t0 = self.total_samples
             self.gen += 1
@@ -3570,6 +3679,8 @@ class App:
                 ff.wait(timeout=6)
             except subprocess.TimeoutExpired:
                 ff.kill()
+                if platform.system() == "Windows" and isinstance(ff, WinRec):
+                    self._winrec_closing = ff
         if rt:
             rt.join(timeout=6)
             self.reader_thread = None
@@ -3950,9 +4061,14 @@ class App:
             # stderr 写临时文件，避免先读 stdout 时另一条管道写满导致互相等待。
             # stdout 仍逐行读取，保留实时进度；退出后只读取错误尾部，不占用整份日志的内存。
             with tempfile.TemporaryFile(dir=out.parent) as stderr_file:
+                pipe_options = ({"encoding": "utf-8", "errors": "replace"}
+                                if platform.system() == "Windows" else {})
+                worker_env = dict(os.environ, PYTHONUNBUFFERED="1")
+                if platform.system() == "Windows":
+                    worker_env["PYTHONIOENCODING"] = "utf-8"
                 with subprocess.Popen(cmd, stdout=subprocess.PIPE,
                                       stderr=stderr_file, text=True,
-                                      env=dict(os.environ, PYTHONUNBUFFERED="1")) as proc:
+                                      env=worker_env, **pipe_options) as proc:
                     if sid:
                         with self.lock:
                             self._procs[sid] = proc
@@ -4116,7 +4232,9 @@ class App:
         if talk == "cloud" and not cloud_cfg()["enable"]:
             raise RuntimeError("云端未配置：请填 API 地址、Key 与转写模型名")
         stamp = time.strftime("%Y%m%d-%H%M%S")
-        stem = (src.stem.replace("/", "-").replace(":", "-").strip() or "导入")[:52]
+        stem = (safe_title(src.stem) or "导入")[:52]
+        if platform.system() == "Windows":
+            stem = safe_title(stem) or "导入"
         # 导入时间可见地写进标题, 同一文件反复导入也能一眼分辨
         name = f"{stem} · {time.strftime('%m-%d %H:%M')}"[:60]
         d = SESSIONS_DIR / f"{stem}-{stamp}"
@@ -4532,6 +4650,7 @@ class App:
                 {"role": "system", "content": tpl["prompt"] + MD_RULES},
                 {"role": "user", "content": body}],
                 temperature=0.3, retries=1, think_off=ncfg_think_off)   # 输出上限不写死: 交 cloud_chat 按正文量折算
+            self._ck(sid)()
             note = (note or "").strip()
             if not note:
                 raise RuntimeError("模型没返回笔记内容")
@@ -4714,6 +4833,7 @@ class App:
         sj = d / "session.json"
         outline_reply = ""
         try:
+            self._ck(d.name)()
             meta = json.loads(sj.read_text(encoding="utf-8"))
             segs = [s for s in (meta.get("segments") or []) if s.get("text")]
             scfg = dict(cfg)
@@ -4735,6 +4855,7 @@ class App:
                 {"role": "system", "content": sum_instr},
                 {"role": "user", "content": full}],
                 temperature=0.2, think_off=think_off) or "").strip()
+            self._ck(d.name)()
             if not summary:
                 raise RuntimeError("模型没返回摘要内容")
 
@@ -4767,6 +4888,7 @@ class App:
                 {"role": "system", "content": outline_instr},
                 {"role": "user", "content": numbered}],
                 temperature=0.2, think_off=think_off) or "").strip()
+            self._ck(d.name)()
             _, outline = parse_summary_outline(outline_reply, segs, line_times)
             if not outline:
                 timestamp_rows = len(re.findall(
@@ -4916,7 +5038,6 @@ class App:
         曾发生整条输出无标点 → 时长比例切分击穿 → 515 字全堆进第一句的事故。
         重复环/幻觉段回退到该时间段的 SenseVoice 原句。失败静默保留原稿。
         silence_skip=True: 用户手动点「跳过静音重跑」的救急路径, 见 refine_silence。"""
-        tag = "Whisper 复核·跳过静音" if silence_skip else "Whisper 复核"
         self._uncancel(d.name)
         try:
             sj_path = d / "session.json"
@@ -4946,18 +5067,7 @@ class App:
             meta["transcribe_src"] = source.name
             sj_path.write_text(json.dumps(meta, ensure_ascii=False, indent=1),
                                encoding="utf-8")
-            # 重写 transcript.md
-            lines = [f"# {meta.get('name', '')}", "",
-                     f"- 开始: {meta.get('started', '')}"
-                     f" | 时长: {fmt_ts(meta.get('duration', 0))} ({tag})", ""]
-            for seg in new_segs:
-                if seg["text"]:
-                    lines.append(f"[{fmt_ts(seg['t'])}] {seg['text']}")
-            notes = meta.get("notes") or []
-            if notes:
-                lines += ["", "## 时间线笔记", ""]
-                lines += [f"- [{fmt_ts(n['t'])}] {n['text']}" for n in notes]
-            (d / "transcript.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+            self._write_md(d, meta, self._md_tag(d, meta))
             self._cleanup_recording_audio(d, meta)
             if post_flow:
                 # 本地转完只把文字送云端润色: 终态由后处理那一步统一广播
@@ -5480,7 +5590,7 @@ class App:
 
     def rename(self, name, sid=None):
         import os as _os
-        name = (name or "").strip().replace("/", "-").replace(":", "-")
+        name = safe_title(name)
         if not name:
             raise RuntimeError("标题不能为空")
         cur_dir = self.session["dir"] if self.session else None
@@ -5499,6 +5609,10 @@ class App:
                 return {"ok": True, "name": name}
             s = self.session
             session, generation = s, self.gen
+            if platform.system() == "Windows":
+                new_dir = s["dir"].parent / f"{name}-{s['stamp']}"
+                if new_dir.exists():
+                    raise RuntimeError("同名会话已存在")
             was_rec = self.state == "recording"
             if was_rec:
                 self._stop_ffmpeg_noblock()
@@ -5511,15 +5625,31 @@ class App:
                 raise RuntimeError("项目正在保存，请保存完成后再改名")
             if was_rec:
                 ENGINE.new_vad()
+                self._vad_t0 = self.total_samples
             s = self.session
             new_dir = s["dir"].parent / f"{name}-{s['stamp']}"
-            if new_dir.exists():
-                raise RuntimeError("同名会话已存在")
-            _os.rename(s["dir"], new_dir)
+            try:
+                if new_dir.exists():
+                    raise RuntimeError("同名会话已存在")
+                _os.rename(s["dir"], new_dir)
+            except Exception:
+                if platform.system() == "Windows" and was_rec:
+                    try:
+                        self._start_recorder(s["mode"])
+                    except Exception:
+                        self.state = "paused"
+                    self.emit(type="status", **self.status())
+                raise
             s["name"], s["dir"] = name, new_dir
             self.emit(type="status", **self.status())
             if was_rec:
-                self._start_recorder(s["mode"])
+                try:
+                    self._start_recorder(s["mode"])
+                except Exception:
+                    if platform.system() == "Windows":
+                        self.state = "paused"
+                        self.emit(type="status", **self.status())
+                    raise
                 self.state = "recording"
         return {"ok": True, "name": name}
 
@@ -5755,7 +5885,7 @@ class App:
                                                     and (d / meta["audioListen"]).exists()) \
                 else meta.get("audio")
             play = master if master else fallback
-            meta["audioUrl"] = f"/audio/{sid}/{play}" if play else None
+            meta["audioUrl"] = f"/audio/{quote(sid, safe='')}/{quote(play, safe='')}" if play else None
             meta["id"] = sid
             meta["spkLabels"] = meta.get("spk_labels") or {}
             # 课后笔记: 文件在不在就是"有没有笔记", 不需要额外状态字段。
@@ -6538,7 +6668,8 @@ def main():
                     print("父进程(壳)已消失, 后端自行退出")
                     SHUTDOWN_REQUEST.set()
                     return
-        threading.Thread(target=watch_parent, daemon=True).start()
+        if platform.system() != "Windows":
+            threading.Thread(target=watch_parent, daemon=True).start()
         SHUTDOWN_REQUEST.wait()
         finish_up("收到退出信号")
         return

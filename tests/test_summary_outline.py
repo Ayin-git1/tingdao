@@ -68,6 +68,9 @@ class SummaryOutlineTests(unittest.TestCase):
             return response
 
         class DummyApp:
+            def _ck(self, sid):
+                return lambda: None
+
             def stage(self, *_args, **_kwargs):
                 pass
 

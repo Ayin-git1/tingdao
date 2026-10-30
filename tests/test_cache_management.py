@@ -34,7 +34,12 @@ class CacheTests(unittest.TestCase):
         cache = self.ns['CACHE_DIR']; cache.mkdir()
         original = self.root / 'recording.wav'; original.write_bytes(b'original')
         (cache / 'work.wav').write_bytes(b'12345')
-        (cache / 'outside').symlink_to(original)
+        try:
+            (cache / 'outside').symlink_to(original)
+        except OSError as error:
+            if getattr(error, 'winerror', None) == 1314:
+                self.skipTest('Windows symlink privilege is unavailable')
+            raise
         self.assertEqual(self.ns['cache_info']()['bytes'], 5)
         result = self.ns['clear_cache'](datetime(2026, 1, 31))
         self.assertTrue(result['ok'])
@@ -104,7 +109,12 @@ class CacheTests(unittest.TestCase):
 
     def test_cache_root_symlink_is_rejected(self):
         outside = self.root / 'outside'; outside.mkdir(); (outside / 'keep').write_bytes(b'keep')
-        self.ns['CACHE_DIR'].symlink_to(outside, target_is_directory=True)
+        try:
+            self.ns['CACHE_DIR'].symlink_to(outside, target_is_directory=True)
+        except OSError as error:
+            if getattr(error, 'winerror', None) == 1314:
+                self.skipTest('Windows symlink privilege is unavailable')
+            raise
         with self.assertRaises(RuntimeError):
             self.ns['clear_cache']()
         self.assertTrue((outside / 'keep').exists())

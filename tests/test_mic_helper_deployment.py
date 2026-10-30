@@ -11,6 +11,7 @@ TEST_APP = Path(os.environ.get("TINGDAO_TEST_APP", str(Path(__file__).parents[1]
 TEST_APP_HELPER = TEST_APP / "Contents/Resources/TingdaoMic.app/Contents/MacOS/TingdaoMic"
 
 
+@unittest.skipUnless(__import__('platform').system() == 'Darwin', 'macOS helper deployment requires macOS')
 class MicHelperDeploymentTests(unittest.TestCase):
     def test_bundle_binary_targets_the_supported_macos_baseline(self):
         """The product targets macOS 26, so LaunchServices must see that exact baseline."""

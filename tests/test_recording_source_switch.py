@@ -1,5 +1,8 @@
 import ast
 import threading
+import platform
+from tempfile import TemporaryDirectory
+from unittest.mock import patch
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -41,6 +44,22 @@ class RecordingSourceSwitchTests(unittest.TestCase):
         self.assertEqual(app._chunk_t0, app.total_samples)
         self.assertIn({'type': 'mode_switch', 't': 30.0, 'mode': 'mic', 'from': 'system'}, app.events)
 
+    def test_segment_timestamp_continues_after_source_switch(self):
+        app = self.make_app()
+        app.session['segments'] = []
+        tree = ast.parse(APP.read_text(encoding='utf-8'))
+        cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == 'App')
+        method = next(n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == '_decode_seg')
+        ns = app.switch_mode.__func__.__globals__
+        ns['ENGINE'].recognize = lambda samples, lang: '测试'
+        exec(compile(ast.Module(body=[method], type_ignores=[]), str(APP), 'exec'), ns)
+        app._decode_seg = ns['_decode_seg'].__get__(app)
+        for elapsed, mode in [(30, 'mic'), (65, 'mix'), (90, 'system')]:
+            app.total_samples = elapsed * 16000
+            app.switch_mode(mode)
+            app._decode_seg(SimpleNamespace(start=16000 * 2, samples=[0] * 16000), app.session, app.gen)
+            self.assertEqual(app.session['segments'][-1]['t'], elapsed + 2)
+
     def test_failed_switch_falls_back_to_previous_mode_without_marker(self):
         app = self.make_app(fail_modes=('mix',))
         with self.assertRaisesRegex(RuntimeError, '仍在用原来源录音'):
@@ -68,6 +87,43 @@ class RecordingSourceSwitchTests(unittest.TestCase):
         app.state = 'idle'
         with self.assertRaises(RuntimeError):
             app.switch_mode('mic')
+
+    def test_windows_dispatch_appends_raw_and_recovers_device_failures(self):
+        tree = ast.parse(APP.read_text(encoding='utf-8'))
+        cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == 'App')
+        methods = [n for n in cls.body if isinstance(n, ast.FunctionDef)
+                   and n.name in ('_start_recorder', '_spawn_winrec')]
+        for fail_modes, state in [((), 'recording'), (('mix',), 'recording'), (('mix', 'system'), 'paused')]:
+            with self.subTest(fail_modes=fail_modes), TemporaryDirectory() as temp:
+                app = self.make_app()
+                app.session['dir'] = Path(temp)
+                raw = Path(temp) / 'raw.s16'; raw.write_bytes(b'original PCM')
+                attempts=[]
+                def fake_winrec(mode, mic):
+                    attempts.append(mode)
+                    if mode in fail_modes:
+                        raise RuntimeError('WASAPI device busy')
+                    return SimpleNamespace()
+                ns = dict(platform=platform, WinRec=fake_winrec, mic_device=lambda: '', threading=SimpleNamespace(Thread=lambda **kw: SimpleNamespace(start=lambda: None)))
+                exec(compile(ast.Module(body=methods, type_ignores=[]), str(APP), 'exec'), ns)
+                app._spawn_winrec = ns['_spawn_winrec'].__get__(app)
+                app._start_recorder = ns['_start_recorder'].__get__(app)
+                app._start_pcm_threads = lambda: None
+                app._ffmpeg_err_loop = lambda: None
+                with patch.object(platform, 'system', return_value='Windows'):
+                    if fail_modes:
+                        with self.assertRaises(RuntimeError): app.switch_mode('mix')
+                    else:
+                        app.switch_mode('mix')
+                        self.assertEqual(app.session['modeSwitches'], [{'t':30.0, 'from':'system', 'mode':'mix'}])
+                self.assertEqual(app.state, state)
+                self.assertEqual(attempts, ['mix', 'system'] if fail_modes else ['mix'])
+                if app.raw_f is not None:
+                    self.assertEqual(app.raw_f.mode, 'ab')
+                    app.raw_f.write(b'continued'); app.raw_f.close()
+                    self.assertEqual(raw.read_bytes(), b'original PCMcontinued')
+                else:
+                    self.assertEqual(raw.read_bytes(), b'original PCM')
 
     def test_finish_ignores_partial_master_after_switch_and_failed_restart_keeps_recording(self):
         source = APP.read_text()

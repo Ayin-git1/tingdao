@@ -2,6 +2,13 @@
 """Windows Whisper worker using faster-whisper and a local CTranslate2 model."""
 import argparse
 import json
+import sys
+
+# 管道输出不跟随 Windows 活动代码页，父进程以同一 UTF-8 协议读取。
+if sys.stdout is not None:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if sys.stderr is not None:
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 
 def stamp(seconds):

@@ -17,7 +17,7 @@
 读取 https://github.com/Ayin-git1/tingdao readme,从国内镜像源下载三款适合我[这里填 Mac或Windows]系统的模型，并检查运行环境，若缺少，也请你一并为我安装并配置。
 ```
 - **macOS（Apple Silicon，macOS 12.3+）**：从 [Releases](https://github.com/Ayin-git1/tingdao/releases) 下载最新 DMG，将「听道.app」拖入「应用程序」。首次打开若被系统拦截，右键应用并选择「打开」。
-- **Windows 10/11 x64**：下载最新 `听道_<版本>_x64-setup.exe` 并运行。安装器会在需要时下载 WebView2；Python 和模型需自行准备，见[运行依赖](#dependencies)和[Windows 安装步骤](#windows-setup)。
+- **Windows 10/11 x64**：下载 [v3.1.2 Windows 安装包](https://github.com/Ayin-git1/tingdao/releases/download/v3.1.2/tingdao_3.1.2_x64-setup.exe) 并运行。安装器会在需要时下载 WebView2；Python 和模型需自行准备，见[运行依赖](#dependencies)和[Windows 安装步骤](#windows-setup)。
 - 安装包只含程序本体及 Windows 所需的 FFmpeg；Python 环境和模型需自行准备。源码 zip 运行时仍需自行安装 FFmpeg。系统声音采集使用系统自带能力，不需要虚拟声卡。
 
 <h2 id="features"><img src="./assets/readme/badges/features.svg" height="40" alt="核心功能"></h2>
@@ -122,6 +122,18 @@ Windows 安装版已包含 FFmpeg。安装 Python 后重开 PowerShell，并确�
 
 - 新增拍照快捷键：录音或暂停时按 ⌘⇧P，直接用 iPhone 拍照，不再弹出菜单；点击相机按钮仍显示菜单。该快捷键已列入快捷键卡片，录音快捷键不能再设为它。
 - README 新增「推荐模型组合」，列出作者在阿里云百炼上使用的转写、精修、摘要目录与笔记模型。
+
+#### v3.1.2 Windows 更新 · 2026-10-30
+
+[下载 Windows 10/11 x64 安装包](https://github.com/Ayin-git1/tingdao/releases/download/v3.1.2/tingdao_3.1.2_x64-setup.exe)。
+
+- 完成最新 Windows 适配：修复启动白闪，补齐打包资源；隐藏不支持的相机和音量按钮，调整录音浮条动画。
+- 修复切换录音来源后字幕时间戳重置，暂停恢复、录音中改名后也会接续整段录音时间轴。该修复同时适用于 macOS 源码；现有 macOS 安装包尚未重新打包。
+- 改善录音切源、改名失败恢复与设备关闭流程；父进程退出后后端自动收尾。
+- 修复 Windows 文件名、中文精修输出、特殊字符音频链接与回收站路径兼容问题；模型加载失败时仍可进入设置。
+- 修复长音频云端分块遗漏尾段、取消任务后仍写入结果，以及 Whisper 精修丢失摘要和图片笔记的问题。
+- 新增品牌化中文 NSIS 安装界面，统一图标、侧栏、页眉和欢迎文案；更新内置 FFmpeg 固定下载源与校验。
+- 安装包仍需自行准备 Python 环境及模型，详见 [Windows 安装步骤](#windows-setup)。
 
 ### v3.1.1 · 2026-10-24
 

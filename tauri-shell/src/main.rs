@@ -15,9 +15,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
 #[cfg(target_os = "macos")]
-#[cfg(target_os = "macos")]
 mod camera;
 
+#[cfg(target_os = "macos")]
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::webview::PageLoadEvent;
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
@@ -107,9 +107,9 @@ fn python_bin(venv: &Path, windows: bool) -> PathBuf {
     }
 }
 
-/// 听道特征依赖: 命中任意一条就认为"像是给听道装过的环境"。
+/// 听道必需依赖: 全部命中才可采用，Windows 另需 pyaudiowpatch。
 /// 只看 site-packages 里的目录名, 绝不启动解释器 —— import torch 要十几秒, 挂在启动路径上不可接受。
-const PROBE_PACKAGES: [&str; 5] = ["sherpa_onnx", "faster_whisper", "modelscope", "funasr", "torch"];
+const PROBE_PACKAGES: [&str; 2] = ["numpy", "sherpa_onnx"];
 
 /// 遍历目录时会跳开的名字: 大而无用(下载、回收站、依赖树), 扫了只会白烧时间。
 const SCAN_SKIP_DIRS: [&str; 6] = [
@@ -142,11 +142,19 @@ fn has_tingdao_deps(venv: &Path, windows: bool) -> bool {
     let Ok(entries) = std::fs::read_dir(&sp) else {
         return false;
     };
-    entries.flatten().any(|e| {
-        let name = e.file_name().to_string_lossy().to_lowercase();
-        // 包目录(sherpa_onnx)与发行元数据(sherpa_onnx-1.10.0.dist-info / sherpa-onnx-…)都算
-        PROBE_PACKAGES.iter().any(|pkg| {
-            name.starts_with(pkg) || name.starts_with(&pkg.replace('_', "-"))
+    let names: Vec<String> = entries.flatten()
+        .filter(|e| e.path().is_dir())
+        .map(|e| e.file_name().to_string_lossy().to_lowercase())
+        .collect();
+    let mut required = PROBE_PACKAGES.to_vec();
+    if windows {
+        required.push("pyaudiowpatch");
+    }
+    required.iter().all(|pkg| {
+        names.iter().any(|name| {
+            name == pkg || ((name.ends_with(".dist-info") || name.ends_with(".egg-info"))
+                && (name.starts_with(&format!("{pkg}-"))
+                    || name.starts_with(&format!("{}-", pkg.replace('_', "-")))))
         })
     })
 }
@@ -671,6 +679,17 @@ mod tests {
 #[cfg(test)]
 mod release_tests {
     #[test]
+    fn backend_page_excludes_tauri_localhost() {
+        for (url, expected) in [
+            ("http://127.0.0.1:5123/", true),
+            ("http://tauri.localhost/index.html", false),
+            ("tauri://localhost/index.html", false),
+            ("https://127.0.0.1/", false),
+        ] {
+            assert_eq!(super::is_backend_page(&tauri::Url::parse(url).unwrap()), expected);
+        }
+    }
+    #[test]
     fn repository_new_window_allows_only_the_official_repository_url() {
         assert!(super::is_repository_url("https://github.com/Ayin-git1/tingdao"));
         assert!(super::is_repository_url("https://github.com/Ayin-git1/tingdao/"));
@@ -728,7 +747,9 @@ mod release_tests {
         std::fs::create_dir_all(bare.join("Lib").join("site-packages")).unwrap();
         std::fs::create_dir_all(bare.join("Scripts")).unwrap();
         std::fs::write(bare.join("Scripts").join("python.exe"), b"").unwrap();
-        std::fs::create_dir_all(ready.join("Lib").join("site-packages").join("torch")).unwrap();
+        for package in ["numpy", "sherpa_onnx", "pyaudiowpatch"] {
+            std::fs::create_dir_all(ready.join("Lib").join("site-packages").join(package)).unwrap();
+        }
         std::fs::create_dir_all(ready.join("Scripts")).unwrap();
         std::fs::write(ready.join("Scripts").join("python.exe"), b"").unwrap();
 
@@ -756,14 +777,22 @@ mod release_tests {
     /// 两个用例都显式传 windows: true, 让 site-packages 的走法在非 Windows 机器上也稳定。
     #[test]
     fn dependency_probe_reads_site_packages_without_running_python() {
-        let hit = std::env::temp_dir().join("tingdao-shell-pyprobe-hit");
+        let unique = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let hit = std::env::temp_dir().join(format!("tingdao-shell-pyprobe-hit-{unique}"));
         std::fs::create_dir_all(hit.join("Lib").join("site-packages").join("faster_whisper-1.1.0.dist-info"))
             .unwrap();
+        assert!(!super::has_tingdao_deps(&hit, true));
+        for package in ["numpy", "sherpa_onnx"] {
+            std::fs::create_dir_all(hit.join("Lib").join("site-packages").join(package)).unwrap();
+        }
+        assert!(!super::has_tingdao_deps(&hit, true));
+        std::fs::create_dir_all(hit.join("Lib").join("site-packages").join("pyaudiowpatch")).unwrap();
         assert!(super::has_tingdao_deps(&hit, true));
 
         let empty = std::env::temp_dir().join("tingdao-shell-pyprobe-empty");
         std::fs::create_dir_all(empty.join("Lib").join("site-packages")).unwrap();
         assert!(!super::has_tingdao_deps(&empty, true));
+        std::fs::remove_dir_all(&hit).unwrap();
     }
 }
 
@@ -855,12 +884,16 @@ fn clear_legacy_webview_cache(app: &tauri::App, window: &tauri::WebviewWindow) {
 /// 主窗口在 setup 里立刻建好但先隐藏, 后端就绪后由后台线程导航到 http://127.0.0.1:<动态端口>/,
 /// 真实页面加载完成(上次的项目列表已同步画出)才显示 —— 用户看到窗口时页面已经是完整的。
 /// 窗口的尺寸/居中等写在这里而非 tauri.conf.json —— 动态端口的页面只能运行时再导航过去。
+fn is_backend_page(url: &tauri::Url) -> bool {
+    url.scheme() == "http" && url.host_str() == Some("127.0.0.1")
+}
+
 fn open_main_window(app: &mut tauri::App) -> tauri::Result<tauri::WebviewWindow> {
     let mut builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
         .visible(false)
-        // 只认后端页面(http)的加载完成; 建窗时那张内置空白页(tauri://)的完成事件不算。
+        // Windows 内置页也是 http (tauri.localhost)，只认后端回环地址。
         .on_page_load(|window, payload| {
-            if payload.event() == PageLoadEvent::Finished && payload.url().scheme() == "http" {
+            if payload.event() == PageLoadEvent::Finished && is_backend_page(payload.url()) {
                 let _ = window.show();
                 let _ = window.set_focus();
             }

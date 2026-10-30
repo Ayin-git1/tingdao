@@ -11,6 +11,7 @@ import sys
 import tempfile
 import threading
 import unittest
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -116,6 +117,20 @@ class WhisperWorkerPipeTests(unittest.TestCase):
         result = self.run_worker("pass\n", total=0)
         self.assertIsInstance(result.get('error'), RuntimeError)
         self.assertIn('无结果文件', str(result['error']))
+
+    def test_windows_worker_overrides_non_utf8_pipe_defaults(self):
+        output = io.StringIO()
+        popen = subprocess.Popen
+        with patch.object(platform, 'system', return_value='Windows'), \
+             patch.dict(os.environ, {'PYTHONUTF8':'0', 'PYTHONIOENCODING':'cp1252'}), \
+             patch.object(subprocess, 'Popen', wraps=popen) as spawn, redirect_stdout(output):
+            result = self.run_worker(
+                "print('中文诊断',flush=True)\n"
+                "out.write_text(json.dumps({'segments':[], 'text':'中文'}), encoding='utf-8')\n", total=0)
+        self.assertEqual(result.get('value', {}).get('text'), '中文')
+        self.assertIn('中文诊断', output.getvalue())
+        self.assertEqual(spawn.call_args.kwargs['encoding'], 'utf-8')
+        self.assertEqual(spawn.call_args.kwargs['env']['PYTHONIOENCODING'], 'utf-8')
 
 
 if __name__ == '__main__':
