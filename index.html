@@ -960,23 +960,24 @@
   body.home .sk-body{display:none;}
   body.side-skel.home .sk-home{display:grid;}
   body.side-skel:not(.home) .sk-body{display:block;}
-  .sk-home .c{height:172px; border-radius:var(--radius-3); background:#f0f1f4;}
+  .sk-home .c{height:172px; border-radius:var(--radius-3); background:var(--line);}   /* 与文稿骨架同色 */
   .sk-body .row{display:grid; grid-template-columns:56px minmax(0,1fr); column-gap:10px; margin:22px 8px 0;}
   .sk-body .blk{display:grid; gap:12px;}
   .sk-body .line,.sk-body .tsb{height:10px; border-radius:var(--radius-1); background:var(--soft);}
   .sk-body .tsb{width:38px; margin-top:2px;}
   .sk-body .line,.sk-body .tsb{
     opacity:0; background:var(--line);
-    -webkit-mask-image:linear-gradient(90deg,#000 40%,transparent 60%);
-    mask-image:linear-gradient(90deg,#000 40%,transparent 60%);
-    -webkit-mask-size:250% 100%; mask-size:250% 100%;
-    animation:skelWrite var(--duration,35ms) ease-out both paused;
+    /* 柔边遮罩自左向右擦开, 同时渐显; 每段速度由 prepareTranscriptSkeleton 随机给定。 */
+    -webkit-mask-image:linear-gradient(90deg,#000 35%,transparent 65%);
+    mask-image:linear-gradient(90deg,#000 35%,transparent 65%);
+    -webkit-mask-size:300% 100%; mask-size:300% 100%;
+    animation:skelWrite var(--duration,220ms) cubic-bezier(.22,.61,.36,1) both paused;
     animation-delay:var(--delay,0ms);}
   body.side-skel .sk-body .line,body.side-skel .sk-body .tsb,
   .transcript-loading .sk-body .line,.transcript-loading .sk-body .tsb{animation-play-state:running;}
   @keyframes skelWrite{
-    from{opacity:0; transform:translateY(3px); -webkit-mask-position:100% 0; mask-position:100% 0;}
-    25%{opacity:1;}
+    from{opacity:0; transform:translateY(2px); -webkit-mask-position:100% 0; mask-position:100% 0;}
+    60%{opacity:1;}
     to{opacity:1; transform:translateY(0); -webkit-mask-position:0 0; mask-position:0 0;}
   }
   @media(prefers-reduced-motion:reduce){
@@ -3430,7 +3431,6 @@
   html[data-appearance="dark"] .hitem.sel { background:var(--gry-fill); }
   html[data-appearance="dark"] .hchk { background:var(--card); box-shadow:0 0 0 1.5px var(--card), inset 0 0 0 1px var(--line); }
   html[data-appearance="dark"] .hchk:checked { background:var(--g); box-shadow:0 0 0 1.5px var(--card); }
-  html[data-appearance="dark"] .sk-home .c { background:var(--soft); }
   html[data-appearance="dark"] .blob.b1,
   html[data-appearance="dark"] .blob.b2 { opacity:.48; }
   html[data-appearance="dark"] .seg .spkb { box-shadow:0 0 0 1.5px var(--bg); }
@@ -12222,19 +12222,20 @@ function transcriptNeedsLoading(d){
   return Number(d.duration)>7200;
 }
 function prepareTranscriptSkeleton(){
+  // 各段几乎同时起笔、各走各的速度(pace), 像高低不齐地凸出来; 段内下一行在上一行擦到一半时接上。
   const skeleton=$('skel').querySelector('.sk-body');
-  let delay=0,rows='';
+  let rows='';
   for(let paragraph=0;paragraph<8;paragraph++){
-    const count=2+Math.floor(Math.random()*3),start=delay;
-    let lines='';
+    const count=2+Math.floor(Math.random()*3),pace=.7+Math.random()*.8;
+    const start=paragraph&&paragraph*38+Math.random()*30;   // 首段立即起笔
+    let lines='',delay=start;
     for(let sentence=0;sentence<count;sentence++){
       const width=sentence===count-1?32+Math.random()*40:85+Math.random()*15;
-      const duration=104/4.5+Math.random()*16;
+      const duration=(160+Math.random()*60)*pace;
       lines+=`<span class="line" style="width:${width.toFixed(1)}%;--delay:${Math.round(delay)}ms;--duration:${Math.round(duration)}ms"></span>`;
-      delay+=duration+4+Math.random()*44/4.5;
+      delay+=duration*.5;
     }
-    rows+=`<div class="row"><span class="tsb" style="--delay:${Math.round(start)}ms"></span><span class="blk">${lines}</span></div>`;
-    delay+=16/1.5+Math.random()*16;
+    rows+=`<div class="row"><span class="tsb" style="--delay:${Math.round(start)}ms;--duration:${Math.round(180*pace)}ms"></span><span class="blk">${lines}</span></div>`;
   }
   skeleton.innerHTML=rows;
 }

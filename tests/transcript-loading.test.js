@@ -50,8 +50,20 @@ test('skeleton sentences arrive in order with varied paragraph lengths and keep 
  c.Math.random=()=>0.95;c.prepareTranscriptSkeleton();
  assert.equal((skeleton.innerHTML.match(/class="line"/g)||[]).length,32);
  assert.notEqual(short,skeleton.innerHTML);
- const delays=[...skeleton.innerHTML.matchAll(/class="line" style="[^"]*--delay:(\d+)ms/g)].map(m=>Number(m[1]));
- assert.equal(delays[0],0);
- for(let i=1;i<delays.length;i++)assert.ok(delays[i]>delays[i-1],'later sentences must appear after earlier ones');
- assert.match(html,/animation:skelWrite var\(--duration,35ms\) ease-out both paused/);
+ const rows=skeleton.innerHTML.split('<div class="row">').slice(1).map(row=>({
+   start:Number(row.match(/class="tsb" style="--delay:(\d+)ms/)[1]),
+   lines:[...row.matchAll(/class="line" style="[^"]*--delay:(\d+)ms;--duration:(\d+)ms/g)].map(m=>({delay:Number(m[1]),duration:Number(m[2])}))}));
+ assert.equal(rows[0].start,0);
+ for(let i=1;i<rows.length;i++)assert.ok(rows[i].start>rows[i-1].start,'paragraphs start one after another');
+ for(const row of rows){
+   assert.equal(row.lines[0].delay,row.start);
+   for(let i=1;i<row.lines.length;i++){
+     const prev=row.lines[i-1];
+     assert.ok(row.lines[i].delay>prev.delay&&row.lines[i].delay<prev.delay+prev.duration,'next sentence overlaps the previous wipe');
+   }
+ }
+ c.Math.random=(()=>{let n=0;return()=>[.1,.9,.5,.3,.7][n++%5];})();c.prepareTranscriptSkeleton();
+ const paces=new Set([...skeleton.innerHTML.matchAll(/class="tsb" style="[^"]*--duration:(\d+)ms/g)].map(m=>m[1]));
+ assert.ok(paces.size>1,'paragraphs extrude at different speeds');
+ assert.match(html,/animation:skelWrite var\(--duration,220ms\) cubic-bezier\(\.22,\.61,\.36,1\) both paused/);
 });
