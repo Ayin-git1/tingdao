@@ -17,9 +17,10 @@ function sessionHarness(){
  const images=[],rendered=[],elements=new Map();
  const context=vm.createContext({
   Image:class{constructor(){images.push(this);}decode(){return new Promise((resolve,reject)=>{this.resolve=resolve;this.reject=reject;});}},
-  $:id=>{if(!elements.has(id))elements.set(id,{style:{},classList:{add(){},remove(){}}});return elements.get(id);},
+  $:id=>{if(!elements.has(id))elements.set(id,{style:{},classList:{add(){},remove(){}},appendChild(){}});return elements.get(id);},
+  appendTranscriptItems(items,isCurrent,done){items.forEach(item=>rendered.push(item.text));done();},
   api:async path=>({id:path.split('/').pop(),name:'稿件',segments:[{t:0,text:'正文'}],notes:[{content:[{type:'image',file:'slow.png'}]}]}),
-  transcriptViewGeneration:0,view:null,posDirty:false,RATES:['1'],defaultRateIdx:0,spkOrder:[],player:{},
+  TRANSCRIPT_LAZY_PAINT_MIN:300,transcriptViewGeneration:0,view:null,posDirty:false,RATES:['1'],defaultRateIdx:0,spkOrder:[],player:{},
   hideTranscriptFormatTools(){},resetTranscriptNoteLayer(){},editBarOff(){},closeAllNotes(){},hideTranscriptImageDropIndicator(){},applyRate(){},hideResume(){},setConfirm(){},
   buildSpkOrder(){},updateNoteBtn(){},resetPlaybackSegments(){},
   transcriptContentItems:segments=>segments.map(segment=>({...segment,type:'seg'})),

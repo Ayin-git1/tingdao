@@ -33,6 +33,8 @@ import threading
 import tempfile
 import time
 import uuid
+import unicodedata
+import stat
 import wave
 import zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -506,6 +508,24 @@ def save_setting(key, value):
     SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
     SETTINGS_FILE.write_text(json.dumps(s, ensure_ascii=False, indent=1),
                              encoding="utf-8")
+
+
+def valid_username(value):
+    return isinstance(value, str) and re.fullmatch(r'[A-Za-z]{1,24}', value) is not None
+
+
+def profile_username():
+    value = load_setting("username")
+    # 首字母一律大写；早期保存的小写名字读出时补齐
+    return value[:1].upper() + value[1:] if valid_username(value) else ""
+
+
+def save_username(value):
+    if not valid_username(value):
+        raise RuntimeError("用户名仅支持 1–24 个英文字母，中文名请使用拼音或字母表示")
+    value = value[:1].upper() + value[1:]
+    save_setting("username", value)
+    return {"ok": True, "username": value}
 
 
 UPDATE_RELEASES_API = "https://api.github.com/repos/Ayin-git1/tingdao/releases?per_page=20"
@@ -1345,6 +1365,25 @@ def cloud_wait_secs(dur):
     return dur * rates[len(rates) // 2]          # 中位数, 抗一次网络抖动
 
 
+def cloud_wait_frac(waited, est):
+    """等待段的显示进度(0.24~0.94)。前段按预估先快后慢地走到 0.85;
+    超过预估后不封顶停住, 而是越来越慢地往 0.94 逼近 —— 旧版线性走到 0.92 就钉死,
+    长音频会在 92% 一动不动好几分钟, 看着像卡死。只用于显示, 不参与判定。"""
+    r = max(0.0, float(waited)) / est
+    if r <= 1:
+        return 0.24 + 0.61 * (1 - (1 - r) ** 2)
+    return 0.85 + 0.09 * (1 - math.exp(-(r - 1) * 1.5))
+
+
+def cloud_poll_gap(waited):
+    """轮询间隔: 刚提交时 1 秒一查(短音频常常几秒就好, 早一步发现就早一步往下走),
+    之后逐步放宽到 3 秒, 不给服务商添压力。"""
+    return 1.0 if waited < 10 else 2.0 if waited < 40 else 3.0
+
+
+CLOUD_TASK_STAGE = {"PENDING": "云端排队中", "RUNNING": "云端识别中"}
+
+
 def cloud_hist_add(dur, waited):
     """成功一次就补一条样本, 只留最近 CLOUD_HIST_MAX 条。"""
     if float(dur or 0) <= 0 or float(waited or 0) < 0:
@@ -1592,7 +1631,7 @@ def _cloud_asr_dashscope(cfg, audio_path, timeout=1800, prog=None, cancel=None, 
     if lease.get("task_id"):
         print(f"[cloud-asr] 续等上次任务 {lease['task_id'][:12]}…（不重传、不重转）", flush=True)
         if prog:
-            prog("等待云端识别", 0.24)
+            prog("云端识别中", 0.24)
         return _ds_wait_parse(base, cfg, lease["task_id"], sid,
                               float(cfg.get("dur") or 0), timeout, prog, cancel)
     print(f"[cloud-asr] 异步任务协议: 上传 {Path(audio_path).name} 换临时 URL", flush=True)
@@ -1664,7 +1703,7 @@ def _cloud_asr_dashscope(cfg, audio_path, timeout=1800, prog=None, cancel=None, 
     dur = float(cfg.get("dur") or 0)
     est = cloud_wait_secs(dur)
     if prog:
-        prog("等待云端识别", 0.24 if est > 0 else None)
+        prog("已提交云端", 0.24 if est > 0 else None)
     print(f"[cloud-asr] 任务已提交 {task_id[:12]}… 轮询中", flush=True)
     _lease_put(sid, task_id=task_id)      # 记下任务号: 轮询阶段断线也能续等, 不必重传重转
     return _ds_wait_parse(base, cfg, task_id, sid, dur, timeout, prog, cancel)
@@ -1676,13 +1715,13 @@ def _ds_wait_parse(base, cfg, task_id, sid, dur, timeout=1800, prog=None, cancel
     没必要重新上传再转一遍 —— 那是二次计费。"""
     import requests
     est = cloud_wait_secs(dur)
-    t0, res_url = time.time(), ""
+    t0, res_url, shown = time.time(), "", None
     while time.time() - t0 < timeout:
-        time.sleep(3)
+        time.sleep(cloud_poll_gap(time.time() - t0))
         if cancel:
             cancel()                    # 轮询圈 = 天然检查点
         if prog and est > 0:
-            prog(None, min(0.92, 0.24 + 0.68 * (time.time() - t0) / est))
+            prog(None, cloud_wait_frac(time.time() - t0, est))
         try:
             q = _cloud_get(base + "/api/v1/tasks/" + task_id,
                            headers={"Authorization": f"Bearer {cfg['api_key']}"},
@@ -1701,6 +1740,10 @@ def _ds_wait_parse(base, cfg, task_id, sid, dur, timeout=1800, prog=None, cancel
             raise RuntimeError(f"查询任务失败 {q.status_code}: {q.text[:140]}")
         out = (q.json() or {}).get("output") or {}
         st = str(out.get("task_status") or "").upper()
+        # 云端给的真实状态: 还在排队还是已经开始识别, 换了才推给界面
+        if prog and CLOUD_TASK_STAGE.get(st, shown) != shown:
+            shown = CLOUD_TASK_STAGE[st]
+            prog(shown)
         if st == "SUCCEEDED":
             # 结果链接在不同模型/版本下挂过三个位置, 逐个兜: result / results[0] / output 顶层
             cand = [out.get("result"), (out.get("results") or [None])[0], out]
@@ -1925,13 +1968,13 @@ def clean_uploaded_transcript(text):
 
 
 def summary_transcript(segs):
-    """给摘要模型的带时间稿；标题只能引用这些真实时间点。"""
+    """给摘要模型的带时间稿；标题只能引用这些真实时间点。
+    不带说话人编号: 摘要和目录都只讲内容, 编号只会诱导模型写「S01 介绍了……」。"""
     lines = []
     for seg in segs:
         if not seg.get("text"):
             continue
-        spk = f"{seg['spk']}｜" if seg.get("spk") else ""
-        lines.append(f"[{fmt_ts(seg.get('t', 0))}] {spk}{seg['text']}")
+        lines.append(f"[{fmt_ts(seg.get('t', 0))}] {seg['text']}")
     return clean_uploaded_transcript("\n".join(lines))
 
 
@@ -3123,39 +3166,397 @@ def export_bundle_name(names, now=None):
     return f"听道文稿_{day}_{tail}.zip"
 
 
-def build_export_zip(items, out):
-    """items = [(项目目录, 文稿名)]。每份文稿一个文件夹: 文稿 md、课后笔记、笔记图片;
-    录音和内部缓存不进包。先写临时文件再换名, 中途失败不会留下半个包。"""
+NOTE_SHARE_DISCLAIMER = (
+    "听道仅提供用于合法学习、交流的本地笔记工具，不引导、鼓励或认可任何违法用途。"
+    "笔记内容及用户间的分享由用户自行决定；分享者应确保拥有录音、文字、图片等内容的合法权利或必要授权，"
+    "并遵守《民法典》《著作权法》《个人信息保护法》等法律法规。"
+    "禁止侵犯著作权、肖像权、声音及隐私、个人信息权益，禁止传播违法内容。"
+    "用户自行实施的侵权、违法行为及其后果，由行为人依法承担责任；开发者仅提供工具，"
+    "在法律允许的范围内不对用户自行制作、导入、导出或分享的内容承担责任。"
+    "本声明不免除任何主体依法不得免除的责任。"
+)
+NOTE_BUNDLE_MANIFEST = "tingdao-note.json"
+NOTE_BUNDLE_MAX_FILES = 50000
+NOTE_BUNDLE_MAX_BYTES = 32 * 1024 ** 3
+NOTE_BUNDLE_JSON_BYTES = 128 * 1024 ** 2
+NOTE_BUNDLE_AUDIO_SUFFIXES = {".wav", ".m4a", ".mp3", ".aac", ".flac", ".ogg", ".opus"}
+
+
+def _bundle_path(value):
+    """ZIP 和文件夹统一使用可跨平台的相对路径，禁止路径别名和设备文件。"""
+    if not isinstance(value, str) or not value or len(value) > 512:
+        raise RuntimeError("笔记包包含非法路径")
+    parts = value.split("/")
+    for part in parts:
+        if (part in ("", ".", "..") or part.endswith((".", " ")) or
+                re.search(r'[\\:*?"<>|\x00-\x1f\x7f]', part) or
+                re.fullmatch(r'(?i:CON|PRN|AUX|NUL|COM[1-9¹²³]|LPT[1-9¹²³])', part.split('.')[0])):
+            raise RuntimeError("笔记包包含非法路径")
+    return value
+
+
+def _bundle_key(value):
+    return unicodedata.normalize("NFC", value).casefold()
+
+
+def _bundle_supported_file(relative):
+    parts = _bundle_path(relative).split("/")
+    if len(parts) == 1:
+        return (relative in {"session.json", "transcript.md", NOTE_FILE, PREF_FILE} or
+                (not relative.startswith(".") and Path(relative).suffix.lower() in NOTE_BUNDLE_AUDIO_SUFFIXES))
+    return (len(parts) == 2 and parts[0] == NOTE_IMAGE_DIR and
+            Path(parts[1]).suffix.lower() in NOTE_IMAGE_MIMES)
+
+
+def _bundle_json(path):
+    if path.stat().st_size > NOTE_BUNDLE_JSON_BYTES:
+        raise RuntimeError("笔记数据过大，无法导入")
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (ValueError, UnicodeError, RecursionError) as e:
+        raise RuntimeError("笔记包中的 JSON 数据已损坏") from e
+
+
+def _bundle_validate_meta(meta, files):
+    if not isinstance(meta, dict) or not isinstance(meta.get("name"), str) or not meta["name"].strip():
+        raise RuntimeError("笔记名称或数据格式无效")
+    for key in ("segments", "notes", "outline"):
+        entries = meta.get(key, [])
+        if not isinstance(entries, list) or any(not isinstance(x, dict) for x in entries):
+            raise RuntimeError(f"笔记 {key} 数据格式无效")
+        for item in entries:
+            for field in ("t", "d"):
+                if field in item and (type(item[field]) not in (int, float) or
+                                      not math.isfinite(item[field]) or item[field] < 0):
+                    raise RuntimeError("笔记时间数据无效")
+            for field in ("text", "title"):
+                if field in item and not isinstance(item[field], str):
+                    raise RuntimeError("笔记文字数据无效")
+            if "content" in item and (not isinstance(item["content"], list) or
+                                       any(not isinstance(x, dict) for x in item["content"])):
+                raise RuntimeError("笔记图文数据格式无效")
+    if "duration" in meta and (type(meta["duration"]) not in (int, float) or
+                                not math.isfinite(meta["duration"]) or meta["duration"] < 0):
+        raise RuntimeError("笔记时长无效")
+    for key in ("summary", "group", "started", "lang", "mode"):
+        if key in meta and not isinstance(meta[key], str):
+            raise RuntimeError(f"笔记 {key} 数据格式无效")
+    for key in ("spk_labels",):
+        if key in meta and (not isinstance(meta[key], dict) or
+                            any(not isinstance(v, str) for v in meta[key].values())):
+            raise RuntimeError("说话人数据格式无效")
+    for key in ("audio", "audioMaster", "audioListen"):
+        ref = meta.get(key)
+        if ref is not None:
+            _bundle_path(ref)
+            if "/" in ref or Path(ref).suffix.lower() not in NOTE_BUNDLE_AUDIO_SUFFIXES or ref not in files:
+                raise RuntimeError(f"笔记关联录音缺失或不支持：{ref}")
+    def check_images(value):
+        if isinstance(value, dict):
+            if value.get("type") == "image":
+                ref = _bundle_path(value.get("file"))
+                if not ref.startswith(NOTE_IMAGE_DIR + "/") or ref not in files or not _bundle_supported_file(ref):
+                    raise RuntimeError("笔记关联图片缺失或不支持")
+            for child in value.values():
+                check_images(child)
+        elif isinstance(value, list):
+            for child in value:
+                check_images(child)
+    check_images(meta)
+    author = meta.get("share_author")
+    if author is not None and not valid_username(author):
+        raise RuntimeError("笔记分享者名称无效")
+
+
+def unique_session_name(root, name, exclude=None):
+    """按显示名称查重，而非带时间戳的目录名；重命名时排除当前项目。"""
+    names = set()
+    for d in root.iterdir():
+        if not d.is_dir() or d.name.startswith(".") or d == exclude:
+            continue
+        try:
+            meta = json.loads((d / "session.json").read_text(encoding="utf-8"))
+            title = meta.get("name") or d.name
+        except (OSError, ValueError, AttributeError):
+            title = re.sub(r'-\d{8}-\d{6}(?:-[\w]+)?$', '', d.name)
+            md = d / "transcript.md"
+            if md.is_file():
+                with md.open(encoding="utf-8", errors="replace") as f:
+                    first = f.readline(4096).strip()
+                if first.startswith("# "):
+                    title = first[2:]
+        names.add(_bundle_key(title))
+    if _bundle_key(name) not in names:
+        return name
+    base = re.sub(r'（\d+）$', '', name)
+    n = 1
+    while _bundle_key(f"{base}（{n}）") in names:
+        n += 1
+    return f"{base}（{n}）"
+
+
+def _bundle_copy(source, dest, size):
+    digest, copied = hashlib.sha256(), 0
+    while True:
+        chunk = source.read(1024 * 1024)
+        if not chunk:
+            break
+        copied += len(chunk)
+        if copied > size:
+            raise RuntimeError("笔记包文件大小与清单不符")
+        dest.write(chunk)
+        digest.update(chunk)
+    if copied != size:
+        raise RuntimeError("笔记包文件不完整")
+    return {"size": copied, "sha256": digest.hexdigest()}
+
+
+def _bundle_legacy_meta(d, name):
+    md = d / "transcript.md"
+    if not md.is_file():
+        raise RuntimeError("笔记缺少文稿数据")
+    text = md.read_text(encoding="utf-8")
+    segments = []
+    for ts, line in re.findall(r'^\[(\d{2}:\d{2}(?::\d{2})?)\] (.+)$', text, re.M):
+        seconds = 0
+        for p in ts.split(":"):
+            seconds = seconds * 60 + int(p)
+        segments.append({"t": seconds, "d": 0, "text": line})
+    audio = next((f.name for f in sorted(d.iterdir()) if f.suffix.lower() in NOTE_BUNDLE_AUDIO_SUFFIXES), None)
+    return {"name": name, "segments": segments, "notes": [], "audio": audio,
+            "duration": max((s["t"] for s in segments), default=0)}
+
+
+def _bundle_clean_private_meta(meta):
+    for key in ("source", "sources", "dir", "audioUrl", "id", "_tingdao_share", "share_source"):
+        meta.pop(key, None)
+    if isinstance(meta.get("transcribe_src"), str) and ("/" in meta["transcribe_src"] or "\\" in meta["transcribe_src"]):
+        meta.pop("transcribe_src")
+
+
+def build_export_zip(items, out, share_author):
+    """完整笔记包：数据、录音、图片和项目偏好；不读取软件全局设置。"""
     out = Path(out)
     tmp = out.with_name(f".{out.name}.{uuid.uuid4().hex[:8]}.part")
-    used = set()
+    if not valid_username(share_author):
+        raise RuntimeError("请先在设置 → 个性化中设置用户名")
+    manifest = {"format": "tingdao-note", "version": 1, "notes": [], "files": {}}
+    used, total = set(), 0
     try:
         with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("免责声明.txt", NOTE_SHARE_DISCLAIMER + "\n")
             for d, name in items:
                 base = _export_safe_name(name)
-                folder, n = base, 2
-                while folder in used:
-                    folder, n = f"{base} ({n})", n + 1
-                used.add(folder)
-                md = d / "transcript.md"
-                if md.is_file():
-                    zf.write(md, f"{folder}/{base}.md")
-                note = d / NOTE_FILE
-                if note.is_file():
-                    zf.write(note, f"{folder}/课后笔记.md")
-                images = d / NOTE_IMAGE_DIR
-                if images.is_dir():
-                    for f in sorted(images.iterdir()):
-                        if f.is_file():
-                            zf.write(f, f"{folder}/{NOTE_IMAGE_DIR}/{f.name}")
+                folder, n = base, 1
+                while _bundle_key(folder) in used:
+                    folder, n = f"{base}（{n}）", n + 1
+                _bundle_path(folder)
+                used.add(_bundle_key(folder))
+                manifest["notes"].append(folder)
+                if d.is_symlink():
+                    raise RuntimeError("不支持导出符号链接项目")
+                files = {}
+                for f in d.rglob("*"):
+                    rel = f.relative_to(d).as_posix()
+                    if f.is_symlink():
+                        raise RuntimeError("笔记中包含符号链接，无法导出")
+                    if f.is_file() and _bundle_supported_file(rel):
+                        files[rel] = f
+                snapshot = {f: f.stat() for f in files.values()}
+                meta = _bundle_json(d / "session.json") if "session.json" in files else _bundle_legacy_meta(d, name)
+                # 旧版“仅删除录音”只清空 audio，可能遗留已删除的母带／试听引用。
+                if meta.get("audio") is None:
+                    for key in ("audioMaster", "audioListen"):
+                        ref = meta.get(key)
+                        if ref is not None and _bundle_path(ref) not in files:
+                            meta[key] = None
+                # 原音频路径可能包含用户名或私人目录，不属于笔记体验所需配置。
+                _bundle_clean_private_meta(meta)
+                _bundle_validate_meta(meta, set(files))
+                meta["share_author"] = share_author
+                _bundle_validate_meta(meta, set(files))
+                generated = {"session.json": json.dumps(meta, ensure_ascii=False).encode("utf-8")}
+                if "transcript.md" not in files:
+                    raise RuntimeError("笔记缺少文稿文件")
+                keys = set()
+                for rel in sorted(set(files) | set(generated)):
+                    if _bundle_key(rel) in keys:
+                        raise RuntimeError("笔记包含大小写或字符规范冲突的文件")
+                    keys.add(_bundle_key(rel))
+                    arc = f"{folder}/{rel}"
+                    size = len(generated[rel]) if rel in generated else files[rel].stat().st_size
+                    total += size
+                    if total > NOTE_BUNDLE_MAX_BYTES or len(manifest["files"]) >= NOTE_BUNDLE_MAX_FILES:
+                        raise RuntimeError("笔记包过大（最多 32 GB、50000 个文件）")
+                    with zf.open(arc, "w", force_zip64=True) as target:
+                        if rel in generated:
+                            data = generated[rel]
+                            target.write(data)
+                            entry = {"size": len(data), "sha256": hashlib.sha256(data).hexdigest()}
+                        else:
+                            with files[rel].open("rb") as source:
+                                entry = _bundle_copy(source, target, size)
+                    manifest["files"][arc] = entry
+                for f, before in snapshot.items():
+                    try:
+                        after = f.stat()
+                    except OSError as e:
+                        raise RuntimeError("笔记在导出期间发生变化，请重试") from e
+                    if (after.st_size, after.st_mtime_ns, after.st_ino) != (before.st_size, before.st_mtime_ns, before.st_ino):
+                        raise RuntimeError("笔记在导出期间发生变化，请重试")
+            zf.writestr(NOTE_BUNDLE_MANIFEST, json.dumps(manifest, ensure_ascii=False))
         os.replace(tmp, out)
     finally:
         tmp.unlink(missing_ok=True)
 
 
+def import_note_bundle(path, root, commit_lock=None):
+    """先在隔离目录流式校验，整批成功才提交；异常时回滚本次创建的项目。"""
+    path, root = Path(path), Path(root)
+    committed = []
+    archive = None
+    try:
+        if path.is_symlink():
+            raise RuntimeError("不支持导入符号链接")
+        if path.is_dir():
+            entries = {}
+            for f in path.rglob("*"):
+                if f.is_symlink():
+                    raise RuntimeError("笔记包不支持符号链接")
+                if f.name == ".DS_Store":
+                    continue
+                if f.is_file():
+                    entries[_bundle_path(f.relative_to(path).as_posix())] = f
+                    if len(entries) > NOTE_BUNDLE_MAX_FILES + 2:
+                        raise RuntimeError("笔记包文件数量超限")
+            def open_file(name):
+                return entries[name].open("rb")
+            def file_size(name):
+                return entries[name].stat().st_size
+        elif path.suffix.lower() == ".zip" and path.is_file():
+            archive = zipfile.ZipFile(path)
+            entries = {}
+            infos = archive.infolist()
+            if len(infos) > NOTE_BUNDLE_MAX_FILES * 2 + 2:
+                raise RuntimeError("笔记包文件数量超限")
+            for info in infos:
+                _bundle_path(info.filename.rstrip("/") if info.is_dir() else info.filename)
+                mode = info.external_attr >> 16
+                if stat.S_ISLNK(mode) or (stat.S_IFMT(mode) not in (0, stat.S_IFREG, stat.S_IFDIR)) or info.flag_bits & 1:
+                    raise RuntimeError("笔记包包含不支持的链接或加密文件")
+                if info.is_dir():
+                    continue
+                if info.filename in entries:
+                    raise RuntimeError("笔记包包含重复路径")
+                entries[info.filename] = info
+            def open_file(name):
+                return archive.open(entries[name])
+            def file_size(name):
+                return entries[name].file_size
+        else:
+            raise RuntimeError("不支持此文件，请选择听道导出的 ZIP 笔记包或笔记包文件夹")
+        if NOTE_BUNDLE_MANIFEST not in entries or "免责声明.txt" not in entries:
+            raise RuntimeError("不支持此文件：缺少笔记包清单或免责声明，请使用新版听道重新导出")
+        if file_size(NOTE_BUNDLE_MANIFEST) > 16 * 1024 ** 2 or not 0 < file_size("免责声明.txt") <= 16384:
+            raise RuntimeError("笔记包清单或免责声明无效")
+        with open_file(NOTE_BUNDLE_MANIFEST) as f:
+            manifest = json.loads(f.read().decode("utf-8"))
+        with open_file("免责声明.txt") as f:
+            if f.read().decode("utf-8").strip() != NOTE_SHARE_DISCLAIMER:
+                raise RuntimeError("笔记包免责声明不受支持或已被修改，请重新导出")
+        if not isinstance(manifest, dict) or manifest.get("format") != "tingdao-note":
+            raise RuntimeError("不支持此笔记包格式")
+        if type(manifest.get("version")) is not int or manifest["version"] != 1:
+            raise RuntimeError("不支持此笔记包版本，请更新听道后重试")
+        folders, files = manifest.get("notes"), manifest.get("files")
+        if (not isinstance(folders, list) or not folders or not isinstance(files, dict) or
+                len(files) > NOTE_BUNDLE_MAX_FILES):
+            raise RuntimeError("笔记包清单无效")
+        folder_keys = set()
+        for folder in folders:
+            if "/" in _bundle_path(folder) or _bundle_key(folder) in folder_keys:
+                raise RuntimeError("笔记包项目目录冲突")
+            folder_keys.add(_bundle_key(folder))
+        if set(entries) != set(files) | {NOTE_BUNDLE_MANIFEST, "免责声明.txt"}:
+            raise RuntimeError("笔记包文件与清单不符")
+        total, keys = 0, set()
+        for name, entry in files.items():
+            _bundle_path(name)
+            parts = name.split("/", 1)
+            if len(parts) != 2 or parts[0] not in folders or not _bundle_supported_file(parts[1]):
+                raise RuntimeError("笔记包包含不支持的文件")
+            if _bundle_key(name) in keys:
+                raise RuntimeError("笔记包文件路径冲突")
+            keys.add(_bundle_key(name))
+            if (not isinstance(entry, dict) or type(entry.get("size")) is not int or entry["size"] < 0 or
+                    not isinstance(entry.get("sha256"), str) or not re.fullmatch('[0-9a-f]{64}', entry['sha256']) or
+                    entry["size"] != file_size(name)):
+                raise RuntimeError("笔记包文件大小或校验信息无效")
+            total += entry["size"]
+        if total > NOTE_BUNDLE_MAX_BYTES:
+            raise RuntimeError("笔记包解包后超过 32 GB 上限")
+        if shutil.disk_usage(root).free < total + 16 * 1024 ** 2:
+            raise RuntimeError("磁盘剩余空间不足，无法导入笔记")
+        with tempfile.TemporaryDirectory(prefix=".note-import-", dir=root) as temp:
+            staging = Path(temp)
+            for name, entry in files.items():
+                dest = staging / name
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                with open_file(name) as source, dest.open("wb") as target:
+                    actual = _bundle_copy(source, target, entry["size"])
+                if actual != entry:
+                    raise RuntimeError("笔记包文件校验失败，文件可能已损坏")
+            metas = []
+            for folder in folders:
+                d = staging / folder
+                if not (d / "session.json").is_file() or not (d / "transcript.md").is_file():
+                    raise RuntimeError("笔记包缺少项目数据或文稿")
+                meta = _bundle_json(d / "session.json")
+                _bundle_validate_meta(meta, {f.relative_to(d).as_posix() for f in d.rglob("*") if f.is_file()})
+                _bundle_clean_private_meta(meta)
+                meta["imported_note"] = True
+                if (d / PREF_FILE).exists():
+                    pref = _bundle_json(d / PREF_FILE)
+                    if (not isinstance(pref, dict) or pref.get("play_rate", "1x") not in ("1x", "1.5x", "2x", "0.75x") or
+                            type(pref.get("last_pos", 0)) not in (int, float) or
+                            not math.isfinite(pref.get("last_pos", 0)) or pref.get("last_pos", 0) < 0):
+                        raise RuntimeError("笔记播放偏好无效")
+                metas.append((d, meta))
+            with (commit_lock or threading.RLock()):
+                result = []
+                for d, meta in metas:
+                    name = unique_session_name(root, safe_title(meta["name"]))
+                    if not name:
+                        raise RuntimeError("笔记名称无效")
+                    meta["name"] = name
+                    (d / "session.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
+                    for filename in ("transcript.md",):
+                        f = d / filename
+                        if f.is_file():
+                            text = f.read_text(encoding="utf-8")
+                            text = re.sub(r'\A# [^\r\n]*', lambda _: '# ' + name, text, count=1)
+                            f.write_text(text, encoding="utf-8")
+                    dest = root / f"{_export_safe_name(name, 40)}-{time.strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:8]}"
+                    os.rename(d, dest)
+                    committed.append(dest)
+                    result.append({"id": dest.name, "name": name})
+        return {"ok": True, "count": len(result), "ids": result}
+    except Exception as e:
+        for d in reversed(committed):
+            shutil.rmtree(d)
+        if isinstance(e, RuntimeError):
+            raise
+        if isinstance(e, zipfile.BadZipFile):
+            raise RuntimeError("笔记包格式不受支持或已损坏，请使用听道重新导出") from e
+        raise RuntimeError(f"笔记包不支持、已损坏或无法导入：{e}") from e
+    finally:
+        if archive:
+            archive.close()
+
 class App:
     def __init__(self):
         self.lock = threading.RLock()
+        self.note_bundle_lock = threading.Lock()
         self.decode_lock = threading.RLock()  # VAD/推理串行，独立于状态锁
         self.capture_lock = threading.RLock()  # PCM 读写不能被识别/VAD 占住
         self._history_cache = self._load_history_cache()  # session.json 路径 -> (mtime_ns/size, 列表元数据)
@@ -3223,10 +3624,26 @@ class App:
             if len(self.events) > 800:
                 self.events = self.events[-400:]
 
-    def stage(self, text=None, pct=None):
+    # 任务清单里的步骤, 按这个顺序排; 前端照 key 显示名字和勾选状态
+    STEP_ORDER = ("ext", "tr", "rf", "sum", "ol", "merge", "note")
+
+    def _add_steps(self, j, keys):
+        """登记任务会经过的步骤(只增不减), 按 STEP_ORDER 排好。"""
+        for k in keys:
+            if k and k not in j["steps"]:
+                j["steps"].append(k)
+        j["steps"].sort(key=self.STEP_ORDER.index)
+
+    def _stage_emit(self, sid, j):
+        self.emit(type="refine_stage", id=sid, stage=j.get("stage", ""), pct=j.get("pct"),
+                  tokens=j.get("tokens"), steps=j["steps"], step=j["step"],
+                  took=j["took"], cnt=j["cnt"], since=j["since"])
+
+    def stage(self, text=None, pct=None, step=None, cnt=None, plan=()):
         """记录并广播当前任务的阶段与百分比。批量任务后按 worker 线程路由到
         各自的任务表条目(云端并行时进度互不串台); 非 worker 上下文退回旧全局字段。
-        完成前绝不显示 100。"""
+        完成前绝不显示 100。step 换步时记下上一步用时、清掉百分比和段数;
+        plan 预先登记后面还会走的步骤, 清单一开始就能列全。"""
         sid = self._jsid()
         j = self.progs.get(sid) if sid else None
         if j is None:
@@ -3238,11 +3655,19 @@ class App:
                 self.emit(type="refine_stage", id=self.refining,
                           stage=self.refine_stage, pct=self.refine_pct)
             return
+        now = time.time()
+        self._add_steps(j, (*plan, step))
+        if step and step != j["step"]:
+            if j["step"]:
+                j["took"][j["step"]] = round(now - j["since"])
+            j.update(step=step, since=now, pct=None, cnt=None)
         if text is not None:
             j["stage"] = text or ""
         if pct is not None:
             j["pct"] = max(0, min(99, int(pct)))
-        self.emit(type="refine_stage", id=sid, stage=j["stage"], pct=j["pct"])
+        if cnt is not None:
+            j["cnt"] = [int(cnt[0]), int(cnt[1])]
+        self._stage_emit(sid, j)
 
     def tokens(self, n):
         """当前任务累计已生成的 token 数，推给前端做滚动数字; 只在任务表里有条目时生效。"""
@@ -3251,8 +3676,7 @@ class App:
         if j is None:
             return
         j["tokens"] = int(n)
-        self.emit(type="refine_stage", id=sid, stage=j.get("stage", ""),
-                  pct=j.get("pct"), tokens=j["tokens"])
+        self._stage_emit(sid, j)
 
     def pct(self, n):
         """给进度拦截器当回调: 只动百分比, 不改阶段文字。"""
@@ -3276,9 +3700,12 @@ class App:
             # 界面表现为"排队中"不动了。各线程醒来都会自己 re-check 队列, 多叫无副作用。
             self._cond.notify_all()
 
-    def _job_begin(self, sid, kind, state="run"):
+    def _job_begin(self, sid, kind, state="run", steps=()):
         with self.lock:
-            self.progs[sid] = {"kind": kind, "state": state, "stage": "", "pct": None}
+            self.progs[sid] = {"kind": kind, "state": state, "stage": "", "pct": None,
+                               "steps": [], "step": None, "took": {}, "cnt": None, "since": None}
+            if steps:
+                self._add_steps(self.progs[sid], steps)
         # refining 只表示"这份稿子正在被改写, 页面要锁"。云端转写、摘要和课后笔记都不改稿子
         # (笔记另存 note.md, 摘要只写 summary), 所以这些任务不参与 locking。
         if state == "run" and kind not in ("cloud", "summary", "note"):
@@ -4010,7 +4437,8 @@ class App:
             if mode == "cloud" and cloud_flow() == "local_post":
                 # 流程②: 音频不出本机, 本地转完后只把文字送去做后制作
                 print("[refine] 云端模式·本地转写+云端后处理（不上传音频）", flush=True)
-                self._job_begin(d.name, "refine", state="wait")
+                self._job_begin(d.name, "refine", state="wait",
+                                steps=("tr", "rf" if cloud_cfg()["enable"] else None))
                 self._enqueue(d.name, "local",
                               lambda d=d, lang=lang: self._refinish_whisper(
                                   d, lang, post_flow=True))
@@ -4341,7 +4769,7 @@ class App:
             if r.returncode == 0 and tmp_wav.exists():
                 audio_path = tmp_wav
                 info["pretreat"] = chain
-                self.stage("正在调整音频效果")
+                self.stage("正在调整音频效果", None, "ext")
                 print("[whisper] 预处理已应用:", chain, flush=True)
             else:
                 info["pretreat"] = "failed"
@@ -4355,7 +4783,7 @@ class App:
             # 知道总时长才开 verbose: worker 每解出一句就往 stdout 打 `[起 --> 止] 文本`，
             # 父进程逐行喂 WhisperStdout 算进度——与旧 stdout 劫持完全同一格式。
             # 时长都不知道时宁可不出数字, 也不给假的。
-            self.stage("本地模型转录中", 0 if dur else None)
+            self.stage("本地模型转录中", 0 if dur else None, "tr")
             result = self._whisper_proc(audio_path, lang, dur, silence_skip, sid)
         finally:
             try:
@@ -4639,7 +5067,8 @@ class App:
         多个源文件先无损拼成一条 flac(转写吃它), 再从它压 audio.m4a。"""
         import shutil
         srcs = srcs if isinstance(srcs, list) else [srcs]
-        self.stage("抽取音轨中" if len(srcs) == 1 else f"拼接 {len(srcs)} 段音轨中", 0)
+        self.stage("抽取音轨中" if len(srcs) == 1 else f"拼接 {len(srcs)} 段音轨中", 0, step="ext",
+                   plan=("tr", "rf" if talk == "cloud" and cloud_cfg()["enable"] else None))
         m4a = d / "audio.m4a"
 
         def run_ff(args):
@@ -4892,6 +5321,7 @@ class App:
             print(f"[cloud-asr] 源文件 {up.name} → {cfg['base_url']} "
                   f"({up.stat().st_size/2**20:.1f} MB)，上传格式 {cfg.get('fmt') or asr_fmt()}",
                   flush=True)
+            self.stage("上传音频中", 0, step="tr")
             res = cloud_asr(cfg, up, prog=self.cloud_prog,
                             cancel=self._ck(d.name), sid=d.name)
             self._ck(d.name)()
@@ -5058,7 +5488,7 @@ class App:
             ncfg["model"] = cfg.get("note_model") or cfg.get("model")
             ncfg_think_off = cloud_think_off_for(ncfg["provider"], ncfg["model"],
                                                  cfg.get("note_think", True))
-            self.stage("通读全稿生成笔记", 10)
+            self.stage("通读全稿生成笔记", 10, step="note")
             print(f"[note] {tpl['name']} 通读 {len(segs)} 行 / {len(body)} 字"
                   f"（模型 {ncfg['model'] or '未填'} · 全文直出不分片 · 关思考={'on' if ncfg_think_off else 'off'}）", flush=True)
             # 全文一次直出: 模型真正通读上下文, 不再分片提要点 —— 分片压缩丢掉的细节,
@@ -5140,7 +5570,7 @@ class App:
                     chunks.append(cur); cur, size = [], 0
             if cur:
                 chunks.append(cur)
-            self.stage("云端润色中")
+            self.stage("云端润色中", 0, step="rf", cnt=(0, len(chunks)))
             print(f"[cloud] {cfg['model']} 精修 {len(lines)} 行, 分 {len(chunks)} 片", flush=True)
 
             # 润色要求可由用户在设置里自定义(cloud_prompt); 但"逐行同格式、不得增删"
@@ -5211,7 +5641,7 @@ class App:
                     done += 1
                     # 进度只在本(任务)线程里更新: stage() 靠线程局部 sid 路由,
                     # 放进片线程会串到别的任务上去。摘要已拆成单独的任务。
-                    self.cloud_prog(frac=done / max(1, len(chunks)))
+                    self.stage(pct=done / max(1, len(chunks)) * 100, cnt=(done, len(chunks)))
                     self._ck(d.name)()      # 每收一片检查一次取消
             except BaseException:
                 # 取消/出错: 未开跑的片直接撤, 在途的片不陪等(否则停止要点好几分钟)
@@ -5262,7 +5692,7 @@ class App:
             prompt_extra = cfg.get("summary_prompt") or ""
             prompt_extra = ("\n补充要求（不得违反上方格式与事实约束）：" + prompt_extra
                             if prompt_extra else "")
-            self.stage("生成 AI 摘要中")
+            self.stage("生成 AI 摘要中", step="sum", plan=("ol",))
             # 摘要+各窗目录+合并累计「已生成 token」: 长稿要等十来分钟，给界面一个在动的数
             meter = {"done": 0, "shown": 0}
 
@@ -5277,10 +5707,18 @@ class App:
 
             full = " ".join(clean_uploaded_transcript(
                 "\n".join(s["text"] for s in segs)).splitlines()).strip()
-            sum_instr = ("用中文为这段逐字稿写摘要。第一行固定输出一个概括全篇的大标题，"
-                         "用 Markdown 一级标题语法（以「# 」开头），不超过 20 字，"
-                         "不加书名号、引号或句号；标题单独占一行，其后空一行再写一句话主题，"
-                         "然后列 3-6 条要点（保留说话人区分与关键结论）。只输出摘要本身。"
+            # 摘要只讲内容不讲人: 便宜模型很爱写「导师指出」「讲者认为」, 读起来像会议纪要,
+            # 而且 S01 这类编号、讲者身份对读者没有信息量。规则写成编号短句, 小模型照着做。
+            sum_instr = ("任务：用中文为下面的逐字稿写摘要。只输出摘要本身，按这个顺序：\n"
+                         "1. 第一行是概括全篇的大标题，以「# 」开头，不超过 20 字，"
+                         "不加书名号、引号或句号。\n"
+                         "2. 空一行，用一句话写这篇讲的主题。\n"
+                         "3. 空一行，列 3-6 条要点，每条以「- 」开头，写一个关键结论、方法或判断，"
+                         "按逐字稿里出现的先后排。\n"
+                         "规则：\n"
+                         "- 只写讲了什么，不写是谁讲的：不要出现导师、老师、讲者、主持人、说话人、"
+                         "人名或 S01 这类编号，也不要写「老师指出」「讲者认为」这类句子，直接陈述内容。\n"
+                         "- 只写逐字稿里真正讲到的，不要补充、推测或评价。"
                          + prompt_extra + MD_RULES)
             think_off = cloud_think_off_for(scfg["provider"], scfg["model"],
                                             cfg.get("summary_think", True))
@@ -5292,7 +5730,7 @@ class App:
             if not summary:
                 raise RuntimeError("模型没返回摘要内容")
 
-            self.stage("生成章节标题中")
+            self.stage("生成章节标题中", step="ol")
             # 目录模型通常很小: 规则写成编号短句; 分章候选(★)和
             # 行号→时间都交给代码，模型只需判断和照抄行号。
             outline_instr = (
@@ -5308,7 +5746,8 @@ class App:
                 "H1 标题写这一章主要讲什么，不要拿章里的例子、案例、插话这些次要内容当标题。\n"
                 "3. H2：这个 H1 里的重要节点，只写讲者充分展开说明了的。\n"
                 "4. H3：这个 H2 里特别重要的细节，没有就不写。\n"
-                "5. 第一行必须是 H1。每个标题不超过 15 个字，不加序号和标点。\n"
+                "5. 第一行必须是 H1。每个标题不超过 15 个字，不加序号和标点。"
+                "标题只写讲的内容，不写谁在讲（不出现导师、老师、讲者、说话人、人名）。\n"
                 "6. 一直写到逐字稿最后一行。"
                 + prompt_extra +
                 "\n示例：\n<outline>\n[1] H1 开场介绍\n[3] H2 本次内容安排\n"
@@ -5349,7 +5788,7 @@ class App:
 
                 outline_reply, replies = run_outline_windows(
                     numbered, checked_ask,
-                    progress=lambda k, n: self.stage(f"生成章节标题中（第 {k}/{n} 段）"))
+                    progress=lambda k, n: self.stage(f"生成章节标题中（第 {k}/{n} 段）", cnt=(k - 1, n)))
                 print(f"[summary] 目录分 {len(replies)} 窗顺序生成", flush=True)
                 raw["windows"] = replies
             self._ck(d.name)()
@@ -5384,7 +5823,7 @@ class App:
                     "2. 案例、故事、举例里出现的人和事不算新的主角，讲它们的章标附。\n"
                     "3. 拿不准就标主。"
                     + prompt_extra)
-                self.stage("整理大章中")
+                self.stage("整理大章中", step="merge")
                 try:
                     raw["merge"] = (cloud_chat(scfg, [
                         {"role": "system", "content": merge_instr},
@@ -5442,12 +5881,17 @@ class App:
         try:
             t0 = time.time()
             cfg = self.cloud_cfg_full()
-            cfg["lang"] = json.loads(sj.read_text(encoding="utf-8")).get("lang")
+            meta0 = json.loads(sj.read_text(encoding="utf-8"))
+            cfg["lang"] = meta0.get("lang")
             cfg["hotwords"] = load_hotwords()
+            # 时长给等待阶段估算用; 不传进度回调的话界面会从头到尾停在 0%
+            cfg["dur"] = float(meta0.get("duration") or 0)
             print(f"[import] 云端转写 源文件 {src.name} "
                   f"({src.stat().st_size/2**20:.1f} MB) → {cfg['base_url']}，"
                   f"上传格式 {cfg.get('fmt') or asr_fmt()}", flush=True)
-            res = cloud_asr(cfg, src, cancel=self._ck(d.name), sid=d.name)
+            self.stage("上传音频中", 0, step="tr")
+            res = cloud_asr(cfg, src, prog=self.cloud_prog,
+                            cancel=self._ck(d.name), sid=d.name)
             self._ck(d.name)()          # 单次请求回来越早取消也要作废结果
             segs = []
             for s in res["segments"]:
@@ -6100,6 +6544,8 @@ class App:
 
     def rename(self, name, sid=None):
         import os as _os
+        if sid and (sid in (".", "..") or "/" in sid or "\\" in sid):
+            raise RuntimeError("非法路径")
         name = safe_title(name)
         if not name:
             raise RuntimeError("标题不能为空")
@@ -6107,14 +6553,18 @@ class App:
         target = (SESSIONS_DIR / sid) if sid else cur_dir
         if target is None or not target.is_dir():
             raise RuntimeError("会话不存在")
+        if target.is_symlink():
+            raise RuntimeError("不支持符号链接项目")
         is_live = (cur_dir is not None) and (target == cur_dir) and (self.state != "idle")
         if not is_live:
             # 查看旧项目改名: 只改磁盘, 不动录音
-            return self._rename_on_disk(target, name)
+            with self.lock:
+                return self._rename_on_disk(target, name)
         # ---- 录音中改名(原逻辑) ----
         with self.lock:
             if self.state == "stopping":
                 raise RuntimeError("项目正在保存，请保存完成后再改名")
+            name = unique_session_name(target.parent, name, target)
             if name == self.session["name"]:
                 return {"ok": True, "name": name}
             s = self.session
@@ -6165,11 +6615,15 @@ class App:
 
     def _rename_on_disk(self, d, name):
         import os as _os
-        parts = d.name.split("-")
-        stamp = "-".join(parts[-2:]) if len(parts) >= 2 else ""
+        name = unique_session_name(SESSIONS_DIR, name, d)
+        match = re.search(r'-(\d{8}-\d{6}(?:-[\w]+)?)$', d.name)
+        stamp = match.group(1) if match else ""
         new_dir = d.parent / (f"{name}-{stamp}" if stamp else name)
-        if new_dir.exists() and new_dir != d:
-            raise RuntimeError("同名会话已存在")
+        n = 1
+        while new_dir.exists() and new_dir != d:
+            name = unique_session_name(SESSIONS_DIR, f"{name}（{n}）", d)
+            new_dir = d.parent / (f"{name}-{stamp}" if stamp else name)
+            n += 1
         if new_dir != d:
             _os.rename(d, new_dir)
             d = new_dir
@@ -6585,6 +7039,9 @@ class App:
             d = SESSIONS_DIR / sid
             if not d.is_dir():
                 raise RuntimeError("项目不存在")
+            if (sid in self.progs or (self.state != "idle" and self.session and
+                                     self.session["dir"] == d)):
+                raise RuntimeError("笔记正在录音或处理中，请完成后再导出")
             name = sid
             try:
                 name = json.loads((d / "session.json").read_text(encoding="utf-8")).get("name") or sid
@@ -6597,8 +7054,50 @@ class App:
         out = Path(target)
         if out.suffix.lower() != ".zip":
             out = out.with_name(out.name + ".zip")
-        build_export_zip(items, out)
+        with self.note_bundle_lock:
+            with self.lock:
+                for d, _ in items:
+                    if (d.name in self.progs or (self.state != "idle" and self.session and
+                                                self.session["dir"] == d)):
+                        raise RuntimeError("笔记正在录音或处理中，请完成后再导出")
+                author = profile_username()
+                if not author:
+                    raise RuntimeError("请先在设置 → 个性化中设置用户名")
+            build_export_zip(items, out, author)
         return {"ok": True, "path": str(out), "count": len(items)}
+
+    def pick_note_bundle(self, kind):
+        if kind not in ("zip", "folder"):
+            raise RuntimeError("不支持的笔记导入类型")
+        if platform.system() == "Windows":
+            dialog = ("$d = New-Object System.Windows.Forms.FolderBrowserDialog;"
+                      "$d.Description = '选择听道笔记包文件夹'; $d.ShowNewFolderButton = $false;"
+                      "if ($d.ShowDialog() -eq 'OK') { $d.SelectedPath }") if kind == "folder" else (
+                      "$d = New-Object System.Windows.Forms.OpenFileDialog;"
+                      "$d.Title = '选择听道笔记包'; $d.Filter = '听道笔记包 ZIP|*.zip|所有文件|*.*';"
+                      "if ($d.ShowDialog() -eq 'OK') { $d.FileName }")
+            command = ["powershell", "-NoProfile", "-STA", "-Command",
+                       "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false);"
+                       "Add-Type -AssemblyName System.Windows.Forms;" + dialog]
+        else:
+            chooser = ('choose folder with prompt "选择听道笔记包文件夹"' if kind == "folder" else
+                       'choose file with prompt "选择听道笔记包 ZIP" of type {"public.zip-archive"}')
+            command = ["osascript", "-e", 'try', "-e", f'return POSIX path of ({chooser})',
+                       "-e", 'on error number -128', "-e", 'return ""', "-e", 'end try']
+        result = subprocess.run(command, capture_output=True, text=True, encoding="utf-8", timeout=900,
+                                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        if result.returncode:
+            raise RuntimeError((result.stderr or "无法打开笔记选择器").strip()[:180])
+        return (result.stdout or "").strip()
+
+    def import_note_bundle(self, path):
+        if not path:
+            return {"ok": False, "cancelled": True}
+        with self.note_bundle_lock:
+            with self.lock:
+                if self.state != "idle":
+                    raise RuntimeError("请先结束当前录音")
+            return import_note_bundle(path, SESSIONS_DIR, commit_lock=self.lock)
 
 
 APP = App()
@@ -6655,6 +7154,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         u = urlparse(self.path)
+        if u.path == "/api/note_bundle_info":
+            return self._json({"disclaimer": NOTE_SHARE_DISCLAIMER})
         if u.path in ("/", "/index.html"):
             # 外观偏好注入预绘制脚本, 让首帧就是用户上次选的模式。
             # 为何注入而非前端异步读 API: 预绘制脚本是同步的, 异步取会先闪一下默认主题;
@@ -6691,9 +7192,9 @@ class Handler(BaseHTTPRequestHandler):
                 if not all(map(math.isfinite, (h, s, l))):
                     raise ValueError
                 theme_color = {"h": h % 360, "s": max(0, min(100, s)),
-                               "l": max(20, min(80, l))}
+                               "l": max(20, min(92, l))}
             except (AttributeError, TypeError, ValueError):
-                theme_color = {"h": 135.1, "s": 58.6, "l": 49.2}
+                theme_color = {"h": 150, "s": 45, "l": 86}
             theme_color_json = json.dumps(
                 json.dumps(theme_color, separators=(",", ":")))
             # 项目列表快照同注入: 首帧就画出上次的侧栏, 真实扫描结果随后静默替换。
@@ -6709,6 +7210,7 @@ class Handler(BaseHTTPRequestHandler):
                 "__TINGDAO_MATERIAL_MODE__", material_mode).replace(
                 "__TINGDAO_MATERIAL_OPTIONS__", material_options_json).replace(
                 "__TINGDAO_HISTORY__", history_json).replace(
+                "__TINGDAO_USERNAME__", profile_username()).replace(
                 "__TINGDAO_VERSION__", f"v{APP_VERSION}").encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -6921,6 +7423,8 @@ class Handler(BaseHTTPRequestHandler):
         except json.JSONDecodeError:
             return self._json({"ok": False, "error": "参数错误"}, 400)
         try:
+            if u.path == "/api/profile":
+                return self._json(save_username(body.get("username")))
             if u.path == "/api/shutdown":
                 if not HEADLESS:
                     return self._json({"ok": False, "error": "关闭接口仅供桌面壳使用"}, 404)
@@ -7169,6 +7673,10 @@ class Handler(BaseHTTPRequestHandler):
             if u.path == "/api/export_sessions":
                 # 阻塞到用户在保存对话框里选完或取消(ThreadingHTTPServer, 不堵别的请求)
                 return self._json(APP.export_sessions(body.get("ids") or []))
+            if u.path == "/api/pick_note_bundle":
+                return self._json({"path": APP.pick_note_bundle(body.get("kind", "zip"))})
+            if u.path == "/api/import_note_bundle":
+                return self._json(APP.import_note_bundle(body.get("path", "")))
             if u.path == "/api/copy_md_file":
                 return self._json(APP.copy_markdown_file(body.get("id", ""), body.get("text", "")))
             if u.path == "/api/engine":
@@ -7192,6 +7700,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json({"ok": False, "error": str(e)}, 400)
             if u.path == "/api/setting":
                 kk = body.get("key")
+                if kk == "username":
+                    return self._json(save_username(body.get("value")))
                 if kk in ("cloud_api_key", "cloud_api_key_enc"):
                     # 密钥只能走 /api/cloud_key_save(加密落盘)。这个通用口子写 key
                     # 正是上一个 bug 的成因: 失焦时把显示用的掩码当 key 存了进去。

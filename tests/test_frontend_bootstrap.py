@@ -30,6 +30,7 @@ class FrontendBootstrapTests(unittest.TestCase):
             "urlparse": urlparse,
             "INDEX": INDEX,
             "APP_VERSION": "3.0.0",
+            "profile_username": lambda: "Ayin",
             "APP": type("FakeApp", (), {"history_snapshot": lambda self: [
                 {"id": "p1", "name": "讲座 </script><b>x</b>", "date": "2026-10-03 10:00"}]})(),
             "load_groups": lambda: {"order": ["课程"], "collapsed": [], "colors": {}},

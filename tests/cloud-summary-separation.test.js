@@ -12,14 +12,11 @@ function blockBetween(source, start, end) {
   return source.slice(from, to);
 }
 
-test('summary action reuses the refine card and only enables washes while busy', () => {
+test('summary action reuses the refine card', () => {
   assert.match(html, /class="refine-card"[^>]*id="refineCard"|id="refineCard"[^>]*class="refine-card"/);
   assert.match(html, /id="btnGenerateSummary"/);
   assert.match(html, /\.refine-dots\{display:none;[\s\S]*?\.refine-card\.is-busy \.refine-dots\{display:flex;\}/);
   assert.match(html, /\.refine-dots\[hidden\]\{display:none;\}/);
-  assert.match(html, /\.refine-card::before[\s\S]*?animation:none/);
-  assert.match(html, /\.refine-card\.is-busy::before[\s\S]*?animation:refineWash/);
-  assert.match(html, /\.refine-card\.is-busy::after[\s\S]*?animation:refineWash/);
 });
 
 test('summary is a separate backend job and refine no longer invokes it', () => {

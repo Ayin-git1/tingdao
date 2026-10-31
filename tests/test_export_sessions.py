@@ -8,6 +8,8 @@ import tempfile
 import unittest
 import uuid
 import zipfile
+import threading
+from test_note_bundle import bundle_code
 
 
 def load_export_code(sessions_dir):
@@ -16,8 +18,9 @@ def load_export_code(sessions_dir):
              and n.name in {'_export_safe_name', 'export_bundle_name', 'build_export_zip'}]
     app = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == 'App')
     methods = [n for n in app.body if isinstance(n, ast.FunctionDef) and n.name == 'export_sessions']
-    ns = dict(Path=Path, datetime=datetime, json=json, os=os, re=re, uuid=uuid, zipfile=zipfile,
-              SESSIONS_DIR=sessions_dir, NOTE_FILE='note.md', NOTE_IMAGE_DIR='note-images')
+    ns = bundle_code()
+    ns.update(dict(profile_username=lambda:'Ayin', load_setting=lambda k: None, save_setting=lambda *a: None, Path=Path, datetime=datetime, json=json, os=os, re=re, uuid=uuid, zipfile=zipfile,
+              SESSIONS_DIR=sessions_dir, NOTE_FILE='note.md', NOTE_IMAGE_DIR='note-images'))
     exec(compile(ast.Module(body=funcs + methods, type_ignores=[]), 'app.py', 'exec'), ns)
     return ns
 
@@ -42,7 +45,7 @@ class ExportSessionsTests(unittest.TestCase):
         self.assertEqual(ns['export_bundle_name'](['周会/复盘'], now), '听道文稿_2026-10-31_周会 复盘.zip')
         self.assertEqual(ns['export_bundle_name'](['a', 'b', 'c'], now), '听道文稿_2026-10-31_3份.zip')
 
-    def test_batch_zip_has_one_folder_per_document_without_audio(self):
+    def test_batch_zip_has_complete_documents_and_audio(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / 'sessions'
             root.mkdir()
@@ -52,13 +55,16 @@ class ExportSessionsTests(unittest.TestCase):
             target = Path(directory) / 'out'
             picked = []
             harness = type('App', (), {'export_sessions': ns['export_sessions'],
-                                       'pick_save_path': lambda self, n: picked.append(n) or str(target)})()
+                                       'pick_save_path': lambda self, n: picked.append(n) or str(target),
+                                       'state': 'idle', 'session': None, 'progs': {}, 'lock': threading.RLock(), 'note_bundle_lock': threading.Lock()})()
             result = harness.export_sessions(['s1', 's2', 's1'])
             self.assertEqual(result['count'], 2)
             self.assertTrue(picked[0].endswith('_2份.zip'))
             with zipfile.ZipFile(target.with_suffix('.zip')) as zf:
                 self.assertEqual(sorted(zf.namelist()), [
-                    '同名 (2)/同名.md', '同名/note-images/a.png', '同名/同名.md', '同名/课后笔记.md'])
+                    'tingdao-note.json', '免责声明.txt', '同名/audio.wav', '同名/note-images/a.png',
+                    '同名/note.md', '同名/session.json', '同名/transcript.md',
+                    '同名（1）/audio.wav', '同名（1）/session.json', '同名（1）/transcript.md'])
             self.assertEqual([p.name for p in Path(directory).iterdir() if p.name.endswith('.part')], [])
 
     def test_cancel_and_invalid_ids(self):
@@ -67,7 +73,8 @@ class ExportSessionsTests(unittest.TestCase):
             make_session(root, 's1', '一份')
             ns = load_export_code(root)
             harness = type('App', (), {'export_sessions': ns['export_sessions'],
-                                       'pick_save_path': lambda self, n: ''})()
+                                       'pick_save_path': lambda self, n: '', 'state': 'idle',
+                                       'session': None, 'progs': {}, 'lock': threading.RLock(), 'note_bundle_lock': threading.Lock()})()
             self.assertEqual(harness.export_sessions(['s1']), {'ok': False, 'cancelled': True})
             for ids in ([], ['..'], ['missing']):
                 with self.assertRaises(RuntimeError):

@@ -351,7 +351,7 @@ test('only L1 and L2 headings are inserted before transcript text at the same ti
 });
 
 test('the normalized transcript renderer keeps L1 as H2 and L2 as H4', () => {
-  const render = html.match(/function addTranscriptHeading\(heading\)\{[\s\S]*?\n\}/);
+  const render = html.match(/function addTranscriptHeading\(heading[^{]*\{[\s\S]*?\n\}/);
   assert.ok(render, 'the transcript heading renderer must exist');
   assert.match(render[0], /const level=Number\(heading\.level\)===1\?2:4;/);
 });
@@ -376,7 +376,7 @@ test('H2 headings use a translucent theme-color marker across their lower third'
 });
 
 test('transcript headings hide their timestamp and use the full transcript width', () => {
-  const render = html.match(/function addTranscriptHeading\(heading\)\{[\s\S]*?\n\}/);
+  const render = html.match(/function addTranscriptHeading\(heading[^{]*\{[\s\S]*?\n\}/);
   assert.ok(render, 'the transcript heading renderer must exist');
   assert.doesNotMatch(render[0], /class="ts"/);
   assert.match(html, /\.transcript-heading\{[^}]*display:block;/);
@@ -484,6 +484,24 @@ test('an H1 selection restores its own H2 anchors and has no overflow markers wh
     {type: 'anchor', index: 0}, {type: 'anchor', index: 1},
     {type: 'anchor', index: 2}, {type: 'anchor', index: 4},
   ]);
+});
+
+test('flat five-minute anchors on a long transcript show only a window around the active one', () => {
+  const visible = visibleAnchorItems();
+  const anchors = Array.from({length: 40}, (_, index) => ({start: index * 300, end: (index + 1) * 300}));
+  const indexes = items => items.filter(item => item.type === 'anchor').map(item => item.index);
+
+  assert.deepEqual(visible(anchors.slice(0, 15), 3, 2).map(item => item.type), Array(15).fill('anchor'));
+  const head = visible(anchors, 0, 2);
+  assert.deepEqual(indexes(head), Array.from({length: 15}, (_, i) => i));
+  assert.deepEqual(head.at(-1), {type: 'more', direction: 'after'});
+  const middle = visible(anchors, 20, 2);
+  assert.deepEqual(indexes(middle), Array.from({length: 15}, (_, i) => i + 13));
+  assert.deepEqual(middle[0], {type: 'more', direction: 'before'});
+  assert.deepEqual(middle.at(-1), {type: 'more', direction: 'after'});
+  const tail = visible(anchors, 39, 2);
+  assert.deepEqual(indexes(tail), Array.from({length: 15}, (_, i) => i + 25));
+  assert.deepEqual(tail[0], {type: 'more', direction: 'before'});
 });
 
 test('the current H1 remains selected when its H2 is the active anchor', () => {

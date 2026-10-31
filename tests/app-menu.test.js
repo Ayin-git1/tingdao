@@ -41,7 +41,7 @@ test('settings and archive use the same left-aligned menu row contract', () => {
   const itemClasses = [...menu.matchAll(/<button class="([^"]*)"[^>]*role="menuitem"/g)]
     .map(match => match[1].split(/\s+/).filter(Boolean));
 
-  assert.deepEqual(itemClasses.map(classes => classes.includes('hmi')), [true, true, true]);
+  assert.deepEqual(itemClasses.map(classes => classes.includes('hmi')), [true, true, true, true]);
   assert.match(html, /\.app-menu \.gearbtn\{\s*justify-content:flex-start;\s*\}/);
 });
 

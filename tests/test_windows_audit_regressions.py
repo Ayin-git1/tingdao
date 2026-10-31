@@ -14,6 +14,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 from urllib.parse import quote, unquote
+from test_note_bundle import bundle_code
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = (ROOT / 'app.py').read_text(encoding='utf-8')
@@ -262,7 +263,7 @@ class WindowsAuditTests(unittest.TestCase):
     def make_live_app(self, root, restart_error=False):
         directory = root / 'old-20261029-120000'
         directory.mkdir()
-        ns = dict(SESSIONS_DIR=root, ENGINE=SimpleNamespace(new_vad=lambda: None), safe_title=load('safe_title'))
+        ns = dict(unique_session_name=bundle_code()['unique_session_name'], SESSIONS_DIR=root, ENGINE=SimpleNamespace(new_vad=lambda: None), safe_title=load('safe_title'))
         app = SimpleNamespace(session={'name':'old', 'dir':directory, 'stamp':'20261029-120000', 'mode':'system'},
                               state='recording', gen=1, total_samples=480000, lock=threading.RLock(), decode_lock=threading.RLock(),
                               _stop_ffmpeg_noblock=Mock(), _kill_ffmpeg_sync=Mock(), _drain_vad=Mock(),
@@ -271,13 +272,15 @@ class WindowsAuditTests(unittest.TestCase):
         return app, load('rename', 'App', **ns)
 
     @patch.object(platform, 'system', return_value='Windows')
-    def test_rename_collision_does_not_stop_capture(self, _platform):
+    def test_rename_collision_uses_suffix_and_resumes_capture(self, _platform):
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp); app, rename=self.make_live_app(root)
             (root / 'new-20261029-120000').mkdir()
-            with self.assertRaisesRegex(RuntimeError, '同名'):
-                rename(app, 'new')
-            app._stop_ffmpeg_noblock.assert_not_called()
+            result = rename(app, 'new')
+            self.assertEqual(result['name'], 'new（1）')
+            self.assertEqual(app.session['name'], 'new（1）')
+            app._start_recorder.assert_called_once_with('system')
+            self.assertTrue((root / 'new-20261029-120000').is_dir())
 
     @patch.object(platform, 'system', return_value='Windows')
     def test_failed_rename_recovers_capture_or_pauses(self, _platform):

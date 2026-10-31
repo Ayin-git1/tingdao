@@ -146,7 +146,9 @@ class SummaryOutlineTests(unittest.TestCase):
         self.assertEqual(len(calls), 2)
         summary_system = calls[0][0]["content"]
         outline_system = calls[1][0]["content"]
-        self.assertIn("保留说话人区分与关键结论", summary_system)
+        self.assertNotIn("保留说话人区分", summary_system)
+        self.assertIn("不写是谁讲的", summary_system)
+        self.assertIn("不写谁在讲", outline_system)
         self.assertIn("只输出摘要本身", summary_system)
         self.assertNotIn("L1", summary_system)
         self.assertEqual(calls[0][1]["content"], "开场 第二部分")
@@ -163,7 +165,7 @@ class SummaryOutlineTests(unittest.TestCase):
         self.assertNotIn("不要 HTML 标签", outline_system)
         self.assertLess(len(outline_system), 560)
         outline_user = calls[1][1]["content"]
-        self.assertTrue(outline_user.startswith("[1] 开场\n[2] ★ S02｜第二部分\n\n"))
+        self.assertTrue(outline_user.startswith("[1] 开场\n[2] ★ 第二部分\n\n"))
         # 覆盖与逐项拆分要求贴在稿尾，长稿后半段才不会被合并成一条
         self.assertIn("逐字稿到第 2 行为止", outline_user)
         self.assertIn("一直写到第 2 行附近", outline_user)
@@ -269,7 +271,7 @@ class SummaryOutlineTests(unittest.TestCase):
         self.assertEqual(app.started, ("existing", "summary", "wait"))
         self.assertEqual(app.enqueued[:2], ("existing", "cloud"))
 
-    def test_timestamped_transcript_keeps_model_sections_grounded_in_real_segments(self):
+    def test_timestamped_transcript_keeps_real_times_and_drops_speaker_labels(self):
         segments = [
             {"t": 0, "text": "开场"},
             {"t": 65, "spk": "S02", "text": "第二部分"},
@@ -277,7 +279,7 @@ class SummaryOutlineTests(unittest.TestCase):
 
         self.assertEqual(
             self.summary_transcript(segments),
-            "[00:00] 开场\n[01:05] S02｜第二部分",
+            "[00:00] 开场\n[01:05] 第二部分",
         )
 
     def test_parser_returns_three_navigation_levels_at_real_timestamps(self):

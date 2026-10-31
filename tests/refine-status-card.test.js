@@ -21,12 +21,12 @@ test('refine status uses a quiet top card with fixed copy and three loading dots
   assert.doesNotMatch(card, /refineStageTxt|精修阶段|\b\d+%/);
 });
 
-test('refine card adapts its surface to both appearances and respects reduced motion', () => {
-  assert.match(html, /--refine-card:/);
-  assert.match(html, /html\[data-appearance="dark"\]\s*\{[\s\S]*?--refine-card:/);
-  assert.match(html, /\.refine-card\{[^}]*border:0[^}]*border-radius:var\(--radius-3\)[^}]*box-shadow:none/);
-  assert.match(html, /\.refine-card::before[\s\S]*?\.refine-card::after/);
-  assert.match(html, /@media\s*\(prefers-reduced-motion:\s*reduce\)[\s\S]*?\.refine-card\.is-busy::before[\s\S]*?animation:none/);
+test('summary banner follows the todo list language in both appearances and respects reduced motion', () => {
+  assert.match(html, /\.refine-card\{[^}]*border-bottom:1px solid var\(--line\)[^}]*background:none[^}]*box-shadow:none/);
+  assert.match(html, /\.refine-icon circle\{[^}]*stroke-dasharray/);
+  assert.match(html, /id="btnGenerateSummary"[^>]*>[\s\S]*?class="refine-spark"[\s\S]*?>摘要</);
+  assert.match(html, /html\[data-appearance="dark"\] \.refine-card\{--refine-err:/);
+  assert.match(html, /@media\s*\(prefers-reduced-motion:\s*reduce\)[\s\S]*?\.refine-icon circle[^{]*\{animation:none/);
 });
 
 test('refine jobs toggle the card without exposing stage text or percentage in it', () => {
@@ -47,10 +47,10 @@ test('completed short manuscripts show the summary action while empty or busy pr
   {segments:[{text:'正文'}],refinished:'whisper',job:{state:'run',kind:'refine'},show:false},
  ]){
   const elements=new Map();const $=id=>{
-   if(!elements.has(id))elements.set(id,{style:{},classList:{toggle(){}},setAttribute(){}});
+   if(!elements.has(id))elements.set(id,{style:{},classList:{toggle(){},remove(){}},setAttribute(){}});
    return elements.get(id);
   };
-  const ctx=vm.createContext({$,view:{id:'s',...scenario},jobs:scenario.job?{s:scenario.job}:{},document:{querySelector:()=>$('topbar')}});
+  const ctx=vm.createContext({$,view:{id:'s',...scenario},jobs:scenario.job?{s:scenario.job}:{},document:{querySelector:()=>$('topbar')},todoDone:null,paintTodo(){}});
   vm.runInContext(source,ctx);ctx.updateRefineUI();
   assert.equal($('btnGenerateSummary').hidden,!scenario.show);
  }
