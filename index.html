@@ -11164,7 +11164,8 @@ async function startSidebarGroupCreate(){
   await collapseSidebarGroupsBeforeEditing();
   const list = $('histlist');
   const existing = list.querySelector('.sidebar-group-input');
-  if(existing){ existing.focus(); animateGroupControl(existing); return; }
+  // 再次点击时输入框已因失焦进入收回动画：这一下就是收起，不再把它拉回来。
+  if(existing){ if(!existing.classList.contains('leaving')){ existing.focus(); animateGroupControl(existing); } return; }
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const start = list.scrollTop, end = list.scrollHeight - list.clientHeight;
   if(!reduced && end > start){
@@ -11180,7 +11181,12 @@ async function startSidebarGroupCreate(){
   list.insertBefore(input, list.querySelector('.sidebar-group-new')); input.focus(); input.scrollIntoView({block:'nearest',behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth'});
   if(!reduced) input.animate([{height:'0px',opacity:0,paddingTop:'0px',paddingBottom:'0px'},{height:input.offsetHeight+'px',opacity:1,paddingTop:'7px',paddingBottom:'7px'}],{duration:220,easing:'cubic-bezier(.16,1,.3,1)'});
   let saving = false;
-  const dismiss = async ()=>{ saving = true; const animation = animateGroupControl(input,true); if(animation) await animation.finished.catch(()=>{}); input.remove(); };
+  const dismiss = async ()=>{
+    saving = true; input.classList.add('leaving');
+    // 按展开的反向收回高度与外边距，并停在终态直到移除，避免淡出后回弹一帧、列表再突跳。
+    const animation = reduced ? null : input.animate([{height:input.offsetHeight+'px',opacity:1,paddingTop:'7px',paddingBottom:'7px',marginTop:'10px',marginBottom:'10px'},{height:'0px',opacity:0,paddingTop:'0px',paddingBottom:'0px',marginTop:'0px',marginBottom:'0px',borderWidth:'0px'}],{duration:180,easing:'cubic-bezier(.4,0,.2,1)',fill:'forwards'});
+    if(animation) await animation.finished.catch(()=>{}); input.remove();
+  };
   const save = async ()=>{
     if(saving) return;
     const name = input.value.trim(); if(!name){ await dismiss(); return; }
