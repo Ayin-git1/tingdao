@@ -20,15 +20,21 @@ try{
   }else if(command==='build'){
     const {values:v}=parseArgs({args,options:{key:{type:'string'},'public-key':{type:'string'},
       'base-version':{type:'string'},revision:{type:'string'},html:{type:'string'},
-      out:{type:'string'},rollback:{type:'boolean',default:false}}});
-    if(!v.key||!v.out||!/^\d+\.\d+\.\d+$/.test(v['base-version']||'')
+      out:{type:'string'},notes:{type:'string'},rollback:{type:'boolean',default:false}}});
+    if(!v.key||!v.out||!/^\d+\.\d+\.\d+(\.\d+)?$/.test(v['base-version']||'')
        ||!/^\d+$/.test(v.revision||'')||!Number.isSafeInteger(Number(v.revision))||Number(v.revision)<=0)
-      throw Error('build --key PRIVATE_PEM --base-version 3.1.9 --revision 1 --html index.html --out DIR [--rollback]');
+      throw Error('build --key PRIVATE_PEM --base-version 3.1.9 --revision 1 --html index.html --out DIR [--notes NOTES.md] [--rollback]');
     const key=crypto.createPrivateKey(fs.readFileSync(v.key));
     const pub=v['public-key']||path.resolve(__dirname,'../frontend-patch-public-key.hex');
     if(key.asymmetricKeyType!=='ed25519'||publicHex(key)!==fs.readFileSync(pub,'utf8').trim())
       throw Error('私钥与基础版公钥不匹配');
     const manifest={schema:1,base_version:v['base-version'],revision:Number(v.revision),action:v.rollback?'builtin':'apply'};
+    // 更新说明写进签名标签: 客户端在「更新」提示里原样展示，篡改即验签失败。
+    if(v.notes){
+      const notes=fs.readFileSync(v.notes,'utf8').trim();
+      if(!notes||notes.length>8000)throw Error('更新说明为空或超过 8000 字');
+      manifest.notes=notes;
+    }
     let html;
     if(!v.rollback){
       html=fs.readFileSync(v.html);

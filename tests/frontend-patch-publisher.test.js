@@ -31,6 +31,12 @@ test('publisher makes authenticated assets and refuses accidental key replacemen
     assert.notEqual(run(...args).status,0,'do not overwrite release artifacts');
     assert.equal(run('build','--key',key,'--public-key',pub,'--base-version','3.1.9','--revision','2','--rollback','--out',path.join(dir,'rollback')).status,0);
     assert.equal(JSON.parse(fs.readFileSync(path.join(dir,'rollback','tingdao-patch.json'))).action,'builtin');
+    const notes=path.join(dir,'notes.md');fs.writeFileSync(notes,'- 修复分组动画\n');
+    assert.equal(run('build','--key',key,'--public-key',pub,'--base-version','3.1.9.1','--revision','1','--html',html,'--notes',notes,'--out',path.join(dir,'incremental')).status,0);
+    const incremental=JSON.parse(fs.readFileSync(path.join(dir,'incremental','tingdao-patch.json')));
+    assert.equal(incremental.base_version,'3.1.9.1');assert.equal(incremental.notes,'- 修复分组动画');
+    fs.writeFileSync(notes,'x'.repeat(8001));
+    assert.notEqual(run('build','--key',key,'--public-key',pub,'--base-version','3.1.9.1','--revision','2','--html',html,'--notes',notes,'--out',path.join(dir,'long')).status,0);
     for(const revision of ['0','-1','1.2','1bad']){
       const bad=[...args];bad[bad.indexOf('--revision')+1]=revision;
       assert.notEqual(run(...bad).status,0);

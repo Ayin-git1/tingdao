@@ -39,6 +39,11 @@ static PORTFILE: LazyLock<Mutex<Option<PathBuf>>> = LazyLock::new(|| Mutex::new(
 static BACKEND_PORT: LazyLock<Mutex<Option<u16>>> = LazyLock::new(|| Mutex::new(None));
 /// 已进入退出流程。窗口先于后端出现, 用户可能在后端起到一半时就退出: 此后不许再拉起后端。
 static EXITING: AtomicBool = AtomicBool::new(false);
+/// 网页点了「重启」: 退出流程照常走(录音确认、收后端), 进程结束前再拉起一份新的。
+static RELAUNCH: AtomicBool = AtomicBool::new(false);
+static APP_HANDLE: std::sync::OnceLock<tauri::AppHandle> = std::sync::OnceLock::new();
+/// 网页 → 壳: 让主框架导航到 tingdao-app://relaunch, 在 on_navigation 里截下(理由同相机那段)。
+const APP_SCHEME: &str = "tingdao-app";
 
 /// 仓库首页及其下的页面(Releases、Issues、LICENSE): 关于页与更新提示都只链到这里。
 fn is_repository_url(url: &str) -> bool {
@@ -799,6 +804,18 @@ mod release_tests {
     }
 }
 
+/// 后端已收好、本进程即将退出时调用: 起一份新的自己。macOS 走 LaunchServices(open -n),
+/// 新实例与 Finder 双击打开一致; 其他平台直接起当前可执行文件。
+fn spawn_relaunch() {
+    let Ok(exe) = std::env::current_exe() else { return };
+    #[cfg(target_os = "macos")]
+    if let Some(bundle) = exe.ancestors().nth(3).filter(|p| p.extension().is_some_and(|e| e == "app")) {
+        let _ = Command::new("/usr/bin/open").arg("-n").arg(bundle).spawn();
+        return;
+    }
+    let _ = Command::new(exe).spawn();
+}
+
 fn stop_backend() {
     EXITING.store(true, Ordering::SeqCst);
     if let Some(mut c) = BACKEND.lock().unwrap().take() {
@@ -913,26 +930,40 @@ fn open_main_window(app: &mut tauri::App) -> tauri::Result<tauri::WebviewWindow>
             open_repository_url(url.as_str());
             tauri::webview::NewWindowResponse::Deny
         });
-    // 录音中的相机钮: 网页让隐藏 iframe 导航到 tingdao-camera://take?x=&y=, 这里截下并弹连续互通相机菜单(见 camera.rs)。
-    #[cfg(target_os = "macos")]
+    // 网页 → 壳的两条指令都借导航送达, 截下后取消导航, 页面不动:
+    // tingdao-app://relaunch: 热更新提示里的「重启」, 走正常退出流程后再拉起新实例。
+    // tingdao-camera://take?x=&y=: 录音中的相机钮(隐藏 iframe), 弹连续互通相机菜单(见 camera.rs)。
     {
         builder = builder.on_navigation(|url| {
-            if url.scheme() != camera::CAMERA_SCHEME {
-                return true;
+            if url.scheme() == APP_SCHEME {
+                if url.host_str() == Some("relaunch") {
+                    // 同相机: 身处导航决策回调, 退出流程里有模态确认框, 借线程投回事件循环。
+                    std::thread::spawn(|| {
+                        if let Some(app) = APP_HANDLE.get() {
+                            RELAUNCH.store(true, Ordering::SeqCst);
+                            app.exit(0);
+                        }
+                    });
+                }
+                return false;
             }
-            // 这里身处 WKWebView 的导航决策回调: 网页在同步等这次决策, 此时弹菜单(模态循环)会把页面冻死。
-            // with_webview / run_on_main_thread 在主线程上是就地执行的, 所以借一个线程把消息投回事件循环,
-            // 等本回调返回、导航被取消后再弹。
-            if let Some((x, y, direct)) = camera::parse_request(url) {
-                std::thread::spawn(move || {
-                    if let Some(window) = camera::APP.get().and_then(|app| app.get_webview_window("main")) {
-                        let _ = window.with_webview(move |webview| unsafe {
-                            camera::present(webview.inner(), webview.ns_window(), x, y, direct);
-                        });
-                    }
-                });
+            #[cfg(target_os = "macos")]
+            if url.scheme() == camera::CAMERA_SCHEME {
+                // 这里身处 WKWebView 的导航决策回调: 网页在同步等这次决策, 此时弹菜单(模态循环)会把页面冻死。
+                // with_webview / run_on_main_thread 在主线程上是就地执行的, 所以借一个线程把消息投回事件循环,
+                // 等本回调返回、导航被取消后再弹。
+                if let Some((x, y, direct)) = camera::parse_request(url) {
+                    std::thread::spawn(move || {
+                        if let Some(window) = camera::APP.get().and_then(|app| app.get_webview_window("main")) {
+                            let _ = window.with_webview(move |webview| unsafe {
+                                camera::present(webview.inner(), webview.ns_window(), x, y, direct);
+                            });
+                        }
+                    });
+                }
+                return false;
             }
-            false
+            true
         });
     }
     // 不透明白底只给 mac 用(压住 WKWebView 首帧白闪)。Windows 下面要走透明窗口,
@@ -1060,6 +1091,7 @@ fn main() {
         // 无声无息退出 101, 用户什么都看不到), 下面 unwrap_or_else 的 alert 兜不到它。
         // 所以启动失败必须自己弹窗 + 退出, 让用户看到具体原因。
         .setup(move |app| {
+            let _ = APP_HANDLE.set(app.handle().clone());
             #[cfg(target_os = "macos")]
             camera::init(app.handle().clone());
             let resource_dir = app.path().resource_dir().ok();
@@ -1085,9 +1117,15 @@ fn main() {
             tauri::RunEvent::ExitRequested { api, .. } => {
                 if !confirm_recording_exit() {
                     api.prevent_exit();
+                    RELAUNCH.store(false, Ordering::SeqCst); // 录音中取消了退出, 也就不重启
                 }
             },
-            tauri::RunEvent::Exit { .. } => stop_backend(),
+            tauri::RunEvent::Exit { .. } => {
+                stop_backend();
+                if RELAUNCH.load(Ordering::SeqCst) {
+                    spawn_relaunch();
+                }
+            }
             _ => {}
         }
     });

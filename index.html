@@ -1493,6 +1493,14 @@
             transition:width .42s cubic-bezier(.2,.75,.25,1);}
   .app-rail .sbtn{margin-left:0; transition:color var(--hov), background var(--hov), opacity .22s ease;}
   body.home .app-rail{width:30px;}
+  .patch-pill{margin-left:auto; height:24px; padding:0 10px; display:inline-flex; align-items:center; gap:6px; border:none;
+              border-radius:var(--radius-4); background:var(--gsoft); color:var(--g-ink); font:inherit; font-size:var(--fs-micro);
+              font-weight:600; cursor:pointer; animation:dlgFade .3s ease; transition:background var(--hov);}
+  .patch-pill::before{content:''; width:6px; height:6px; border-radius:50%; background:var(--g);}
+  .patch-pill:hover{background:var(--g-badge);}
+  .patch-pill[hidden]{display:none;}
+  .patch-pill:not([hidden]) + .app-rail{margin-left:0;}
+  html[data-appearance="dark"] .patch-pill{color:var(--gd);}
   .app-rail:not(.note-visible){width:70px;}
   body.home .app-rail:not(.note-visible){width:30px;}
   body.home .app-rail #btnHome,
@@ -3081,6 +3089,13 @@
          box-shadow:0 0 0 1px rgba(0,0,0,.06),0 2px 6px rgba(20,30,50,.05),0 28px 70px rgba(20,30,50,.22);}
   .modal.show .mbox,.confirm.show{animation:dlgRise .3s cubic-bezier(.16,1,.3,1) both;}
   #keymodal .mbox{width:560px;}
+  #patchmodal .mbox{width:440px;}
+  .patch-notes{margin-top:12px; padding-top:12px; border-top:1px solid var(--line); max-height:260px; overflow-y:auto;
+               font-size:13px; line-height:1.7; color:var(--txt); overflow-wrap:anywhere;}
+  .patch-notes :is(h1,h2,h3,h4){font-size:13px; font-weight:600; margin:0 0 6px;}
+  .patch-notes p{margin:0 0 8px;}
+  .patch-notes ul,.patch-notes ol{margin:0 0 8px; padding-left:18px;}
+  .patch-notes li{margin:2px 0;}
   @keyframes dlgRise{from{opacity:0; transform:translateY(8px);} to{opacity:1; transform:none;}}
   @keyframes dlgFade{from{opacity:0;} to{opacity:1;}}
   .dlg-body{padding:22px 22px 18px;}
@@ -3980,6 +3995,8 @@ html:not([data-material="mimetic"]) #setBody #materialAdvanced{display:none;}
     <button class="sbtn" id="btnHistSearch" title="搜索 (⌘K)">
       <svg class="ui-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
     </button>
+    <!-- 热更新: 界面补丁已在后台下载好、重启才生效时出现, 点开看更新说明 -->
+    <button class="patch-pill" id="btnPatchUpdate" type="button" title="界面更新已就绪" hidden>更新</button>
     <nav class="app-rail" id="appRail" aria-label="主导航">
       <button class="sbtn rail-menu-btn" id="btnAppMenu" title="更多" aria-label="更多" aria-haspopup="menu" aria-expanded="false">
         <svg class="ui-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="6" cy="7" r="1.7"/><path d="M11 7h8"/><circle cx="6" cy="17" r="1.7"/><path d="M11 17h8"/></svg>
@@ -4540,7 +4557,7 @@ html:not([data-material="mimetic"]) #setBody #materialAdvanced{display:none;}
       <div class="about-hero">
        <div class="about-mark" aria-label="听道 Folio">听道<span class="about-folio">Folio</span></div>
        <p class="about-lede">本地优先的录音、转写与复盘工具</p>
-       <div class="about-meta"><span>版本 <b id="aboutVersion">__TINGDAO_VERSION__</b></span><span id="aboutPlatform">macOS</span></div>
+       <div class="about-meta"><span>版本 <b id="aboutVersion">__TINGDAO_VERSION__</b></span><span id="aboutPlatform">macOS</span><span id="aboutPatch" hidden></span></div>
       </div>
       <div class="about-update" id="aboutUpdate" data-state="idle" aria-live="polite">
        <div class="au-head">
@@ -5241,6 +5258,20 @@ html:not([data-material="mimetic"]) #setBody #materialAdvanced{display:none;}
     <div class="dlg-foot"><div class="left"></div>
       <button class="dbtn" id="stopCancel" data-dlg="cancel">继续录 <kbd>esc</kbd></button>
       <button class="dbtn go" id="stopConfirm" data-dlg="go">结束并保存 <kbd>↩</kbd></button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="patchmodal">
+  <div class="mbox" role="dialog" aria-labelledby="patchTitle">
+    <div class="dlg-body">
+      <div class="dlg-title" id="patchTitle">界面更新已就绪</div>
+      <p class="dlg-sub">已在后台下载完成，重启听道后生效。</p>
+      <div class="patch-notes" id="patchNotes"></div>
+    </div>
+    <div class="dlg-foot"><div class="left"></div>
+      <button class="dbtn" id="patchLater" data-dlg="cancel">稍后 <kbd>esc</kbd></button>
+      <button class="dbtn go" id="patchRestart" data-dlg="go">立即重启 <kbd>↩</kbd></button>
     </div>
   </div>
 </div>
@@ -14583,6 +14614,29 @@ async function confirmFrontendPatch(){
   }catch(_){}
 }
 confirmFrontendPatch();
+/* 热更新提示: 后端每次启动及之后每 6 小时查一次补丁频道, 下载好的补丁要重启才生效。
+   这里只读本机后端的状态(不联网); 更新说明来自签名标签, 经 md() 转义后展示。
+   旧版后端没有该接口(返回 404 错误)时什么也不显示。 */
+let patchPending = 0;
+async function refreshPatchStatus(){
+  try{
+    const st = await api('/api/frontend_patch/status');
+    if(st && st.running > 0){ $('aboutPatch').textContent = `界面补丁 #${st.running}`; $('aboutPatch').hidden = false; }
+    if(!st || !st.supported || !st.pending || st.pending === patchPending) return;
+    patchPending = st.pending;
+    $('patchNotes').innerHTML = md(st.notes) || '<p>本次更新没有附说明。</p>';
+    $('btnPatchUpdate').hidden = false;
+  }catch(_){}
+}
+const closePatchModal = ()=> $('patchmodal').classList.remove('show');
+$('btnPatchUpdate').onclick = ()=> $('patchmodal').classList.add('show');
+$('patchLater').onclick = closePatchModal;
+$('patchmodal').addEventListener('click', e=>{ if(e.target === $('patchmodal')) closePatchModal(); });
+// 壳在导航决策里截下 tingdao-app://relaunch: 走正常退出(录音中会先确认)后拉起新实例, 页面本身不跳转。
+$('patchRestart').onclick = ()=>{ closePatchModal(); location.href = 'tingdao-app://relaunch'; };
+refreshPatchStatus();   // 先取一次: 「关于」里显示正在使用的补丁序号
+setTimeout(refreshPatchStatus, 8000);
+setInterval(refreshPatchStatus, 10 * 60 * 1000);
 </script>
 </body>
 </html>

@@ -7,12 +7,15 @@ import re
 import subprocess
 import tempfile
 import threading
+import time
 import uuid
 
 RELEASE_API = 'https://api.github.com/repos/Ayin-git1/tingdao/releases/tags/frontend-patches'
 ASSET_PREFIX = 'https://github.com/Ayin-git1/tingdao/releases/download/frontend-patches/'
 MAX_MANIFEST = 64 * 1024
 MAX_HTML = 10 * 1024 * 1024
+MAX_NOTES = 8000
+CHECK_INTERVAL = 6 * 3600
 
 
 def fetch_bytes(url, limit):
@@ -54,6 +57,8 @@ class FrontendPatches:
         self._lock = None
         self._selected = None
         self._selected_revision = 0
+        self._boot_revision = 0
+        self._pending_notes = (0, '', '')
         self._state = {}
         try:
             self.root.mkdir(parents=True, exist_ok=True)
@@ -107,6 +112,9 @@ class FrontendPatches:
                 or type(manifest.get('revision')) is not int or manifest['revision'] <= 0
                 or manifest.get('action') not in ('apply', 'builtin')):
             raise ValueError('incompatible patch')
+        notes = manifest.get('notes', '')
+        if not isinstance(notes, str) or len(notes) > MAX_NOTES:
+            raise ValueError('invalid patch notes')
         if manifest['action'] == 'apply':
             if (not re.fullmatch(r'index-[A-Za-z0-9.-]+\.html', manifest.get('asset', ''))
                     or type(manifest.get('size')) is not int
@@ -132,6 +140,8 @@ class FrontendPatches:
                 return self._selected
             try:
                 revision = self._state.get('revision', 0)
+                # 启动时已落盘的序号(无论最终用补丁、内置页面还是已被拒绝), 之后下载的才算「待重启」。
+                self._boot_revision = revision if type(revision) is int else 0
                 if type(revision) is not int or revision <= 0 or self._state.get('rejected'):
                     return self._selected
                 if self._state.get('booting') and not self._state.get('confirmed'):
@@ -162,6 +172,32 @@ class FrontendPatches:
                 return True
             except OSError:
                 return False
+
+    def status(self):
+        """给页面看的: 本进程用的序号, 以及已下载、重启后才生效的序号与签名标签里的更新说明。"""
+        with self._mutex:
+            info = {'supported': True, 'base_version': self.version,
+                    'running': self._selected_revision, 'pending': 0, 'action': '', 'notes': ''}
+            revision = self._state.get('revision', 0)
+            if (not self._lock or type(revision) is not int or revision <= self._boot_revision
+                    or self._state.get('rejected')):
+                return info
+            try:
+                if self._pending_notes[0] != revision:
+                    directory = self.root / str(revision)
+                    manifest = self._manifest((directory/'manifest.json').read_bytes(),
+                                              (directory/'signature').read_bytes())
+                    self._pending_notes = (revision, manifest['action'], manifest.get('notes', ''))
+                _, action, notes = self._pending_notes
+            except Exception:
+                return info
+            return {**info, 'pending': revision, 'action': action, 'notes': notes}
+
+    def check_periodically(self, interval=CHECK_INTERVAL):
+        """启动时查一次, 之后每隔 interval 再查; 长时间不退出的窗口也能等到新补丁。"""
+        while True:
+            self.check()
+            time.sleep(interval)
 
     def check(self):
         """Stage a validated candidate. Keep this process's page unchanged."""

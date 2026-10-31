@@ -8,7 +8,7 @@
 
 听道适用于 macOS 与 Windows，可录制系统声音与麦克风声音。支持本地模型转写和远端api转写两套通路。支持生成笔记与文稿摘要。深度集成从听→学的知识掌握链路。听道服务于：咨询服务、会议记录、私密会话、网课学习等场景。
 
-当前版本：**v3.1.9**　·　[下载页面](https://github.com/Ayin-git1/tingdao/releases)　·　[PolyForm Noncommercial License](./LICENSE)
+当前版本：**v3.1.9.1**　·　[下载页面](https://github.com/Ayin-git1/tingdao/releases)　·　[PolyForm Noncommercial License](./LICENSE)
 
 <h2 id="download"><img src="./assets/readme/badges/download.svg" height="40" alt="下载与安装"></h2>
 
@@ -147,7 +147,16 @@ Windows 安装版已包含 FFmpeg。安装 Python 后重开 PowerShell，并确�
 
 源码采用 [PolyForm Noncommercial License 1.0.0](./LICENSE)，仅限个人非商业使用；应表述为“源码公开”，不属于允许商业使用的 OSI 开源许可。第三方库、工具和模型各自遵循其上游许可，详见 [`THIRD-PARTY-NOTICES.md`](./THIRD-PARTY-NOTICES.md)。macOS 提供 DMG，Windows 提供 NSIS 安装包，源码 zip 作为备用方式。
 
-<h2 id="updates"><img src="./assets/readme/badges/updates.svg" height="40" alt="v3.1.9 更新"></h2>
+<h2 id="updates"><img src="./assets/readme/badges/updates.svg" height="40" alt="v3.1.9.1 更新"></h2>
+
+### v3.1.9.1 · 2026-11-01
+
+[下载 macOS Apple Silicon 安装包](https://github.com/Ayin-git1/tingdao/releases/download/v3.1.9.1/tingdao_3.1.9.1_aarch64.dmg)。本版本暂无 Windows 安装包，Windows 用户请继续使用 v3.1.2。
+
+- **界面更新会提示你了**：后台下载好的界面更新，会在右上角菜单旁出现「更新」按钮。点开可以看到这次改了什么，点「立即重启」即可生效；录音中重启会先请你确认，录音会自动保存。不点也没关系，下次打开听道时同样会生效。
+- 听道开着不关时，每 6 小时会再查一次界面更新，不用重开也能收到。
+- 「设置 → 关于」会显示正在使用的界面补丁序号。
+- 包含 3.1.9 之后发布的界面修复（再次点击「新建分组」时输入框收回不再闪烁）。
 
 ### v3.1.9 · 2026-11-01
 

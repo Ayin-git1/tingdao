@@ -65,6 +65,24 @@ class PatchTests(unittest.TestCase):
         second.close()
         self.assertEqual(self.client().select(), b'<html>patched</html>')
 
+    def test_status_reports_a_download_pending_restart_with_signed_notes(self):
+        self.publish(notes='- 修复分组动画')
+        first = self.client(); first.select()
+        self.assertEqual(first.status()['pending'], 0)
+        self.assertTrue(first.check())
+        status = first.status()
+        self.assertEqual((status['running'], status['pending'], status['action'], status['notes']),
+                         (0, 1, 'apply', '- 修复分组动画'))
+        first.close()
+        second = self.client(); second.select()
+        self.assertEqual((second.status()['running'], second.status()['pending']), (1, 0))
+
+    def test_status_ignores_rejected_revision_and_oversized_notes_are_refused(self):
+        self.publish(notes='x' * 8001)
+        client = self.client(); client.select()
+        self.assertFalse(client.check())
+        self.assertEqual(client.status()['pending'], 0)
+
     def test_failed_first_boot_falls_back_and_does_not_retry_same_revision(self):
         self.publish()
         first = self.client(); first.select(); first.check(); first.close()

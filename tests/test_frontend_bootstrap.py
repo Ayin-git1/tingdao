@@ -134,10 +134,12 @@ class FrontendBootstrapTests(unittest.TestCase):
             r"当前版本：\*\*v([^*]+)\*\*", (ROOT / "README.md").read_text(encoding="utf-8")
         )
         self.assertEqual(version, readme_version.group(1))
-        self.assertEqual(
-            version,
-            json.loads((ROOT / "tauri-shell" / "tauri.conf.json").read_text(encoding="utf-8"))["version"],
-        )
+        # Tauri/Cargo/npm 只收三段语义版本; 增量版(如 3.1.9.1)对外的版本号由 bundleVersion 与
+        # Info.plist 的 CFBundleShortVersionString 承担, 三段部分仍须一致。
+        conf = json.loads((ROOT / "tauri-shell" / "tauri.conf.json").read_text(encoding="utf-8"))
+        self.assertEqual(version, conf["bundle"]["macOS"]["bundleVersion"])
+        version = ".".join(version.split(".")[:3])
+        self.assertEqual(version, conf["version"])
         cargo_version = re.search(
             r'^version = "([^"]+)"$',
             (ROOT / "tauri-shell" / "Cargo.toml").read_text(encoding="utf-8"),

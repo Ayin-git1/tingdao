@@ -18,3 +18,11 @@ test('patch boot acknowledges only after startup work succeeds and never notifie
     assert.equal(calls.some(call=>Array.isArray(call)),!failed,`${failed||'successful'} startup acknowledgement`);
   }
 });
+
+test('a downloaded patch shows the update pill beside the top-right menu and restarts through the shell', () => {
+  const html = fs.readFileSync('index.html', 'utf8');
+  assert.match(html, /<button class="patch-pill" id="btnPatchUpdate"[^>]*hidden>更新<\/button>\s*<nav class="app-rail"/);
+  assert.match(html, /api\('\/api\/frontend_patch\/status'\)/);
+  assert.match(html, /\$\('patchNotes'\)\.innerHTML = md\(st\.notes\)/);
+  assert.match(html, /location\.href = 'tingdao-app:\/\/relaunch'/);
+});

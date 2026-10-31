@@ -14,6 +14,9 @@
 	<string>听道需要屏幕录制权限以采集系统播放的声音（仅取音频，不录画面）。</string>
 	<key>NSDocumentsFolderUsageDescription</key>
 	<string>听道需要读取文稿目录，以显示和保存你的录音文稿。</string>
+	<!-- 增量版用四段版本号; tauri.conf.json 的 version 只收三段语义版本, 这里覆盖对外显示的版本。 -->
+	<key>CFBundleShortVersionString</key>
+	<string>3.1.9.1</string>
 	<key>CFBundleIconFile</key>
 	<string>Tingdao</string>
 	<key>CFBundleIconName</key>

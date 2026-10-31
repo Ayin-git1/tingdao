@@ -45,7 +45,7 @@ from frontend_patch import FrontendPatches
 import numpy as np
 import sherpa_onnx
 
-APP_VERSION = "3.1.9"
+APP_VERSION = "3.1.9.1"
 
 # Finder/Dock 启动的 GUI 进程 PATH 不含 homebrew, 主动补齐(ffmpeg/SwitchAudioSource 所在)
 if platform.system() == "Darwin":
@@ -7290,6 +7290,8 @@ class Handler(BaseHTTPRequestHandler):
             self._json(load_groups())
         elif u.path == "/api/cache":
             self._json(cache_info())
+        elif u.path == "/api/frontend_patch/status":
+            self._json(FRONTEND_PATCHES.status() if FRONTEND_PATCHES else {"supported": False})
         elif u.path == "/api/update":
             force = parse_qs(u.query).get("force", ["0"])[0] == "1"
             self._json(check_update(force))
@@ -7830,7 +7832,7 @@ def main():
     PORT = server.server_address[1]
     _report_port_to_shell(PORT)
     threading.Thread(target=server.serve_forever, daemon=True).start()
-    threading.Thread(target=FRONTEND_PATCHES.check, daemon=True).start()
+    threading.Thread(target=FRONTEND_PATCHES.check_periodically, daemon=True).start()
     print(f"内部服务 http://127.0.0.1:{PORT}")
 
     def finish_up(reason):
