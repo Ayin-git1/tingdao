@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="430" viewBox="0 0 1200 430" role="img" aria-labelledby="title desc">
+  <title id="title">v3.1.8 长文稿加载提速</title>
+  <desc id="desc">一份 9 小时、4042 段、40 张图片的文稿在听道 App 中实测：全文载入从 1.72 秒降到 0.51 秒；载入时最长卡顿从 1.47 秒降到 0.16 秒；点开项目时侧栏动画最长一帧从 89 毫秒降到 19 毫秒。</desc>
+  <rect width="1200" height="430" rx="22" fill="#111713"/>
+  <g font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC',sans-serif">
+    <circle cx="52" cy="58" r="5" fill="#91ED8C"/>
+    <text x="70" y="68" fill="#F7FAF7" font-size="30" font-weight="650">长文稿加载提速</text>
+    <text x="70" y="106" fill="#A9C5A7" font-size="20" font-weight="450">9 小时 · 4,042 段 · 40 张图片的文稿，在 App 中实测，越短越好</text>
+
+    <rect x="890" y="46" width="22" height="22" rx="5" fill="#3B4A3F"/>
+    <text x="922" y="65" fill="#BEC8BF" font-size="20">优化前</text>
+    <rect x="1010" y="46" width="22" height="22" rx="5" fill="#91ED8C"/>
+    <text x="1042" y="65" fill="#BEC8BF" font-size="20">3.1.8</text>
+    <path d="M52 136H1148" stroke="#28352C" stroke-width="2"/>
+
+    <text x="52" y="196" fill="#F7FAF7" font-size="24" font-weight="550">全文载入</text>
+    <rect x="330" y="166" width="660" height="24" rx="6" fill="#3B4A3F"/>
+    <text x="1004" y="186" fill="#BEC8BF" font-size="22">1.72 秒</text>
+    <rect x="330" y="198" width="196" height="24" rx="6" fill="#91ED8C"/>
+    <text x="540" y="218" fill="#91ED8C" font-size="22" font-weight="650">0.51 秒</text>
+
+    <text x="52" y="290" fill="#F7FAF7" font-size="24" font-weight="550">载入时最长卡顿</text>
+    <rect x="330" y="260" width="660" height="24" rx="6" fill="#3B4A3F"/>
+    <text x="1004" y="280" fill="#BEC8BF" font-size="22">1.47 秒</text>
+    <rect x="330" y="292" width="72" height="24" rx="6" fill="#91ED8C"/>
+    <text x="416" y="312" fill="#91ED8C" font-size="22" font-weight="650">0.16 秒</text>
+
+    <text x="52" y="384" fill="#F7FAF7" font-size="24" font-weight="550">侧栏动画最长一帧</text>
+    <rect x="330" y="354" width="660" height="24" rx="6" fill="#3B4A3F"/>
+    <text x="1004" y="374" fill="#BEC8BF" font-size="22">89 毫秒</text>
+    <rect x="330" y="386" width="141" height="24" rx="6" fill="#91ED8C"/>
+    <text x="485" y="406" fill="#91ED8C" font-size="22" font-weight="650">19 毫秒</text>
+  </g>
+</svg>

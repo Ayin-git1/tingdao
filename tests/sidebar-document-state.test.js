@@ -37,6 +37,7 @@ test('opening a home card loads without remounting the sidebar selection', async
   global.state = 'idle';
   global.view = {id: 'project-a'};
   global.loadSession = (...args) => { loaded = args; return Promise.resolve(); };
+  global.transcriptNeedsLoading = () => false;
   global.animateSidebarSelectionIn = id => { animated = id; return true; };
   global.toast = message => messages.push(message);
 
@@ -151,6 +152,7 @@ test(`exitView defers history refresh until the sidebar selection transition is 
   global.updateChrome = () => {};
   global.updateNoteBtn = () => {};
   global.updateRefineUI = () => {};
+  global.setTranscriptLoading = () => {};
 
   exitView();
 

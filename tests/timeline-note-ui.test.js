@@ -48,8 +48,8 @@ test('right-clicking a note offers edit and delete and edit reuses the paper com
 });
 
 test('note mutations rerender note rows and outside pointer closes both surfaces', () => {
-  includes(/function renderTimelineNotes\(\)[\s\S]*?querySelectorAll\('\.seg\.note,\.transcript-note-card,\.transcript-note-image,\.transcript-image-divider'\)/);
-  includes(/function renderTimelineNotes\(\)[\s\S]*?createTranscriptNoteImage\(/);
+  includes(/function renderTimelineNotes\([^)]*\)[\s\S]*?querySelectorAll\('\.seg\.note,\.transcript-note-card,\.transcript-note-image,\.transcript-image-divider'\)/);
+  includes(/function renderTimelineNotes\([^)]*\)[\s\S]*?createTranscriptNoteImage\(/);
   assert.doesNotMatch(html, /renderTranscriptCanvasImages\(\)/);
   includes(/document\.addEventListener\('pointerdown',[\s\S]*?closeTranscriptNote\(\)[\s\S]*?hideTranscriptNoteMenu\(\)/);
 });

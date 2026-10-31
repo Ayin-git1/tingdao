@@ -20,7 +20,7 @@ function appendHarness(count,{rowCost=0.05}={}){
       parent.items.push(row);rows.push(row);return row;
     },
     addTranscriptHeading(item,parent){parent.items.push(item);},
-    TRANSCRIPT_LAZY_PAINT_MIN:300,TRANSCRIPT_FIRST_ROWS:120,TRANSCRIPT_CHUNK_MS:8,TRANSCRIPT_NEAR_BUCKET:20,
+    TRANSCRIPT_LAZY_PAINT_MIN:300,TRANSCRIPT_FIRST_ROWS:40,TRANSCRIPT_CHUNK_MS:4,TRANSCRIPT_NEAR_BUCKET:20,
     transcriptLineMetrics:()=>({lineHeight:28,columnWidth:400,charWidth:16}),
     transcriptSegmentHeight:helper('transcriptSegmentHeight'),
   });
@@ -36,11 +36,11 @@ function appendHarness(count,{rowCost=0.05}={}){
 test('a long transcript paints the first screen synchronously and appends the rest in time-boxed chunks',()=>{
   const h=appendHarness(400);
   h.run();
-  assert.deepEqual(h.appended,[120]);
+  assert.deepEqual(h.appended,[40]);
   assert.equal(h.done,0,'notes and time index wait for the last chunk');
   h.drain();
   assert.equal(h.rows.length,400);
-  assert.ok(h.appended.slice(1).every(n=>n<=161),`chunks ${h.appended}`);
+  assert.ok(h.appended.slice(1).every(n=>n<=81),`chunks ${h.appended}`);
   assert.equal(h.done,1);
   assert.ok(h.rows.every(row=>row.classes.includes('lazy-seg')));
   assert.equal(h.rows[0].props['--seg-h'],'38px');   // 空句仍占一行
@@ -59,7 +59,7 @@ test('one sentinel per 20 rows drives look-ahead rendering for its whole bucket'
 test('switching documents mid-load stops the remaining chunks',()=>{
   const h=appendHarness(400);
   h.run();h.stop();h.drain();
-  assert.equal(h.rows.length,120);
+  assert.equal(h.rows.length,40);
   assert.equal(h.done,0);
 });
 
@@ -94,4 +94,15 @@ test('lazy painting skips rows whose content overflows or is being edited',()=>{
   assert.match(rule[2],/content-visibility:auto;/);
   assert.match(rule[2],/contain-intrinsic-block-size:auto var\(--seg-h,/);
   assert.match(html,/#feed \.seg\.lazy-seg\.cv-near:not\(\.image-aside-row\):not\(\[data-edit\]\)\{content-visibility:visible;\}/);
+});
+
+test('even the first batch yields when expensive paragraphs exhaust the frame budget',()=>{
+  const h=appendHarness(400,{rowCost:2});h.run();
+  assert.ok(h.rows.length<=4,`first batch built ${h.rows.length} expensive rows`);
+  assert.equal(h.done,0);h.drain();assert.equal(h.rows.length,400);assert.equal(h.done,1);
+});
+
+test('the completion promise settles when switching documents cancels pending chunks',async()=>{
+  const h=appendHarness(400);const completion=h.run();h.stop();h.drain();
+  assert.equal(await completion,false);assert.equal(h.done,0);
 });

@@ -314,7 +314,7 @@ class NoteBundleIntegrationTests(unittest.TestCase):
             app, ns = self.harness(root)
             app.pick_save_path = lambda _: str(root / 'export.zip')
             ns.update(export_bundle_name=lambda _: 'export.zip', load_setting=lambda _: '0' * 16)
-            def export(*args):
+            def export(*args, **kwargs):
                 self.assertFalse(app.lock._is_owned(), '大录音导出不得阻塞状态轮询')
             def importer(*args, **kwargs):
                 self.assertFalse(app.lock._is_owned(), '大录音导入不得阻塞状态轮询')

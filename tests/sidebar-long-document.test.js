@@ -10,7 +10,7 @@ function harness({home=false, count=4042}={}) {
   const elements={feed,feedwrap:{offsetTop:90},hpGrid:{style:{display:'block'},offsetTop:15},skel:{style:{}}};
   const document={body:{classList:{contains:key=>classes.has(key),add(key){calls.push('mask');classes.add(key);}}}};
   const source=html.match(/function skelActivate\(\)\{[\s\S]*?\n\}/)[0];
-  const activate=Function('document','$',`${source}; return skelActivate;`)(document,id=>elements[id]);
+  const activate=Function('document','$','prepareTranscriptSkeleton',`${source}; return skelActivate;`)(document,id=>elements[id],()=>{});
   return {activate,properties,calls,classes,elements};
 }
 test('long transcript geometry is frozen before sidebar animation can resize the parent', () => {

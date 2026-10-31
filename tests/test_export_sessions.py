@@ -9,6 +9,9 @@ import unittest
 import uuid
 import zipfile
 import threading
+import platform
+import subprocess
+from unittest.mock import Mock
 from test_note_bundle import bundle_code
 
 
@@ -17,9 +20,9 @@ def load_export_code(sessions_dir):
     funcs = [n for n in tree.body if isinstance(n, ast.FunctionDef)
              and n.name in {'_export_safe_name', 'export_bundle_name', 'build_export_zip'}]
     app = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == 'App')
-    methods = [n for n in app.body if isinstance(n, ast.FunctionDef) and n.name == 'export_sessions']
+    methods = [n for n in app.body if isinstance(n, ast.FunctionDef) and n.name in {'export_sessions', 'pick_save_path'}]
     ns = bundle_code()
-    ns.update(dict(profile_username=lambda:'Ayin', load_setting=lambda k: None, save_setting=lambda *a: None, Path=Path, datetime=datetime, json=json, os=os, re=re, uuid=uuid, zipfile=zipfile,
+    ns.update(dict(platform=platform, subprocess=subprocess, profile_username=lambda:'Ayin', load_setting=lambda k: None, save_setting=lambda *a: None, Path=Path, datetime=datetime, json=json, os=os, re=re, uuid=uuid, zipfile=zipfile,
               SESSIONS_DIR=sessions_dir, NOTE_FILE='note.md', NOTE_IMAGE_DIR='note-images'))
     exec(compile(ast.Module(body=funcs + methods, type_ignores=[]), 'app.py', 'exec'), ns)
     return ns
@@ -39,6 +42,39 @@ def make_session(root, sid, name, note=False, image=False):
 
 
 class ExportSessionsTests(unittest.TestCase):
+    def test_save_dialog_errors_are_not_reported_as_cancellation(self):
+        ns = load_export_code(Path('.'))
+        ns['platform'] = Mock(system=lambda: 'Darwin')
+        ns['subprocess'] = Mock(run=Mock(return_value=Mock(returncode=1, stderr='dialog failed', stdout='')))
+        with self.assertRaisesRegex(RuntimeError, 'dialog failed'):
+            ns['pick_save_path'](None, '中文.zip')
+
+    def test_save_dialog_uses_system_localization_for_native_controls(self):
+        ns = load_export_code(Path('.'))
+        ns['platform'] = Mock(system=lambda: 'Darwin')
+        runner = Mock(return_value=Mock(returncode=0, stderr='', stdout=''))
+        ns['subprocess'] = Mock(run=runner)
+        self.assertEqual(ns['pick_save_path'](None, '文稿.zip'), '')
+        script = runner.call_args.args[0][4]
+        self.assertIn('$.NSLocale.preferredLanguages', script)
+        self.assertIn('CFBundleLocalizations', script)
+        self.assertIn('CFBundleAllowMixedLocalizations', script)
+        self.assertNotIn('AppleLanguages', script)
+        self.assertNotIn('panel.prompt =', script)
+
+    def test_bundle_reports_bytes_until_the_file_is_saved(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            make_session(root, 's1', '一份')
+            ns = load_export_code(root)
+            progress = []
+            target = root / 'out.zip'
+            ns['build_export_zip']([(root / 's1', '一份')], target, 'Ayin', progress=progress.append)
+            self.assertEqual(progress[0], 0)
+            self.assertGreater(progress[-1], 0)
+            self.assertEqual(progress, sorted(progress))
+            self.assertTrue(target.is_file())
+
     def test_default_name_follows_date_rule(self):
         ns = load_export_code(Path('.'))
         now = datetime(2026, 10, 31, 9, 5)

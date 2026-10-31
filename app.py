@@ -44,7 +44,7 @@ from urllib.parse import urlparse, parse_qs, unquote, quote
 import numpy as np
 import sherpa_onnx
 
-APP_VERSION = "3.1.7"
+APP_VERSION = "3.1.8"
 
 # Finder/Dock 启动的 GUI 进程 PATH 不含 homebrew, 主动补齐(ffmpeg/SwitchAudioSource 所在)
 if platform.system() == "Darwin":
@@ -3295,7 +3295,7 @@ def unique_session_name(root, name, exclude=None):
     return f"{base}（{n}）"
 
 
-def _bundle_copy(source, dest, size):
+def _bundle_copy(source, dest, size, progress=None):
     digest, copied = hashlib.sha256(), 0
     while True:
         chunk = source.read(1024 * 1024)
@@ -3306,6 +3306,8 @@ def _bundle_copy(source, dest, size):
             raise RuntimeError("笔记包文件大小与清单不符")
         dest.write(chunk)
         digest.update(chunk)
+        if progress:
+            progress(len(chunk))
     if copied != size:
         raise RuntimeError("笔记包文件不完整")
     return {"size": copied, "sha256": digest.hexdigest()}
@@ -3334,7 +3336,7 @@ def _bundle_clean_private_meta(meta):
         meta.pop("transcribe_src")
 
 
-def build_export_zip(items, out, share_author):
+def build_export_zip(items, out, share_author, progress=None):
     """完整笔记包：数据、录音、图片和项目偏好；不读取软件全局设置。"""
     out = Path(out)
     tmp = out.with_name(f".{out.name}.{uuid.uuid4().hex[:8]}.part")
@@ -3342,6 +3344,13 @@ def build_export_zip(items, out, share_author):
         raise RuntimeError("请先在设置 → 个性化中设置用户名")
     manifest = {"format": "tingdao-note", "version": 1, "notes": [], "files": {}}
     used, total = set(), 0
+    written = 0
+    def report(size):
+        nonlocal written
+        written += size
+        if progress:
+            progress(written)
+    report(0)
     try:
         with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as zf:
             zf.writestr("免责声明.txt", NOTE_SHARE_DISCLAIMER + "\n")
@@ -3392,10 +3401,11 @@ def build_export_zip(items, out, share_author):
                         if rel in generated:
                             data = generated[rel]
                             target.write(data)
+                            report(len(data))
                             entry = {"size": len(data), "sha256": hashlib.sha256(data).hexdigest()}
                         else:
                             with files[rel].open("rb") as source:
-                                entry = _bundle_copy(source, target, size)
+                                entry = _bundle_copy(source, target, size, report)
                     manifest["files"][arc] = entry
                 for f, before in snapshot.items():
                     try:
@@ -3557,6 +3567,7 @@ class App:
     def __init__(self):
         self.lock = threading.RLock()
         self.note_bundle_lock = threading.Lock()
+        self.export_progress = None
         self.decode_lock = threading.RLock()  # VAD/推理串行，独立于状态锁
         self.capture_lock = threading.RLock()  # PCM 读写不能被识别/VAD 占住
         self._history_cache = self._load_history_cache()  # session.json 路径 -> (mtime_ns/size, 列表元数据)
@@ -7019,13 +7030,26 @@ class App:
             if result.returncode:
                 raise RuntimeError((result.stderr or "保存对话框启动失败").strip()[:180])
             return (result.stdout or "").strip()
-        result = subprocess.run(
-            ["osascript", "-e", "on run argv",
-             "-e", 'return POSIX path of (choose file name with prompt "导出文稿" '
-                   'default name (item 1 of argv) default location (path to desktop folder))',
-             "-e", "end run", default_name],
-            capture_output=True, text=True, timeout=900)
-        return (result.stdout or "").strip() if result.returncode == 0 else ""
+        # 独立 osascript 默认只声明英文；让主 bundle 和系统框架都采用系统语言。
+        script = """function run(argv) {
+            ObjC.import('Foundation');
+            $.NSBundle.mainBundle.infoDictionary.setObjectForKey($.NSLocale.preferredLanguages, 'CFBundleLocalizations');
+            $.NSBundle.mainBundle.infoDictionary.setObjectForKey(true, 'CFBundleAllowMixedLocalizations');
+            ObjC.import('AppKit');
+            const app = $.NSApplication.sharedApplication;
+            app.setActivationPolicy($.NSApplicationActivationPolicyAccessory);
+            const panel = $.NSSavePanel.savePanel;
+            panel.title = '导出文稿';
+            panel.nameFieldStringValue = argv[0];
+            panel.directoryURL = $.NSURL.fileURLWithPath(ObjC.unwrap($.NSHomeDirectory()) + '/Desktop');
+            app.activateIgnoringOtherApps(true);
+            return panel.runModal == $.NSModalResponseOK ? ObjC.unwrap(panel.URL.path) : '';
+        }"""
+        result = subprocess.run(["osascript", "-l", "JavaScript", "-e", script, default_name],
+                                capture_output=True, text=True, encoding="utf-8", timeout=900)
+        if result.returncode:
+            raise RuntimeError((result.stderr or "无法打开保存对话框").strip()[:180])
+        return (result.stdout or "").strip()
 
     def export_sessions(self, ids):
         """把一份或多份文稿打成 zip 分享: 先问保存位置, 再写包。用户取消返回 cancelled。"""
@@ -7063,7 +7087,12 @@ class App:
                 author = profile_username()
                 if not author:
                     raise RuntimeError("请先在设置 → 个性化中设置用户名")
-            build_export_zip(items, out, author)
+            self.export_progress = {"bytes": 0}
+            try:
+                build_export_zip(items, out, author,
+                                 progress=lambda size: setattr(self, 'export_progress', {"bytes": size}))
+            finally:
+                self.export_progress = None
         return {"ok": True, "path": str(out), "count": len(items)}
 
     def pick_note_bundle(self, kind):
@@ -7154,6 +7183,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         u = urlparse(self.path)
+        if u.path == "/api/export_progress":
+            return self._json({"progress": APP.export_progress})
         if u.path == "/api/note_bundle_info":
             return self._json({"disclaimer": NOTE_SHARE_DISCLAIMER})
         if u.path in ("/", "/index.html"):
