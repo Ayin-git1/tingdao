@@ -3456,15 +3456,19 @@
   html[data-appearance="dark"] .setpop .seg:has(.segin.grn) button.lit,
   html[data-appearance="dark"] .cloudpop .seg:has(.segin.grn) button.lit,
   html[data-appearance="dark"] .sortpop:has(.sortind.grn) button.lit { color:var(--g-on); }
+  /* 反色块(浅色下用 --txt 作底)在暗色下改为纯黑底白字，避免 --txt 底配 --txt 字看不见。 */
   html[data-appearance="dark"] .cfbar button:not(.ghost),
-  html[data-appearance="dark"] .hw-editor .bsave,
-  html[data-appearance="dark"] .hw-chip.on .cn,
-  html[data-appearance="dark"] .hw-chip.on .ce,
-  html[data-appearance="dark"] .notepop .send,
+  html[data-appearance="dark"] .hw-editor .bsave:not(:hover),
+  html[data-appearance="dark"] .hw-chip.on,
+  html[data-appearance="dark"] .notepop .send:not(:hover),
   html[data-appearance="dark"] .tplpop .go,
-  html[data-appearance="dark"] .tplpop .tpl.editing .eops button,
-  html[data-appearance="dark"] .setclose:hover,
-  html[data-appearance="dark"] #tip,
+  html[data-appearance="dark"] .tplpop .tpl.editing .eops button:not([data-a="cancel"]),
+  html[data-appearance="dark"] #setpop .setclose:hover,
+  html[data-appearance="dark"] #tip { background:#000; color:#fff; }
+  html[data-appearance="dark"] .hw-chip.on .cn { color:#fff; }
+  html[data-appearance="dark"] .hw-chip.on .ce { color:rgba(255,255,255,.72); }
+  html[data-appearance="dark"] .hw-chip.on .ce:hover { color:#fff; }
+  html[data-appearance="dark"] #setpop .setclose:hover { border-color:#000; }
   html[data-appearance="dark"] .toast { --notification-bg:var(--card); color:var(--txt); }
   html[data-appearance="dark"] .tplpop .tpl.editing .eops button[data-a="cancel"] { color:var(--sub); }
   html[data-appearance="dark"] .rc.new .plus,
