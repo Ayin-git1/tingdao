@@ -40,11 +40,12 @@ import zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs, unquote, quote
+from frontend_patch import FrontendPatches
 
 import numpy as np
 import sherpa_onnx
 
-APP_VERSION = "3.1.8"
+APP_VERSION = "3.1.9"
 
 # Finder/Dock 启动的 GUI 进程 PATH 不含 homebrew, 主动补齐(ffmpeg/SwitchAudioSource 所在)
 if platform.system() == "Darwin":
@@ -7133,6 +7134,8 @@ APP = App()
 
 # ---------------- HTTP (内部回环, 供窗口加载与音频流) ----------------
 INDEX = Path(__file__).parent / "index.html"
+FRONTEND_PATCHES = None
+FRONTEND_HTML = None
 SOUNDS_DIR = Path(__file__).parent / "sounds"
 MATERIAL_PREVIEW_DIR = Path(__file__).parent / "assets"
 SOUND_FILES = {
@@ -7234,7 +7237,8 @@ class Handler(BaseHTTPRequestHandler):
                 {"items": APP.history_snapshot(), "groups": load_groups()},
                 ensure_ascii=False)).replace("</", "<\\/")
             # 平台标记同注入：首帧前就把 Windows 版式(窗口控件留白)定下来，避免先闪 mac 样式
-            body = INDEX.read_text(encoding="utf-8").replace(
+            page = FRONTEND_HTML.decode('utf-8') if FRONTEND_HTML is not None else INDEX.read_text(encoding="utf-8")
+            body = page.replace("__TINGDAO_PATCH_TOKEN__", FRONTEND_PATCHES.token if FRONTEND_PATCHES else "").replace(
                 "__TINGDAO_APPEARANCE__", am).replace(
                 "__TINGDAO_PLATFORM__", platform.system()).replace(
                 "__TINGDAO_THEME_COLOR__", theme_color_json).replace(
@@ -7454,6 +7458,9 @@ class Handler(BaseHTTPRequestHandler):
         except json.JSONDecodeError:
             return self._json({"ok": False, "error": "参数错误"}, 400)
         try:
+            if u.path == "/api/frontend_patch/ready":
+                ready = bool(FRONTEND_PATCHES and FRONTEND_PATCHES.ready(body.get("token")))
+                return self._json({"ok": ready})
             if u.path == "/api/profile":
                 return self._json(save_username(body.get("username")))
             if u.path == "/api/shutdown":
@@ -7816,10 +7823,14 @@ def main():
         print(f"[demo] 放入使用说明失败: {error}")
     # 端口交给 OS 现挑(bind 端口 0 = 一个真正空闲的回环端口, 没有「探测到空闲→再占用」之间的抢端口竞态);
     # 绑好后从 socket 读回真实端口, 全进程(含回报给壳、喂给 pywebview)都用这一个值。
+    global FRONTEND_PATCHES, FRONTEND_HTML
+    FRONTEND_PATCHES = FrontendPatches(DATA_DIR, APP_VERSION, INDEX)
+    FRONTEND_HTML = FRONTEND_PATCHES.select()
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     PORT = server.server_address[1]
     _report_port_to_shell(PORT)
     threading.Thread(target=server.serve_forever, daemon=True).start()
+    threading.Thread(target=FRONTEND_PATCHES.check, daemon=True).start()
     print(f"内部服务 http://127.0.0.1:{PORT}")
 
     def finish_up(reason):

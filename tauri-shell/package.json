@@ -1,9 +1,10 @@
 {
   "name": "tauri-shell",
-  "version": "3.1.8",
+  "version": "3.1.9",
   "description": "",
   "main": "index.js",
   "scripts": {
+    "stage:macos": "node stage_macos.js",
     "stage:windows": "node stage_windows.js",
     "build:windows": "npm run stage:windows && tauri build --bundles nsis"
   },

@@ -8,13 +8,14 @@ const { pipeline } = require('node:stream/promises');
 
 const root = path.resolve(__dirname, '..');
 const destination = path.join(__dirname, 'program-windows');
-const files = ['app.py', 'index.html', 'whisper_worker.py', 'whisper_worker_windows.py'];
+const files = ['app.py', 'frontend_patch.py', 'index.html', 'whisper_worker.py', 'whisper_worker_windows.py'];
 
 // 干净检出也必须有可嵌入的启动页；实际 UI 待后端就绪后导航加载。
 fs.mkdirSync(path.join(__dirname, 'dist'), { recursive: true });
 fs.writeFileSync(path.join(__dirname, 'dist', 'index.html'),
   '<!DOCTYPE html><html><head><meta charset="utf-8"><title>听道</title></head><body style="background:transparent"></body></html>', 'utf8');
 fs.mkdirSync(path.join(destination, 'assets'), { recursive: true });
+fs.cpSync(path.join(root, 'licenses'), path.join(destination, 'licenses'), { recursive: true });
 fs.copyFileSync(path.join(root, 'assets', 'material-preview-lakeside.png'),
   path.join(destination, 'assets', 'material-preview-lakeside.png'));
 // 首次启动放进数据目录的「听道使用说明」演示项目。

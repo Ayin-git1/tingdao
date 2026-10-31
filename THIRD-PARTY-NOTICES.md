@@ -12,6 +12,7 @@
 | FFmpeg（BtbN win64 LGPL shared 构建） | Windows 安装版内置：音视频导入、M4A 编码、音频预处理 | LGPL-2.1-or-later（许可文本随包附带） | FFmpeg/FFmpeg · BtbN/FFmpeg-Builds |
 | Pinyon Script 字体 | 侧栏与「关于」页的 Folio 手写字标，内嵌于 `index.html` | SIL Open Font License 1.1 | Google Fonts |
 | Tauri 及其 Rust 依赖 | 原生窗口壳 | MIT / Apache-2.0 | tauri-apps/tauri |
+| ed25519-dalek 2.2.0 / curve25519-dalek 4.1.3 及签名依赖 | 静默前端补丁签名验证，编译进原生壳 | BSD-3-Clause / MIT / Apache-2.0（许可文本随包 `program/licenses/frontend-patches.txt` 或 `program-windows/licenses/frontend-patches.txt`） | dalek-cryptography/curve25519-dalek；见 `licenses/frontend-patches.txt` |
 | opencc-python-reimplemented 0.1.7 | 转写结果中文简繁统一，随程序放在 `opencc/`（含 OpenCC 词典） | Apache-2.0（`opencc/LICENSE.txt`、`opencc/NOTICE.txt`） | yichen0831/opencc-python · BYVoid/OpenCC |
 
 macOS 安装包不内置 FFmpeg；Windows 安装器在系统缺少 Microsoft Edge WebView2 时会联网下载该运行时，其许可由微软提供。

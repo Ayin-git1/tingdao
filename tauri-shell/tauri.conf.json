@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "听道",
-  "version": "3.1.8",
+  "version": "3.1.9",
   "identifier": "local.tingdao.app",
   "build": {
     "frontendDist": "./dist"
@@ -20,6 +20,8 @@
     ],
     "resources": {
       "program/app.py": "program/app.py",
+      "program/frontend_patch.py": "program/frontend_patch.py",
+      "program/licenses/": "program/licenses/",
       "program/index.html": "program/index.html",
       "program/whisper_worker.py": "program/whisper_worker.py",
       "../opencc/": "program/opencc/",
@@ -35,7 +37,7 @@
       "icons/Tingdao.icns"
     ],
     "macOS": {
-      "bundleVersion": "3.1.8",
+      "bundleVersion": "3.1.9",
       "minimumSystemVersion": "12.3",
       "infoPlist": "Info.plist",
       "dmg": {

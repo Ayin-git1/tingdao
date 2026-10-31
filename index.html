@@ -5774,7 +5774,10 @@ function scrollToTimelineNote(index){
   const align=()=>{
     if(!target.isConnected)return;
     // 长稿跳转后，屏幕外段落由占位高度切换到实际高度；在随后的几帧校准落点。
-    target.scrollIntoView({block:'center',behavior:'instant'});
+    const wrap=$('feedwrap'),rect=target.getBoundingClientRect();
+    const top=wrap.scrollTop+rect.top-wrap.getBoundingClientRect().top+(rect.height-wrap.clientHeight)/2;
+    // 只滚动正文，避免 scrollIntoView 连带滚动隐藏溢出的外层页面。
+    wrap.scrollTo({top:Math.max(0,top),behavior:'instant'});
     if(++frames<8)noteJumpFrame=requestAnimationFrame(align);
   };
   align();
@@ -7731,8 +7734,10 @@ function paintTalk(){
   $('sfMode').classList.toggle('off', talkMode !== 'cloud');
 }
 async function loadTalkState(){
+  let loaded=false;
   try{
     const st = await api('/api/settings');
+    if(st.error)return false;
     mode = RECORD_MODES.includes(st.record_mode) ? st.record_mode : 'system';
     syncRecordModeUI();
     talkMode = ['single','cloud'].includes(st.talk_mode) ? st.talk_mode : 'single';
@@ -7761,10 +7766,12 @@ async function loadTalkState(){
     summaryThink = st.cloud_summary_think !== false;
     paintWindows(st.cloud_summary_windows === true);
     noteThink = st.cloud_note_think !== false;
+    loaded=true;
   }catch(e){}
   paintTalk(); paintProvider(); paintFlow(); paintFmt(); paintCloudSummary();
   paintThink('chat'); paintThink('summary'); paintThink('note');
   if(talkMode === 'cloud') cloudTest(true);   // 展开即测一次, 结果常置
+  return loaded;
 }
 $('setTalk').addEventListener('click', async e=>{
   const b = e.target.closest('button'); if(!b || b.dataset.v === talkMode) return;
@@ -8687,8 +8694,10 @@ function syncCompletionSoundUI(){
   segInd(seg, seg.querySelector('button.on'), false, true);
 }
 async function loadCompletionSoundState(){
+  let loaded=false;
   try{
     const st = await api('/api/settings');
+    if(st.error)return false;
     applySummaryBackground(st.summary_background);
     completionSound = COMPLETION_SOUNDS.includes(st.completion_sound) ? st.completion_sound : 'warm';
     completionSoundEnabled = st.completion_sound_enabled !== false;
@@ -8709,6 +8718,7 @@ async function loadCompletionSoundState(){
     if(st.record_start_shortcut && /^[a-z0-9]$/i.test(st.record_start_shortcut.key || ''))
       recordStartShortcut = {key:st.record_start_shortcut.key.toLowerCase(), shift:!!st.record_start_shortcut.shift};
     applyTranscriptReading(fs, lh);
+    loaded=true;
   }catch(e){
     completionSound = 'warm';
   }
@@ -8718,6 +8728,7 @@ async function loadCompletionSoundState(){
   syncThemeColorUI();
   syncPersonalRanges();
   syncRecordShortcutUI();
+  return loaded;
 }
 $('setCompletionSound').addEventListener('click', async e=>{
   const b = e.target.closest('button[data-v]');
@@ -10771,7 +10782,7 @@ async function refreshHistory(){
     lastHistRaw = [];
     renderHomePanel(); renderCollectionPanel();
     toast(response.error);
-    return;
+    return false;
   }
   let raw = response.items || [];
   lastHistRaw = raw;
@@ -10819,8 +10830,8 @@ async function refreshHistory(){
               + '|' + histSort
               + '|' + (state === 'idle' ? '' : state);
   const list = $('histlist');
-  if(sig === _histSig && list.querySelectorAll('.hitem').length === renderedCount) return;
-  if(sidebarDragging) return;   // 拖拽进行中: 不重建列表(否则把被拖条目连根拔掉), 松手后补一次
+  if(sig === _histSig && list.querySelectorAll('.hitem').length === renderedCount) return true;
+  if(sidebarDragging) return true;   // 拖拽进行中: 不重建列表(否则把被拖条目连根拔掉), 松手后补一次
   _histSig = sig;
   const _keepScroll = list.scrollTop;   // innerHTML='' 会把滚动位置归零, 重建后原样放回
   if(sidebarTabSlideDirection){
@@ -10919,6 +10930,7 @@ async function refreshHistory(){
     add.textContent = '＋ 新建分组'; add.onclick = startSidebarGroupCreate; list.appendChild(add);
   }
   list.scrollTop = _keepScroll;         // 回到重建前看的那一行, 不再跳回顶部
+  return true;
 }
 function sidebarItemIsActive(itemId, region, activeId, recentIds){
   if(!activeId || activeId !== itemId) return false;
@@ -14548,11 +14560,23 @@ refreshHistory();   // 再取真实结果; 签名不变就不重绘, 不闪
 pollStatus();
 // 启动就同步对话模式/云端流程: 以前只有打开设置面板才会 loadTalkState,
 // 重载后 talkMode 一直停在默认 single → 云端设置下导入不弹窗直接本地转写
-loadTalkState().finally(renderHomePanel);
-loadCompletionSoundState();
+const frontendStartupTasks=[loadTalkState().finally(renderHomePanel),loadCompletionSoundState()];
 pickDraw('lang');
 setInterval(refreshHistory, 15000);
 updateChrome();
+async function confirmFrontendPatch(){
+  const token='__TINGDAO_PATCH_TOKEN__';
+  if(!token||token.startsWith('__TINGDAO_'))return;
+  try{
+    if((await Promise.all(frontendStartupTasks)).some(ready=>ready!==true))return;
+    const status=await fetchStatus();
+    if(status.error)return;
+    applyStatus(status);
+    if(await refreshHistory()!==true)return;
+    await api('/api/frontend_patch/ready',{token});
+  }catch(_){}
+}
+confirmFrontendPatch();
 </script>
 </body>
 </html>

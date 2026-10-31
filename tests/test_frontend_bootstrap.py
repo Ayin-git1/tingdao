@@ -29,6 +29,8 @@ class FrontendBootstrapTests(unittest.TestCase):
             "platform": platform,
             "urlparse": urlparse,
             "INDEX": INDEX,
+            "FRONTEND_HTML": None,
+            "FRONTEND_PATCHES": None,
             "APP_VERSION": "3.0.0",
             "profile_username": lambda: "Ayin",
             "APP": type("FakeApp", (), {"history_snapshot": lambda self: [
@@ -41,6 +43,7 @@ class FrontendBootstrapTests(unittest.TestCase):
         }
         exec(compile(ast.Module(body=[method], type_ignores=[]), str(APP), "exec"), namespace)
         cls.do_GET = staticmethod(namespace["do_GET"])
+        cls.namespace = namespace
 
     def render_root(self):
         class Harness:
@@ -73,6 +76,20 @@ class FrontendBootstrapTests(unittest.TestCase):
         boot = json.loads(result.stdout)
         self.assertEqual(boot["items"][0]["name"], "讲座 </script><b>x</b>")
         self.assertEqual(boot["groups"]["order"], ["课程"])
+
+    def test_pinned_patch_keeps_personalization_and_injects_ready_token(self):
+        from types import SimpleNamespace
+        self.namespace['FRONTEND_HTML'] = INDEX.read_bytes() + b'<!-- signed patch -->'
+        self.namespace['FRONTEND_PATCHES'] = SimpleNamespace(token='ready-token')
+        try:
+            html = self.render_root()
+            self.assertIn('<!-- signed patch -->', html)
+            self.assertIn("const token='ready-token'", html)
+            self.assertNotIn('__TINGDAO_APPEARANCE__', html)
+            self.assertNotIn('__TINGDAO_PATCH_TOKEN__', html)
+        finally:
+            self.namespace['FRONTEND_HTML'] = None
+            self.namespace['FRONTEND_PATCHES'] = None
 
     def test_root_page_injection_keeps_all_inline_javascript_valid(self):
         class Harness:

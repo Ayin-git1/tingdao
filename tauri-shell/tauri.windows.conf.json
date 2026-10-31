@@ -7,6 +7,8 @@
     ],
     "resources": [
       "program-windows/app.py",
+      "program-windows/frontend_patch.py",
+      "program-windows/licenses/",
       "program-windows/index.html",
       "program-windows/whisper_worker.py",
       "program-windows/whisper_worker_windows.py",

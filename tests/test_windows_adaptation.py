@@ -56,7 +56,7 @@ class WindowsAdaptationTests(unittest.TestCase):
 
     def test_windows_staging_copies_only_cross_platform_runtime_files(self):
         source = WINDOWS_STAGE.read_text(encoding="utf-8")
-        self.assertIn("'app.py', 'index.html', 'whisper_worker.py'", source)
+        self.assertIn("'app.py', 'frontend_patch.py', 'index.html', 'whisper_worker.py'", source)
         self.assertIn("'program-windows'", source)
         self.assertNotIn("tingdao-mix", source)
 

@@ -14,6 +14,7 @@ use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
+mod frontend_patch;
 #[cfg(target_os = "macos")]
 mod camera;
 
@@ -577,6 +578,8 @@ fn start_backend(resource_dir: Option<PathBuf>, settings_file: Option<PathBuf>) 
         .arg(&app_py)
         .arg("--no-window")
         .env("TINGDAO_PORTFILE", &portfile)
+        .env("TINGDAO_PATCH_VERIFIER", std::env::current_exe().map_err(|e| e.to_string())?)
+        .env("PYTHONDONTWRITEBYTECODE", "1")
         .current_dir(&app_dir)
         .stdout(Stdio::null())
         .stderr(Stdio::null());
@@ -1014,6 +1017,9 @@ fn load_backend_into(window: tauri::WebviewWindow, resource_dir: Option<PathBuf>
 }
 
 fn main() {
+    if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("--verify-frontend-patch")) {
+        std::process::exit(frontend_patch::verify_cli());
+    }
     let mut builder = tauri::Builder::default();
     #[cfg(target_os = "macos")]
     {
