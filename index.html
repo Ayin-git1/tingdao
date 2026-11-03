@@ -14873,7 +14873,13 @@ function onNoteDone(e){
     if(!e.cancelled) toast('笔记生成失败：' + (e.err || '未知原因'));
     return;
   }
-  loadSession(e.id).then(()=> openDrawer(true));   // 重拉一次拿 hasNote/noteText 再展开
+  // 只补拉笔记字段, 不走 loadSession: 整页重建会把文稿滚动/展开/编辑状态全部重置
+  const sid = e.id;
+  api('/api/session/'+encodeURIComponent(sid)).then(d=>{
+    if(!d || d.error || !view || view.id !== sid) return;
+    view.hasNote = !!d.hasNote; view.noteText = d.noteText || '';
+    updateNoteBtn(); openDrawer(true);
+  }).catch(()=>{});
 }
 $('btnNoteTop').onclick = ()=>{
   if(view && (view.hasNote || noteJob()))
@@ -15046,7 +15052,8 @@ $('tplGo').onclick = ()=>{
     if(d.error){ toast(d.error); return; }
     // 本地先挂一个 wait 态: 后端 refinish_start 到达前也不至于"点了没反应"
     jobs[sid] = {kind:'note', state:'wait', stage:'', pct:null};
-    updateChrome(); refreshHistory(); openDrawer(true);
+    // 不调 updateChrome: 它会把文稿滚回顶部; 这里只需刷新笔记钮
+    updateNoteBtn(); refreshHistory(); openDrawer(true);
   });
 };
 $('fldTpl').onclick = ()=> openTplPop('manage', $('fldTpl'));
