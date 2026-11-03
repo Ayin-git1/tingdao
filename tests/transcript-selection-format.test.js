@@ -70,3 +70,13 @@ test('palette opening never moves its anchored toolbar',()=>{
  vm.createContext(ctx);ctx.selection=selection;vm.runInContext('let transcriptFormatSelection=selection;'+body('positionTranscriptFormatTools'),ctx);
  ctx.positionTranscriptFormatTools();assert.equal(tools.style.top,'150px');assert.equal(tools.style.left,'100px');
 });
+
+test('background swatch preserves existing text color without applying a previous color',()=>{
+ const ctx={};vm.createContext(ctx);vm.runInContext(body('mergeTranscriptFormats'),ctx);
+ const formats=[{start:0,end:1,style:{color:'#123456'}}];
+ const out=ctx.mergeTranscriptFormats(formats,0,2,{background:'#eaf1ec',color:'#df4b43'},2,null,false,'background');
+ assert.deepEqual(JSON.parse(JSON.stringify(out)),[
+  {start:0,end:1,style:{color:'#123456',background:'#eaf1ec'}},
+  {start:1,end:2,style:{background:'#eaf1ec'}}
+ ]);
+});
