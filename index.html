@@ -2589,6 +2589,8 @@
   .selbar.show{opacity:1; pointer-events:auto; transform:none;
                transition:opacity .3s cubic-bezier(.16,1,.3,1),
                           transform .34s cubic-bezier(.16,1,.3,1);}
+  #selbar{min-width:max-content;}
+  #selbar :is(.scnt,.glabel){white-space:nowrap;}
   .selbar .scnt{font-size:var(--fs-ctl); color:var(--sub); font-weight:600;}
   .selbar .scnt b{color:var(--txt); font-size:var(--fs-body); font-weight:800; margin:0 2px;
                   font-variant-numeric:tabular-nums;}
