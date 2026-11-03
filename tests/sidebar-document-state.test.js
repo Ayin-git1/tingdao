@@ -119,6 +119,7 @@ test(`exitView defers history refresh until the sidebar selection transition is 
     ['emptyText', {textContent: ''}],
     ['nameInput', {value: ''}],
     ['findbar', {classList: {remove() {}}}],
+    ['feedzone', {classList: {remove() {}}}],
   ]);
   let refreshCount = 0;
   const savedPositions = [];

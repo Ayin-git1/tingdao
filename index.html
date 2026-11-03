@@ -156,12 +156,16 @@
       const inkLightness = dark ? clamp(l+6,64,84) : clamp(l-8,35,58);
       const themeTextLightness = dark ? clamp(l+10,70,88) : clamp(l-24,20,34);
       const rgb = rgbFor(h,s,l), gd = rgbFor(h,gdSat,gdLightness);
+      // 白字实心按钮用的深底: 不随外观提亮(暗色下 --gd 会被调亮当强调色, 白字压不住)
+      const deepLightness = l > 78 ? 40 : clamp(l-7,37,48), deepSat = l > 78 ? clamp(s*1.4,0,100) : s;
+      const deep = rgbFor(h,deepSat,deepLightness);
       const alt = rgbFor(h+180,Math.max(28,s*.58),dark ? clamp(l+4,42,78) : clamp(l-4,24,72));
       const on = contrast(rgb, [255,255,255]) >= contrast(rgb, [23,25,27]) ? '#fff' : '#17191b';
       const gdOn = contrast(gd, [255,255,255]) >= contrast(gd, [23,25,27]) ? '#fff' : '#17191b';
       const vars = {
         '--g':hsl(h,s,l), '--g-rgb':rgb.join(', '), '--gd':hsl(h,gdSat,gdLightness),
         '--gd-rgb':gd.join(', '), '--g-on':on, '--gd-on':gdOn, '--ok':hsl(h,s,l),
+        '--g-deep':hsl(h,deepSat,deepLightness), '--g-deep-rgb':deep.join(', '),
         '--g-ink':hsl(h,Math.max(28,s*.82),inkLightness),
         '--theme-text':hsl(h,Math.max(24,s*.72),themeTextLightness),
         '--g-mid':hsl(h,s,dark ? clamp(l+10,68,94) : clamp(l+8,50,95)),
@@ -633,29 +637,28 @@
   .refine-dot:nth-child(2){animation-delay:.16s;}
   .refine-dot:nth-child(3){animation-delay:.32s;}
   @keyframes refineDot{0%,100%{opacity:.32;transform:scale(.82);}50%{opacity:.92;transform:scale(1);}}
-  /* 不支持相对颜色语法的旧 WebView 退回纯主题色 */
+  /* 深一档主题色底(--g-deep, 深浅外观同一档) + 白字: 浅色主题上白字也清楚; 不做渐变、不扫流光, 只留星芒的轻微闪烁 */
   .refine-action{position:relative; isolation:isolate; overflow:hidden; flex:0 0 auto; display:inline-flex; align-items:center; gap:5px;
                  height:28px; padding:0 13px 0 10px; border:0; border-radius:var(--radius-3);
-                 background:var(--g); background:linear-gradient(115deg, var(--g) 25%, oklch(from var(--g) l c calc(h + 48)));
-                 box-shadow:0 1px 8px -2px rgba(var(--g-rgb),.55); color:var(--g-on);
+                 background:var(--g-deep, var(--gd));
+                 box-shadow:0 1px 8px -2px rgba(var(--g-deep-rgb, var(--gd-rgb)),.55); color:#fff;
                  font-family:inherit; font-size:var(--fs-ctl); font-weight:600; line-height:1; cursor:pointer;
                  transition:filter .2s, transform .2s, box-shadow .3s;}
-  .refine-action::after{content:""; position:absolute; inset:0; z-index:-1; pointer-events:none;
-                 background:linear-gradient(105deg, transparent 35%, rgba(255,255,255,.5) 50%, transparent 65%);
-                 translate:-110% 0; animation:refineSheen 4.8s cubic-bezier(.45,0,.2,1) 1.2s infinite;}
-  @keyframes refineSheen{0%{translate:-110% 0;} 22%,100%{translate:110% 0;}}
   .refine-spark{flex:none; width:14px; height:14px; overflow:visible;}
   .refine-spark path{fill:currentColor; transform-box:fill-box; transform-origin:center;}
   .refine-spark .big{transition:rotate .5s cubic-bezier(.34,1.56,.64,1);}
   .refine-spark .small{animation:refineTwinkle 2.4s ease-in-out infinite;}
   @keyframes refineTwinkle{0%,100%{opacity:.35; scale:.6;} 50%{opacity:1; scale:1;}}
-  .refine-action:hover{filter:brightness(1.05); box-shadow:0 2px 12px -2px rgba(var(--g-rgb),.7);}
+  .refine-action:hover{filter:brightness(1.05); box-shadow:0 2px 12px -2px rgba(var(--g-deep-rgb, var(--gd-rgb)),.7);}
+  /* 暗色下与其它反色块一致: 纯黑底白字, 阴影改中性黑, 悬停提亮一点让它离开底色 */
+  html[data-appearance="dark"] .refine-action{background:#000; box-shadow:0 1px 8px -2px rgba(0,0,0,.6);}
+  html[data-appearance="dark"] .refine-action:hover{filter:none; background:#1a1b1d; box-shadow:0 2px 12px -2px rgba(0,0,0,.75);}
   .refine-action:hover .refine-spark .big{rotate:90deg;}
   .refine-action:active{transform:scale(.96);}
   .refine-action:disabled{opacity:.55; cursor:default;}
   .feedzone.refining #feed{pointer-events:none; opacity:.55; transition:opacity var(--fade);}
   @media (prefers-reduced-motion:reduce){
-    .refine-dot,.refine-icon circle,.refine-action::after,.refine-spark .small{animation:none!important;}
+    .refine-dot,.refine-icon circle,.refine-spark .small{animation:none!important;}
     .odo-col{transition:none;}
     .refine-dot:nth-child(1){opacity:.72;}.refine-dot:nth-child(2){opacity:.52;}.refine-dot:nth-child(3){opacity:.34;}
   }
@@ -866,8 +869,8 @@
   #transcriptImagePreview:is(:hover,:focus-within,.expanded) .preview-surface{transform:translateX(var(--preview-gap)) scale(var(--preview-scale));}
   #transcriptImagePreview:is(:hover,:focus-within,.expanded) img{filter:none;transform:none;}
   #transcriptImagePreview:is(:hover,:focus-within,.expanded) .preview-surface::after{opacity:0;}
-  #transcriptImagePreview.blur-exiting .preview-surface::after{opacity:0;transition:none;}
-  #transcriptImagePreview.blur-exiting .preview-surface img{filter:none;transform:none;transition:none;}
+  #transcriptImagePreview.float-exiting .preview-surface::after{opacity:0;transition:none;}
+  #transcriptImagePreview.float-exiting .preview-surface img{filter:none;transform:none;transition:none;}
   #transcriptImagePreview.expanded .preview-surface{transform:translateX(var(--preview-gap)) scale(1);}
   #transcriptImagePreview:not([inert])::before{content:"";position:absolute;
     left:var(--preview-left);top:var(--preview-handle-top);
@@ -1019,50 +1022,64 @@
      手动点「显示/隐藏项目栏」推挤的那 0.58s 里, 用逐行延展的文稿骨架盖住会重排的正文(#feed)
      与主页最近项目(#hpGrid); 灰块只覆盖这两块, 顶栏/标题/问候都不盖。真内容隐身但保留
      高度(不跳版), 侧栏落定后 side-skel 移除 → 灰块淡出、真内容淡入。单纯悬浮预览不触发这里。 */
-  #feed, #hpGrid{transition:opacity .2s ease;}
+  #feed{transition:opacity .2s ease;}
   .skel{position:absolute; left:26px; right:26px; top:16px; bottom:0; z-index:6;
         opacity:0; visibility:hidden; pointer-events:none;
         transition:opacity .32s ease,visibility 0s .32s;}
   body.side-skel .skel{opacity:1; visibility:visible; transition:opacity .18s ease;}
-  .sk-home{display:none; grid-template-columns:repeat(3,1fr); gap:18px;}
   .sk-body{display:block;}
   body.home .sk-body{display:none;}
-  body.side-skel.home .sk-home{display:grid;}
   body.side-skel:not(.home) .sk-body{display:block;}
-  .sk-home .c{height:172px; border-radius:var(--radius-3); background:var(--line);}   /* 与文稿骨架同色 */
+  /* 主页不盖骨架: 收放期间锁住列数(freezeHomeGrid), 卡片跟主区平滑伸缩, 文字全程可见;
+     落定后若列数变了, 卡片从原位滑到新位(releaseHomeGrid)。也不淡整块网格 ——
+     卡片是玻璃材质, 父级 opacity<1 会让玻璃退化成实心底色。 */
   .sk-body .row{display:grid; grid-template-columns:56px minmax(0,1fr); column-gap:10px; margin:22px 8px 0;}
-  .sk-body .blk{display:grid; gap:12px;}
-  .sk-body .line,.sk-body .tsb{height:10px; border-radius:var(--radius-1); background:var(--soft);}
-  .sk-body .tsb{width:38px; margin-top:2px;}
+  .sk-body .blk{display:grid; gap:13px;}
+  /* 杂志感: 直角、稍粗的墨条。每条随机起笔, 从左向右长出来(clip-path 硬边擦开, 不拉伸流光);
+     长出后整片骨架有一道同步扫过的流光 —— 光带按 px 定位, 所有条同一左缘, 光带因此连成一竖排扫过。 */
+  .sk-body .line,.sk-body .tsb{height:12px; border-radius:0;}
+  .sk-body .tsb{width:38px; margin-top:1px;}
   .sk-body .line,.sk-body .tsb{
-    opacity:0; background:var(--line);
-    /* 柔边遮罩自左向右擦开, 同时渐显; 每段速度由 prepareTranscriptSkeleton 随机给定。 */
-    -webkit-mask-image:linear-gradient(90deg,#000 35%,transparent 65%);
-    mask-image:linear-gradient(90deg,#000 35%,transparent 65%);
-    -webkit-mask-size:300% 100%; mask-size:300% 100%;
-    animation:skelWrite var(--duration,220ms) cubic-bezier(.22,.61,.36,1) both paused;
-    animation-delay:var(--delay,0ms);}
+    --sk-shine:rgba(255,255,255,.72);
+    opacity:0; background-color:var(--line);
+    background-image:linear-gradient(90deg,transparent,var(--sk-shine) 50%,transparent);
+    background-size:240px 100%; background-repeat:no-repeat; background-position:-240px 0;
+    clip-path:inset(0 100% 0 0);
+    animation:skelWrite var(--duration,220ms) cubic-bezier(.22,.61,.36,1) var(--delay,0ms) both,
+              skelShine 1.5s cubic-bezier(.45,0,.55,1) .25s infinite;
+    animation-play-state:paused;}
+  html[data-appearance="dark"] .sk-body :is(.line,.tsb){--sk-shine:rgba(255,255,255,.09);}
   body.side-skel .sk-body .line,body.side-skel .sk-body .tsb,
   .transcript-loading .sk-body .line,.transcript-loading .sk-body .tsb{animation-play-state:running;}
   @keyframes skelWrite{
-    from{opacity:0; transform:translateY(2px); -webkit-mask-position:100% 0; mask-position:100% 0;}
-    60%{opacity:1;}
-    to{opacity:1; transform:translateY(0); -webkit-mask-position:0 0; mask-position:0 0;}
+    from{opacity:0; clip-path:inset(0 100% 0 0);}
+    35%{opacity:1;}
+    to{opacity:1; clip-path:inset(0 0 0 0);}
+  }
+  @keyframes skelShine{
+    from{background-position:-240px 0;}
+    to{background-position:calc(100vw + 240px) 0;}
   }
   @media(prefers-reduced-motion:reduce){
-    .sk-body .line,.sk-body .tsb{animation-duration:1ms; transform:none;}
+    .sk-body .line,.sk-body .tsb{animation:skelWrite 1ms both; animation-play-state:paused;}
+    body.side-skel .sk-body :is(.line,.tsb),.transcript-loading .sk-body :is(.line,.tsb){animation-play-state:running;}
   }
   /* 骨架期间真内容隐身(保留高度→不跳版), 动画结束再渐显 */
-  body.side-skel #feed, body.side-skel #hpGrid{opacity:0;}
+  body.side-skel #feed{opacity:0;}
   /* 隐身并不会停止布局：推挤期间固定正文列宽，落定后再按最终宽度换行一次。 */
   body.side-skel #feed{width:var(--side-feed-width,auto);}
-  body.side-promoting.side-skel #feed, body.side-promoting.side-skel #hpGrid,
+  /* 长文稿几千句, 推挤每一帧都重排一遍会掉帧(侧栏一顿一顿)。隐身期间跳过正文排版,
+     高度按起步时量的值占住, 滚动位置不受影响; 落定移除 side-skel 时只按新宽度排一次。 */
+  body.side-skel:not(.home) #feed{content-visibility:hidden; contain-intrinsic-height:var(--side-feed-height,auto);}
+  body.side-promoting.side-skel #feed,
   body.side-promoting.side-skel .skel{transition:opacity .18s ease;}
   .feedzone.transcript-loading .skel{opacity:1; visibility:visible; pointer-events:auto; transition:opacity .18s ease;}
   .feedzone.transcript-loading .sk-body{display:block; padding-top:24px;}
   .feedzone.transcript-loading #feed{opacity:0;}
   .feedzone.transcript-loading #transcriptAnchors{visibility:hidden;}
   .feedzone.transcript-loading:not(.transcript-building) #feed{content-visibility:hidden;}
+  /* 有上次阅读位置时，正文先隐身渲染，定位好再露面，避免先闪一下顶部。 */
+  .feedzone.transcript-restoring #feed{visibility:hidden;}
   .transcript-loading-label{position:absolute; left:26px; right:26px; z-index:7;
     color:var(--sub); font-size:var(--fs-meta); pointer-events:none;}
 
@@ -1422,7 +1439,7 @@
                        backdrop-filter .2s cubic-bezier(.22,1,.36,1),
                        -webkit-backdrop-filter .2s cubic-bezier(.22,1,.36,1);}
   .audiobar.show{display:flex;}
-  .audiobar:hover,.audiobar:has(:focus-visible){width:min(560px, calc(100% - 36px)); height:55px;
+  .audiobar:hover,.audiobar:has(:focus-visible),.audiobar:has(.rate.open){width:min(560px, calc(100% - 36px)); height:55px;
             background:var(--material-expanded-background);
             border-color:var(--material-expanded-border);
             backdrop-filter:var(--material-expanded-backdrop-filter); -webkit-backdrop-filter:var(--material-expanded-backdrop-filter);
@@ -1431,7 +1448,7 @@
                    border-radius:50%; cursor:pointer; display:flex;
                    align-items:center; justify-content:center; flex:none;
                    transition:background .2s cubic-bezier(.22,1,.36,1);}
-  .audiobar #btnPlay:hover,.audiobar:has(:focus-visible) #btnPlay{background:rgba(var(--g-rgb),.14);}
+  .audiobar #btnPlay:hover,.audiobar:has(:focus-visible) #btnPlay,.audiobar:has(.rate.open) #btnPlay{background:rgba(var(--g-rgb),.14);}
   .audiobar #playIcon{width:13px; height:13px;}
   .audiobar .atime{display:flex; gap:0; font-size:var(--fs-caption); color:var(--txt); font-weight:500;
                    font-variant-numeric:tabular-nums; flex:none; white-space:nowrap;}
@@ -1439,7 +1456,7 @@
   .audiobar .time-extra{display:inline-block; width:0; opacity:0; overflow:hidden; color:var(--gry-icon); font-weight:400; transform:translateX(-4px);
                         transition:width .2s cubic-bezier(.22,1,.36,1),opacity .2s cubic-bezier(.22,1,.36,1),
                                    transform .2s cubic-bezier(.22,1,.36,1);}
-  .audiobar:hover .time-extra,.audiobar:has(:focus-visible) .time-extra{width:72px; opacity:1; transform:none;}
+  .audiobar:hover .time-extra,.audiobar:has(:focus-visible) .time-extra,.audiobar:has(.rate.open) .time-extra{width:72px; opacity:1; transform:none;}
   .audiobar .rate{width:0; height:30px; margin:0; padding:0; overflow:hidden; opacity:0;
                   border:none; background:none; color:var(--gry-icon);
                   font-size:var(--fs-caption); font-variant-numeric:tabular-nums; font-family:inherit;
@@ -1448,15 +1465,40 @@
                   transform:translateX(-4px);
                   transition:width .2s cubic-bezier(.22,1,.36,1),opacity .2s cubic-bezier(.22,1,.36,1),
                              padding .2s cubic-bezier(.22,1,.36,1),transform .2s cubic-bezier(.22,1,.36,1);}
-  .audiobar:hover .rate,.audiobar:has(:focus-visible) .rate{width:38px; padding:0 4px; opacity:1; transform:none;}
-  .audiobar .rate:hover{background:rgba(var(--g-rgb),.09); color:var(--txt);}
+  .audiobar:hover .rate,.audiobar:has(:focus-visible) .rate,.audiobar:has(.rate.open) .rate{width:38px; padding:0 4px; opacity:1; transform:none;}
+  .audiobar .rate:hover,.audiobar .rate.open{background:rgba(var(--g-rgb),.09); color:var(--txt);}
   .audiobar .rate.on{color:var(--sub); font-weight:600;}
+  /* 倍速: 点开后选项从按钮处向左铺开、盖住进度条; 无底色只显文字, 悬停主题色;
+     选定后其余项向右渐隐收回, 选中项滑回按钮位置作锚点 */
+  .audiobar .ratewrap{position:relative; display:flex; flex:none;}
+  .ratefan{position:absolute; right:0; top:50%; transform:translateY(-50%); z-index:2;
+           display:flex; align-items:center; gap:2px; pointer-events:none;}
+  .ratefan.show{pointer-events:auto;}
+  .rateopt{height:30px; padding:0 8px; border:0; background:none; cursor:pointer; white-space:nowrap;
+           font:inherit; font-size:var(--fs-caption); font-variant-numeric:tabular-nums; line-height:1; color:var(--sub);
+           opacity:0; transform:translateX(var(--dx,0));
+           transition:opacity .2s ease, transform .3s cubic-bezier(.16,1,.3,1), color var(--hov);}
+  .ratefan.show .rateopt{opacity:1; transform:none;
+           transition:opacity .22s ease calc(var(--i) * 30ms), transform .4s cubic-bezier(.16,1,.3,1) calc(var(--i) * 30ms), color var(--hov);}
+  .rateopt.sel{color:var(--txt); font-weight:600;}
+  .rateopt:hover,.rateopt:focus-visible{color:var(--g); outline:none;}
+  .ratefan.show .rateopt.pick{opacity:1; transform:translateX(var(--dx,0)); color:var(--gry-icon); font-weight:400;}
+  .ratefan.show .rateopt.pick.sel{color:var(--sub); font-weight:600;}   /* 与按钮 .on 同色同重 */
+  .ratefan.show.closing .rateopt:not(.pick){opacity:0; transform:translateX(var(--dx,0));}
+  .ratefan.snap .rateopt{transition:none;}
+  .ratefan.show.closing .rateopt{transition:opacity .2s ease, transform .3s cubic-bezier(.16,1,.3,1), color var(--hov);}
+  .audiobar:has(.ratefan.show:not(.closing)) .seek-wrap > *{opacity:0; pointer-events:none;}
+  #rateBtn.open{opacity:0; transition:none;}
+  #rateBtn.snapin{transition:none;}
+  #rateBtn.settle:hover{background:none; color:var(--gry-icon);}   /* 归位后鼠标还停在原处: 先不亮悬停态, 移开再恢复 */
+  #rateBtn.settle.on:hover{color:var(--sub);}          /* 归位交接: 按钮瞬间显出, 不走 .2s 淡入, 否则会闪一下 */
+  @media (prefers-reduced-motion:reduce){ .rateopt,.ratefan.show .rateopt{transition:none;} }
   .audiobar .aname{display:none; font-size:var(--fs-ctl); color:var(--sub); flex:1; text-align:right;
                    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
   .audiobar .seek-wrap{position:relative; flex:1; min-width:0; height:30px; display:flex; align-items:center;
                        transition:margin-left .2s cubic-bezier(.22,1,.36,1);}
   .audiobar:hover .seek-wrap,
-  .audiobar:has(:focus-visible) .seek-wrap{margin-left:-20px;}
+  .audiobar:has(:focus-visible) .seek-wrap,.audiobar:has(.rate.open) .seek-wrap{margin-left:-20px;}
   .audiobar .seek-wash{position:absolute; inset:auto 0; height:10px; overflow:hidden; pointer-events:none;
     --seek-track-ink:rgba(45,49,48,.055);
     --seek-track-tint:.10;
@@ -1481,8 +1523,8 @@
     clip-path:polygon(0 18%,9% 8%,18% 17%,29% 9%,40% 18%,52% 8%,65% 17%,77% 9%,89% 18%,100% 11%,
                       100% 82%,90% 92%,78% 82%,66% 91%,53% 82%,41% 93%,29% 82%,17% 91%,0 82%);
     opacity:.96; transition:opacity .2s cubic-bezier(.22,1,.36,1);}
-  .audiobar:hover .seek-wash,.audiobar:has(:focus-visible) .seek-wash{height:10px;}
-  .audiobar:hover .seek-wash::before,.audiobar:has(:focus-visible) .seek-wash::before{opacity:1;}
+  .audiobar:hover .seek-wash,.audiobar:has(:focus-visible) .seek-wash,.audiobar:has(.rate.open) .seek-wash{height:10px;}
+  .audiobar:hover .seek-wash::before,.audiobar:has(:focus-visible) .seek-wash::before,.audiobar:has(.rate.open) .seek-wash::before{opacity:1;}
   .audiobar .seek-wash,.audiobar #seek{transition:opacity .2s ease;}
   .audiobar .boost-label{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
     font-size:14px;color:var(--txt);opacity:0;pointer-events:none;transition:opacity .2s ease;}
@@ -1498,7 +1540,7 @@
     transition:width .2s cubic-bezier(.22,1,.36,1),height .2s cubic-bezier(.22,1,.36,1),margin-top .2s cubic-bezier(.22,1,.36,1),
                opacity .2s cubic-bezier(.22,1,.36,1);}
   .audiobar:hover #seek::-webkit-slider-thumb,
-  .audiobar:has(:focus-visible) #seek::-webkit-slider-thumb{width:12px; height:12px; margin-top:-4px; opacity:1;}
+  .audiobar:has(:focus-visible) #seek::-webkit-slider-thumb,.audiobar:has(.rate.open) #seek::-webkit-slider-thumb{width:12px; height:12px; margin-top:-4px; opacity:1;}
   .audiobar #seek:active::-webkit-slider-thumb{width:13px; height:13px; margin-top:-4.5px; opacity:1;}
   .audiobar #seek:focus-visible{outline:2px solid var(--g); outline-offset:2px; border-radius:var(--radius-3);}
   @media (prefers-reduced-motion:reduce){
@@ -2270,28 +2312,45 @@
   .mvpop .mvdiv{height:1px; background:var(--line); margin:5px 4px;}
   .mvpop .mvempty{padding:12px 8px; font-size:var(--fs-ctl); color:var(--gry-icon); text-align:center;}
   /* 录音中: 项目栏整体向左退出屏幕, 空间让给文稿(滑出即不可操作) */
+  /* 推挤收放时侧栏与主区靠同一个 margin-left 联动(同曲线同时长), 侧栏全程不透明:
+     侧栏背后是更深的页面底色, 边滑边淡会让侧栏区域发暗闪一下; 而且 .32s 就淡没、
+     正文还要推到 .58s, 看起来两边速度对不上。透明度只在推到底后才瞬间归零(见下)。 */
   .sidebar{transition:margin-left .58s cubic-bezier(.32,0,.14,1),
                      transform .58s cubic-bezier(.32,0,.14,1),
-                     opacity .32s ease;}
-  .sidebar.recording{margin-left:-290px; transform:translateX(-100%);}
+                     opacity 0s;}
+  /* 只靠 margin 推出: 再叠 translateX(-100%) 侧栏会走 580px、文稿只让出 290px, 侧栏退场快一倍 */
+  .sidebar.recording{margin-left:-291px;}
   /* 书签钮收起态: 整栏向左推出, 主区(白)补位 —— 推挤式, 不遮盖 */
   .sidehide .sidebar{margin-left:-291px;}
+  body.sidehide:not(.side-peeked) .sidebar{transition:margin-left .58s cubic-bezier(.32,0,.14,1),
+                     transform .58s cubic-bezier(.32,0,.14,1),
+                     opacity 0s .58s;}
   /* hover 预览: 侧栏做「浮层」盖到主区之上(保持 margin 真状态 → 右侧零重排、不跳字),
      松手自动收回。抬层用独立的 .side-peeked 承载, JS 在滑出动画结束后才摘掉它 →
      收起途中侧栏始终压在主区之上, 不会被正文盖住/吞掉。 */
-  /* 收起态悬浮预览: 保留侧栏在 flex 中的占位, 只把同一面板抬成有留白的圆角抽屉。 */
-  body.sidehide.side-peek .sidebar{translate:10px 10px; height:calc(100% - 20px);
-          transform:translateX(291px); border-radius:var(--radius-3); overflow:hidden;
-          background:transparent;}
+  /* 收起态悬浮预览: 保留侧栏在 flex 中的占位, 只把同一面板抬成有留白的圆角抽屉。
+     圆角/留白/玻璃挂在 .side-peeked 上(它活到滑出结束), .side-peek 只管滑进滑出:
+     否则一松手, 浮窗先瞬间变回贴边直角的常驻样式再滑走, 收回时会猛地一跳。 */
+  body.sidehide.side-peek .sidebar{transform:translateX(291px);}
   /* 磨砂玻璃挂独立 ::before 层(z-index:-1, 在侧栏自己的层叠上下文里垫底), 正文控件不再
      活在 backdrop-filter 元素内部 —— WebKit 对「动画中的 transform + backdrop-filter」
      整层重建时偶发丢普通流子节点绘制(玻璃出来了、列表隐身, 独立层的 sidefoot 却活着)。
      玻璃与内容分层后互不牵连; 父级 overflow:hidden+圆角 负责把 ::before 裁成同款胶囊。 */
-  body.sidehide.side-peek .sidebar::before{content:''; position:absolute; z-index:-1; inset:0;
+  body.sidehide.side-peeked .sidebar::before,
+  body.side-promoting .sidebar::before{content:''; position:absolute; z-index:-1; inset:0;
           border:1px solid var(--material-rest-border); border-radius:var(--radius-3);
           background:var(--material-rest-background); backdrop-filter:var(--material-rest-backdrop-filter);
           -webkit-backdrop-filter:var(--material-rest-backdrop-filter);}
-  body.sidehide.side-peeked .sidebar{z-index:8; box-shadow:0 2px 6px rgba(20,30,50,.06), 0 18px 48px rgba(20,30,50,.14);}
+  body.sidehide.side-peeked .sidebar{z-index:8; box-shadow:0 2px 6px rgba(20,30,50,.06), 0 18px 48px rgba(20,30,50,.14);
+          translate:10px 10px; height:calc(100% - 20px); border-radius:var(--radius-3); overflow:hidden;
+          background:transparent;
+          transition:margin-left .58s cubic-bezier(.32,0,.14,1),
+                     transform .58s cubic-bezier(.32,0,.14,1),
+                     opacity .3s ease .25s;}
+  /* 进场 .2s 就显出来; 退场(上面)等滑过大半程再淡, 免得浮窗半路就没了、跟位移不同步 */
+  body.sidehide.side-peeked.side-peek .sidebar{transition:margin-left .58s cubic-bezier(.32,0,.14,1),
+                     transform .58s cubic-bezier(.32,0,.14,1),
+                     opacity .2s ease;}
   /* promote(悬浮→常驻): 两条动画各司其职、同拍配合 ——
      A 背景滑动: 灰底 .side-dock-bg 滑入 + 主区左缘(main 自身 margin-left -90→0)滑回 +
        feedzone 遮罩跟边, 边界照常"推"给正文。滑动量全挂在 dock-bg/main 上,
@@ -2299,22 +2358,33 @@
      B 控件归位: 侧栏只走自己的 translate/height .52s 滑回常驻位, 圆角 120ms 收平。 */
   .side-dock-bg{display:none; position:absolute; inset:0 auto 0 0; width:290px;
           z-index:7; pointer-events:none; background:var(--side);}
+  /* 侧栏归位与主区左缘同一条曲线, 两边同拍落定; 浮窗阴影和玻璃层跟着淡掉, 不在起步瞬间消失 */
   body.side-promoting .side-dock-bg{display:block;
-          animation:sideDockWash .52s cubic-bezier(.22,.75,.25,1) both;}
+          animation:sideDockWash .52s cubic-bezier(.16,1,.3,1) both;}
   body.side-promoting .sidebar{z-index:8; overflow:hidden; background-color:transparent;
           animation:sideDockPin .52s linear both;
           transition:translate .52s cubic-bezier(.16,1,.3,1),
           height .52s cubic-bezier(.16,1,.3,1),
+          box-shadow .52s cubic-bezier(.16,1,.3,1),
           border-radius .12s ease;}
+  body.side-promoting .sidebar::before{animation:sideGlassOut .52s cubic-bezier(.16,1,.3,1) both;}
   body.side-promoting .main{background:var(--bg);
-          animation:mainEdge .52s cubic-bezier(.22,.75,.25,1) both;}
-  body.side-promoting .feedzone{animation:sideTextMask .52s cubic-bezier(.22,.75,.25,1) both;}
+          animation:mainEdge .52s cubic-bezier(.16,1,.3,1) both;}
+  /* clip-path 同样会把卡片玻璃隔离成实心; 主页靠实色侧栏本身盖住左缘, 不用遮罩 */
+  body.side-promoting:not(.home) .feedzone{animation:sideTextMask .52s cubic-bezier(.16,1,.3,1) both;}
+  @keyframes sideGlassOut{from{opacity:1;}to{opacity:0;}}
   @keyframes sideDockWash{from{transform:translateX(-90px);}to{transform:translateX(0);}}
   @keyframes sideDockPin{from{margin-left:0; transform:translateX(0);}to{margin-left:0; transform:translateX(0);}}
   @keyframes mainEdge{from{margin-left:-90px;}to{margin-left:0;}}
   @keyframes sideTextMask{from{clip-path:inset(0 0 0 90px);}to{clip-path:inset(0);}}
-  /* 收起(非悬浮)时淡到 0 → 悬浮进出=边滑边淡, 与课后笔记抽屉退出手感一致 */
+  /* 收起(非悬浮)时透明度为 0 → 悬浮进出=边滑边淡, 与课后笔记抽屉退出手感一致;
+     推挤收起那次由上面的 opacity 0s .58s 延到推到底才归零 */
   body.sidehide:not(.side-peek) .sidebar{opacity:0;}
+  @media (prefers-reduced-motion:reduce){
+    html body .sidebar{transition:none !important;}
+    body.side-promoting :is(.side-dock-bg,.main,.feedzone,.sidebar),
+    body.side-promoting .sidebar::before{animation:none;}
+  }
   /* 精修中: 不再用发光流光标题(太吵)。标题保持正常, 只在"进行中"徽标前加一颗呼吸绿点。 */
   .hitem .hit{background:var(--g-ring); color:var(--g-ink); border-radius:var(--radius-1); padding:0 1px;}
   @keyframes rfnBreath{0%,100%{opacity:.4}50%{opacity:1}}
@@ -3477,7 +3547,8 @@
   html[data-appearance="dark"] .gpop,
   html[data-appearance="dark"] .tagpal { background:var(--material-rest-background); }
   html[data-appearance="dark"] .drawer,
-  html[data-appearance="dark"] body.sidehide.side-peek .sidebar::before {background:var(--material-rest-background);}
+  html[data-appearance="dark"] body.sidehide.side-peeked .sidebar::before,
+  html[data-appearance="dark"] body.side-promoting .sidebar::before {background:var(--material-rest-background);}
   html[data-appearance="dark"] .setpop,
   html[data-appearance="dark"] .findbar { background:var(--material-rest-background); }
   html[data-appearance="dark"] .selbar,
@@ -3609,7 +3680,8 @@
   html :is(.confirm,.mbox){background:var(--card); color:var(--txt);}
   /* 两侧抽屉使用随外观切换的实色底，包括悬浮预览的独立背景层。 */
   html .drawer.drawer, html .sidebar.sidebar,
-  html body.sidehide.side-peek .sidebar.sidebar::before{
+  html body.sidehide.side-peeked .sidebar.sidebar::before,
+  html body.side-promoting .sidebar.sidebar::before{
     background:var(--card);
     backdrop-filter:none;
     -webkit-backdrop-filter:none;
@@ -3619,8 +3691,9 @@
   }
   /* 项目栏以柔和底色衬托内容，悬浮预览沿用同一表面。 */
   html .sidebar.sidebar,
-  html body.sidehide.side-peek .sidebar.sidebar::before{background:var(--side);}
-  html body.sidehide.side-peek .sidebar.sidebar{background:transparent;}
+  html body.sidehide.side-peeked .sidebar.sidebar::before,
+  html body.side-promoting .sidebar.sidebar::before{background:var(--side);}
+  html body.sidehide.side-peeked .sidebar.sidebar{background:transparent;}
   /* 嵌套调色盘增加底膜，避免设置面板的文字穿透。 */
   #themePopover{background:linear-gradient(rgba(var(--g-rgb),.025),rgba(var(--g-rgb),.025)),rgba(255,255,255,.94);
     backdrop-filter:blur(24px) saturate(1.25);-webkit-backdrop-filter:blur(24px) saturate(1.25);}
@@ -3655,7 +3728,8 @@
   #transcriptFormatTools .tf-grid button.selected{outline:2px solid var(--tf-swatch-edge,var(--sub));outline-offset:-2px;}
   #transcriptFormatBackgrounds{margin-bottom:0;}
   #transcriptFormatTools [aria-pressed="true"]{box-shadow:inset 0 0 0 1px var(--txt);}
-  #transcriptFormatTools.busy button{pointer-events:none;opacity:.65;}
+  /* 本地保存通常几十毫秒就回来，立刻变灰再恢复就成了点一下闪一下；只在真慢(>300ms)时才淡下去 */
+  #transcriptFormatTools.busy button{pointer-events:none;opacity:.65;transition:opacity .15s ease .3s;}
   .transcript-quote{margin:0 0 18px;padding:8px 0 8px 19px;border-left:0;color:var(--sub);white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.65;font-size:inherit;}
   #transcriptNoteQuote{font-size:var(--fs-read);}
   .tn-note-body .transcript-quote{display:inline;margin:0 10px 0 0;padding:0;}
@@ -4846,7 +4920,6 @@ html:not([data-material="mimetic"]) #setBody #materialAdvanced{display:none;}
   <nav class="transcript-anchors" id="transcriptAnchors" aria-label="文稿时间分段" hidden></nav>
   <div class="transcript-loading-label" id="transcriptLoading" role="status" hidden>正在加载文稿…</div>
   <div class="skel" id="skel">
-    <div class="sk-home"><div class="c"></div><div class="c"></div><div class="c"></div></div>
     <div class="sk-body" aria-hidden="true"></div>
   </div>
   <div class="fogmask bottom"></div>
@@ -4859,7 +4932,7 @@ html:not([data-material="mimetic"]) #setBody #materialAdvanced{display:none;}
     <span class="atime" id="atime"><span id="currentTime">00:00</span><span class="time-extra" id="timeExtra"> / <span id="totalTime">00:00</span></span></span>
     <div class="seek-wrap"><div class="seek-wash" aria-hidden="true"></div><input type="range" id="seek" value="0" min="0" max="100" step="0.1" aria-label="播放进度"><span class="boost-label" role="status">2x 速加速中...</span><button id="resumeGo" type="button">继续上次 <span id="resumePos">00:00</span></button></div>
     <span class="aname" id="aname"></span>
-    <button class="rate" id="rateBtn" title="回放倍速">1x</button>
+    <div class="ratewrap"><div class="ratefan" id="ratefan" role="menu" aria-label="回放倍速"></div><button class="rate" id="rateBtn" title="回放倍速" aria-haspopup="menu" aria-expanded="false">1x</button></div>
     <audio id="player"></audio>
   </div>
 
@@ -6711,7 +6784,7 @@ function addTranscriptHeading(heading,parent){
   div.className=`transcript-heading transcript-heading-h${level}`;
   div.dataset.t=heading.t;
   div.innerHTML=`<h${level}>${esc(heading.title||'')}</h${level}>`;
-  div.onclick=()=>{ if(player.src) seekTo(heading.t); };
+  div.onclick=e=>{ if(player.src && !swallowedByEdit(e)) seekTo(heading.t); };
   (parent||$('feed')).appendChild(div);
 }
 
@@ -10034,24 +10107,23 @@ window.addEventListener('resize',()=>{if(view)renderTimelineNotes();});
   const artwork=image.firstElementChild;
   let activeSource=null, dismissedSource=null;
   image.addEventListener('click',()=>preview.classList.toggle('expanded'));
-  let blurExit;
-  preview.addEventListener('pointerenter',()=>blurExit?.cancel());
+  let floatExit;
+  preview.addEventListener('pointerenter',()=>floatExit?.cancel());
   preview.addEventListener('pointerleave',()=>{
     if(!preview.classList.contains('expanded')) return;
     const transform=getComputedStyle(image).transform;
     preview.classList.remove('expanded');
     if(matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    blurExit?.cancel();
-    preview.classList.add('blur-exiting');
-    blurExit=image.animate(
-      [{transform,scale:1,filter:'blur(0px)',opacity:1,easing:'ease-out'},
-       {transform,scale:1,filter:'blur(20px)',opacity:1,offset:.4,easing:'cubic-bezier(.25,.7,.3,1)'},
-       {transform,scale:1.045,filter:'blur(30px)',opacity:0}],
-      {duration:420}
+    floatExit?.cancel();
+    preview.classList.add('float-exiting');
+    floatExit=image.animate(
+      [{transform,translate:'0 0',opacity:1},
+       {transform,translate:'0 -32px',opacity:0}],
+      {duration:260,easing:'cubic-bezier(.25,.7,.3,1)'}
     );
-    const animation=blurExit;
+    const animation=floatExit;
     animation.onfinish=animation.oncancel=()=>{
-      if(blurExit===animation) preview.classList.remove('blur-exiting');
+      if(floatExit===animation) preview.classList.remove('float-exiting');
     };
   });
   const closeButton=preview.querySelector('button');
@@ -10112,7 +10184,7 @@ window.addEventListener('resize',()=>{if(view)renderTimelineNotes();});
     if(exitAnimation){preview.hidden=true;cancelPreviewExit();}
     dismissedSource=null;
     if(source!==activeSource){
-      blurExit?.cancel();
+      floatExit?.cancel();
       preview.classList.remove('expanded');
     }
     activeSource=source;
@@ -12426,7 +12498,7 @@ function cloneTranscriptRenderRow(template,parent){
   if(row.matches('.seg:not(.note):not(.sum)')){
     row.onclick=event=>queueSegmentPlayback(event,row,time);
     segEls.push(row);segTimes.push(time);
-  }else if(row.matches('.transcript-heading'))row.onclick=()=>{if(player.src)seekTo(time);};
+  }else if(row.matches('.transcript-heading'))row.onclick=e=>{if(player.src&&!swallowedByEdit(e))seekTo(time);};
   row.querySelectorAll('img').forEach(image=>image.addEventListener('dragstart',event=>event.preventDefault()));
   row.querySelectorAll('.transcript-image-divider').forEach(divider=>divider.addEventListener('click',event=>{
     event.preventDefault();event.stopPropagation();
@@ -12503,6 +12575,7 @@ async function loadSession(sid, keepList){
   hideTranscriptFormatTools();
   const generation=++transcriptViewGeneration;
   setTranscriptLoading(false);
+  $('feedzone').classList.remove('transcript-restoring');
   const enteringNotes=view===null;
   closeAllNotes(true);
   hideTranscriptImageDropIndicator(); transcriptNoteNativeDropPaths=[];
@@ -12565,6 +12638,7 @@ async function loadSession(sid, keepList){
   $('btnCloud').style.display = cloudDone ? 'none' : '';
   editBarOff(); resetTranscriptNoteLayer(); $('feed').innerHTML=''; resetPlaybackSegments();
   if(loading)$('feedzone').classList.add('transcript-building');
+  $('feedzone').classList.toggle('transcript-restoring',Number(d.last_pos)>0);
   // 云端摘要块置顶(有才显示)
   if(d.summary && d.summary.trim()){
     const sm = document.createElement('div');
@@ -12644,6 +12718,7 @@ async function loadSession(sid, keepList){
   if(openingPosition > 0) requestAnimationFrame(()=>{
     if(generation !== transcriptViewGeneration) return;
     followTo(curHit(openingPosition), 'instant');
+    $('feedzone').classList.remove('transcript-restoring');
   });
   // 若该项目正在后台精修, 补上指示器(页面刷新/切回该项目时事件已错过)
   fetchStatus().then(st=>{
@@ -12652,7 +12727,7 @@ async function loadSession(sid, keepList){
   }).catch(()=>{});
   if(loading) await nextTranscriptPaint();
   }catch(error){
-    if(isCurrent())toast('文稿加载失败，请重新打开');
+    if(isCurrent()){ $('feedzone').classList.remove('transcript-restoring'); toast('文稿加载失败，请重新打开'); }
   }finally{
     if(generation===transcriptViewGeneration)setTranscriptLoading(false);
   }
@@ -12662,6 +12737,7 @@ function exitView(){
   if(view && posDirty) savePos(true);
   transcriptViewGeneration++;
   setTranscriptLoading(false);
+  $('feedzone').classList.remove('transcript-restoring');
   renameArmed = false; setConfirm(false);
   view = null; spkOrder = [];
   $('btnSpk').style.display = 'none'; spkPop(false);
@@ -12694,13 +12770,13 @@ function animateSidebarSelectionOut(done){
 
 $('btnPlay').onclick = ()=>{ hideResume(); player.paused ? player.play() : player.pause(); };
 
-/* ---- 回放倍速：循环 1x → 1.5x → 2x → 0.75x ----
+/* ---- 回放倍速：点开后选项向左铺开盖住进度条，选定后滑回按钮 ----
      倍速按项目记忆：写进该项目 .pref.json，进入时自动读回；项目没存过就用
      全局默认(defaultRateIdx)。换音频源时浏览器会把倍速重置回 1，所以在
      loadedmetadata 上再落一次。 */
-const RATES = ['1x', '1.5x', '2x', '0.75x'];
-let rateIdx = 0;          // 当前生效档
-let defaultRateIdx = 0;   // 全局默认：新项目兜底
+const RATES = ['0.75x', '1x', '1.25x', '1.5x', '2x'];
+let rateIdx = 1;          // 当前生效档
+let defaultRateIdx = 1;   // 全局默认：新项目兜底
 function applyRate(){
   stopPlaybackBoost();
   const v = parseFloat(RATES[rateIdx]);
@@ -12714,21 +12790,74 @@ function syncRateUI(){
   const label = index >= 0 ? RATES[index] : `${rate}x`;
   b.textContent = label;
   b.classList.toggle('on', rate !== 1);
-  b.title = '回放倍速 · 当前 ' + label + '（点一下换下一档）';
+  b.title = '回放倍速 · 当前 ' + label;
 }
-$('rateBtn').onclick = async ()=>{
+// 选项按 0.75x → 2x 从左到右排, 右缘对齐倍速按钮
+RATES.forEach((v, i)=>{
+  const o = document.createElement('button');
+  o.className = 'rateopt'; o.dataset.v = v; o.textContent = v;
+  o.setAttribute('role', 'menuitemradio'); o.style.setProperty('--i', RATES.length - 1 - i);   // 离按钮近的先出
+  $('ratefan').appendChild(o);
+});
+let rateCloseTimer = 0;
+function rateClose(pick){
+  const fan = $('ratefan');
+  if(!fan.classList.contains('show') || fan.classList.contains('closing')) return;
+  fan.classList.add('closing');
+  if(pick){ pick.classList.add('pick'); pick.classList.toggle('sel', pick.dataset.v !== '1x'); }   // 收尾样式对齐按钮: 非 1x 才加粗
+  clearTimeout(rateCloseTimer);
+  rateCloseTimer = setTimeout(()=>{          // 选中项已滑到按钮位置: 无缝换回按钮
+    fan.classList.add('snap');
+    fan.classList.remove('show', 'closing');
+    fan.querySelectorAll('.pick').forEach(o=>o.classList.remove('pick'));
+    $('rateBtn').classList.add('snapin', 'settle');
+    $('rateBtn').classList.remove('open');
+    $('rateBtn').setAttribute('aria-expanded', 'false');
+    void fan.offsetWidth; fan.classList.remove('snap'); $('rateBtn').classList.remove('snapin');
+  }, 320);
+}
+$('rateBtn').onclick = e=>{
+  e.stopPropagation();
   stopPlaybackBoost();
   hideResume();
-  const current = RATES.findIndex(label=>Math.abs(parseFloat(label)-player.playbackRate)<.001);
-  rateIdx = (current + 1) % RATES.length;
+  const fan = $('ratefan'), btn = $('rateBtn');
+  const br = btn.getBoundingClientRect();
+  fan.classList.add('snap');                 // 先把各项瞬移到按钮处, 再放开过渡铺开
+  fan.querySelectorAll('.rateopt').forEach(o=>{
+    const on = o.dataset.v === RATES[rateIdx];
+    o.classList.toggle('sel', on);
+    o.setAttribute('aria-checked', String(on));
+    o.style.setProperty('--dx', '0px');
+  });
+  fan.querySelectorAll('.rateopt').forEach(o=>{
+    const r = o.getBoundingClientRect();
+    o.style.setProperty('--dx', (br.left + br.width/2 - r.left - r.width/2) + 'px');   // 收回时与按钮文字中心重合
+  });
+  void fan.offsetWidth; fan.classList.remove('snap');
+  btn.classList.add('open');
+  btn.setAttribute('aria-expanded', 'true');
+  fan.classList.add('show');
+};
+$('rateBtn').addEventListener('pointerleave', ()=>$('rateBtn').classList.remove('settle'));
+$('ratefan').addEventListener('click', async e=>{
+  const o = e.target.closest('.rateopt'); if(!o) return;
+  e.stopPropagation();
+  rateClose(o);
+  const i = RATES.indexOf(o.dataset.v);
+  if(i < 0 || i === rateIdx) return;
+  rateIdx = i;
   applyRate();
   if(view && view.id){                       // 写进当前项目的配置
-    try{ await api('/api/session_pref', {id: view.id, play_rate: RATES[rateIdx]}); }catch(e){}
+    try{ await api('/api/session_pref', {id: view.id, play_rate: RATES[i]}); }catch(e){}
   }else{                                     // 没进项目时退回写全局默认
-    defaultRateIdx = rateIdx;
-    try{ await api('/api/setting', {key:'play_rate', value: RATES[rateIdx]}); }catch(e){}
+    defaultRateIdx = i;
+    try{ await api('/api/setting', {key:'play_rate', value: RATES[i]}); }catch(e){}
   }
-};
+});
+document.addEventListener('click', e=>{
+  if(!e.target.closest('#ratefan') && !e.target.closest('#rateBtn')) rateClose();
+});
+document.addEventListener('keydown', e=>{ if(e.key === 'Escape') rateClose(); });
 api('/api/settings').then(st=>{
   const i = RATES.indexOf(String(st.play_rate || ''));
   if(i >= 0){ defaultRateIdx = i; rateIdx = i; applyRate(); }
@@ -12844,8 +12973,21 @@ $('seek').addEventListener('change', ()=>{
 window.addEventListener('pagehide', ()=>{ if(posDirty) savePos(true); });
 document.addEventListener('visibilitychange', ()=>{ if(document.hidden && posDirty) savePos(true); });
 let segmentPlaybackTimer = null;
+// 改完一句、或划过词之后的第一下点击只当"收手"，不跳转也不开播，免得落稿 / 取消划词时顺手点到别的句子就播起来
+let editClickGuard = false, editGuardedClick = null;
+document.addEventListener('mousedown', ()=>{
+  const sel = window.getSelection && window.getSelection();
+  if(sel && !sel.isCollapsed && sel.anchorNode && $('feed').contains(sel.anchorNode)) editClickGuard = true;
+}, true);
+document.addEventListener('click', e=>{
+  if(!editClickGuard) return;
+  editClickGuard = false;
+  if(e.target.closest('#feed .seg, #feed .transcript-heading') && !e.target.closest('#editbar')) editGuardedClick = e;
+}, true);
+function swallowedByEdit(event){ return !!event && event === editGuardedClick; }
 function queueSegmentPlayback(event, row, time){
   clearTimeout(segmentPlaybackTimer);
+  if(swallowedByEdit(event)) return;
   const selected=()=>typeof window!=='undefined'&&window.getSelection&&window.getSelection()&&!window.getSelection().isCollapsed;
   if(event.detail > 1 || row.dataset.edit || event.target.closest('[contenteditable],#transcriptFormatTools') || selected() || (typeof transcriptSelectionDragUntil!=='undefined'&&Date.now()<transcriptSelectionDragUntil))return;
   const source = player.getAttribute('src');
@@ -13403,6 +13545,7 @@ async function finishEdit(keep){
   if(!editing) return;
   const {el, span, old, t} = editing;
   editing = null;
+  editClickGuard = true;
   delete el.dataset.edit;
   const text = (span.textContent || '').replace(/\s+/g, ' ').trim();   // 一句一行，换行压成空格
   const restore = v => renderSegmentText(el,v);
@@ -13790,6 +13933,68 @@ function enterPendingView(name){
 /* ---- 顶栏开关钮: 推挤式收起/放回项目栏(录音中侧栏自隐, 按钮不抢戏) ---- */
 /* ---- 顶栏开关钮: 推挤式收起/放回项目栏; 推挤期间给右侧重排区盖灰色骨架, 落定再渐显 ---- */
 let skelTimer = null;
+/* 主页卡片墙: 不盖骨架、不隐身, 也不让卡片随主区硬挤(挤到最小宽度以下内容会溢出卡外)。
+   起步时就按落定后的网格宽度(现宽 ∓ 侧栏 291)排好最终列数与卡宽, 每张卡从原位置/宽度
+   用与侧栏同一条曲线、同一时长过渡到最终位置 —— 屏幕上的轨迹是新旧两点间的插值, 全程
+   不出界、不变形; 落定时 auto-fill 算出的正是同一布局, 放开固定列不会再跳。 */
+let homeGridPlan = null, homeGridFrame = 0;
+function freezeHomeGrid(grid){
+  cancelAnimationFrame(homeGridFrame);
+  const cards = [...grid.children];
+  const before = cards.map(card=>card.getBoundingClientRect());   // 含上一次过渡的中间态, 快速来回点也能接上
+  const showing = document.body.classList.contains('sidehide');
+  const g = grid.getBoundingClientRect();
+  homeGridPlan = {grid, cards, before, width: g.width + (showing ? -291 : 291), left: g.left + (showing ? 291 : -291)};
+}
+function cubicBezier(x1, y1, x2, y2){
+  const at = (u, a, b)=>3*(1-u)*(1-u)*u*a + 3*(1-u)*u*u*b + u*u*u;
+  return t=>{ let lo = 0, hi = 1, u = t; for(let i = 0; i < 24; i++){ if(at(u, x1, x2) < t) lo = u; else hi = u; u = (lo + hi) / 2; } return at(u, y1, y2); };
+}
+/* 卡片位置每帧由 rAF 统一算: 先读网格原点(随主区左缘走的布局值), 再直接给出卡片该在的屏幕坐标
+   (旧位置→最终位置的插值)并反推 transform。不能交给 WAAPI —— 那是合成器线程的时钟, 主区左缘是
+   主线程的布局过渡, 两者叠加会错帧, 卡片边走边一抽一抽。 */
+function flipHomeGrid(duration, bezier){
+  const plan = homeGridPlan; homeGridPlan = null;
+  if(!plan) return;
+  const {grid, cards, before, width, left} = plan;
+  const gap = parseFloat(getComputedStyle(grid).columnGap) || 18;
+  const cols = Math.max(1, Math.floor((width + gap) / (220 + gap)));   // 与 .hp-grid 的 minmax(220px,1fr) 同算法
+  grid.style.gridTemplateColumns = `repeat(${cols},${((width - gap * (cols - 1)) / cols).toFixed(3)}px)`;
+  // 先在关着过渡时清位移并强制排版, 再还原过渡; 否则 .rc 的 transform .18s 会从最后一帧再滑一段, 落定时一抽
+  const reset = card=>{
+    card.style.transition = 'none';
+    card.style.transform = card.style.width = card.style.position = card.style.zIndex = '';
+    void card.offsetWidth;
+    card.style.transition = '';
+  };
+  cards.forEach(reset);
+  if(window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const g0 = grid.getBoundingClientRect();
+  const slots = cards.map(card=>{ const r = card.getBoundingClientRect(); return {x: r.left - g0.left, y: r.top - g0.top, w: r.width}; });
+  cards.forEach((card, i)=>{
+    card.style.transition = 'none';                 // .rc 自带 transform .18s 过渡, 不关掉每帧都会被拖慢
+    if(Math.abs(before[i].top - g0.top - slots[i].y) > 1){ card.style.position = 'relative'; card.style.zIndex = '1'; }   // 换行的卡从别的卡上面滑过去
+  });
+  const ease = cubicBezier(...bezier), t0 = performance.now();
+  const paint = now=>{
+    const p = Math.min(1, (now - t0) / duration), e = ease(p), g = grid.getBoundingClientRect();
+    cards.forEach((card, i)=>{
+      if(!card.isConnected) return;
+      const a = before[i], s = slots[i];
+      const x = a.left + (left + s.x - a.left) * e, y = a.top + (g.top + s.y - a.top) * e;
+      card.style.width = `${a.width + (s.w - a.width) * e}px`;
+      card.style.transform = `translate(${x - g.left - s.x}px,${y - g.top - s.y}px)`;
+    });
+    if(p < 1) homeGridFrame = requestAnimationFrame(paint);
+    else cards.forEach(reset);
+  };
+  paint(t0);   // 当帧就落在旧位置, 不闪到新布局
+  homeGridFrame = requestAnimationFrame(paint);
+}
+function releaseHomeGrid(){
+  const grid = $('hpGrid');
+  if(grid) grid.style.gridTemplateColumns = '';
+}
 function skelActivate(){
   const welcome = document.body.classList.contains('home');
   const grid = $('hpGrid'), feedEl = $('feed'), fw = $('feedwrap');
@@ -13798,12 +14003,45 @@ function skelActivate(){
   if(!hasGrid && !hasFeed) return false;          // 没东西会重排(空主页/空正文) → 不盖
   const target = welcome ? grid : feedEl;
   if(hasFeed)prepareTranscriptSkeleton();
-  if(hasFeed) feedEl.style.setProperty('--side-feed-width',`${feedEl.getBoundingClientRect().width}px`);
+  if(hasGrid){ freezeHomeGrid(grid); return true; }   // 主页: 不盖骨架, 由 flipHomeGrid 带卡片走到最终布局
+  if(hasFeed){
+    const r = feedEl.getBoundingClientRect();
+    feedEl.style.setProperty('--side-feed-width',`${r.width}px`);
+    feedEl.style.setProperty('--side-feed-height',`${r.height}px`);
+  }
   $('skel').style.top = ((fw ? fw.offsetTop : 0) + (target.offsetTop || 0)) + 'px';  // 对齐真实重排块起点, 避开问候/标题
   document.body.classList.add('side-skel');
   return true;
 }
-$('btnSide').onclick = ()=>{
+/* 正文换行宽度变了, 段落高度跟着变; 记下锚点句(正在播放的那句, 否则视口里第一句)离视口顶的距离, 落定后放回原处 */
+function captureFeedAnchor(){
+  const wrap = $('feedwrap'), feedEl = $('feed');
+  if(!wrap || !feedEl || document.body.classList.contains('home')) return null;
+  const wr = wrap.getBoundingClientRect();
+  let el = currentSegEl && currentSegEl.isConnected && feedEl.contains(currentSegEl) ? currentSegEl : null;
+  if(!el) el = [...feedEl.querySelectorAll('.seg')].find(seg=>seg.getBoundingClientRect().bottom > wr.top) || null;
+  return el ? {el, offset: el.getBoundingClientRect().top - wr.top} : null;
+}
+function restoreFeedAnchor(anchor){
+  if(!anchor || !anchor.el.isConnected) return;
+  const wrap = $('feedwrap');
+  const place = ()=>{ wrap.scrollTop += anchor.el.getBoundingClientRect().top - wrap.getBoundingClientRect().top - anchor.offset; };
+  place(); requestAnimationFrame(place);   // 下一帧再校一次: 图片侧排等 ResizeObserver 重排后高度还会微调
+}
+function endSideSkel(anchor){
+  clearTimeout(skelTimer);
+  skelTimer = setTimeout(()=>{
+    document.body.classList.remove('side-skel');
+    releaseHomeGrid();
+    restoreFeedAnchor(anchor);
+  }, 580);   // = 侧栏推挤动画时长
+}
+$('btnSide').onclick = e=>{
+  // 点过之后, 指针还停在钮上: 先前排队的悬浮计时器作废, 且要移开再回来才重新允许悬浮。
+  // 不然进门 250ms 内就点(刚打开软件时最常见), 计时器会在刚收起后触发, 直接弹出浮窗。
+  // 鼠标点击(detail>0)一定在钮上; ⌘B 走 .click() 时再看指针是否恰好停在钮上。
+  clearTimeout(peekOpenTimer);
+  peekSuppressed = (e && e.detail > 0) || $('btnSide').matches(':hover');
   if(state !== 'idle'){ toast('请先结束当前录音'); return; }
   if(document.body.classList.contains('sidehide') && document.body.classList.contains('side-peek')){
     promoteSidebarPeek();
@@ -13813,29 +14051,32 @@ $('btnSide').onclick = ()=>{
   document.body.classList.remove('side-promoting');
   document.body.classList.remove('side-peek', 'side-peeked'); peekHold = false;
   clearTimeout(peekedTimer);
+  const anchor = captureFeedAnchor();
   const skel = skelActivate();
   document.body.classList.toggle('sidehide');
-  if(skel){ clearTimeout(skelTimer);
-    skelTimer = setTimeout(()=>document.body.classList.remove('side-skel'), 580); }  // = 侧栏推挤动画时长
+  flipHomeGrid(580, [.32,0,.14,1]);   // = 侧栏 margin-left 过渡
+  if(skel) endSideSkel(anchor);
 };
 let promoteTimer = null;
 function promoteSidebarPeek(){
   clearTimeout(peekTimer); clearTimeout(peekOpenTimer); clearTimeout(peekedTimer);
   clearTimeout(promoteTimer);
   peekHold = false;
+  const anchor = captureFeedAnchor();
   const skel = skelActivate();
   document.body.classList.add('side-promoting');
   document.body.classList.remove('side-peek', 'side-peeked');
   document.body.classList.remove('sidehide');
-  if(skel){ clearTimeout(skelTimer);
-    skelTimer = setTimeout(()=>document.body.classList.remove('side-skel'), 580); }
+  flipHomeGrid(520, [.16,1,.3,1]);     // = promote 时主区左缘 mainEdge
+  if(skel) endSideSkel(anchor);
   promoteTimer = setTimeout(()=>{ document.body.classList.remove('side-promoting'); }, 560);
 }
 /* 收起态: hover 开关钮→侧栏临时滑出; 手离开(钮和侧栏都算"手里")→自动收回。
    peekHold=搜索等场景要求常驻浮出, 释放 hover 也不收 */
-let peekHold = false, peekTimer = null, peekOpenTimer = null, peekedTimer = null;
+let peekHold = false, peekTimer = null, peekOpenTimer = null, peekedTimer = null, peekSuppressed = false;
 function setPeek(on){
   if(!document.body.classList.contains('sidehide')) return;
+  if(on && peekSuppressed) return;
   document.body.classList.toggle('side-peek', on);
   clearTimeout(peekedTimer);
   if(on){
@@ -13845,7 +14086,7 @@ function setPeek(on){
     peekedTimer = setTimeout(()=>{
       if(!document.body.classList.contains('side-peek'))
         document.body.classList.remove('side-peeked');
-    }, 600);                                              // ≥ .58s 侧栏过渡
+    }, 650);                                              // ≥ .58s 侧栏过渡(留点余量, 卡顿时也不提前变回直角)
   }
 }
 function peekRelease(){
@@ -13855,9 +14096,10 @@ function peekRelease(){
 }
 $('btnSide').addEventListener('mouseenter', ()=>{
   clearTimeout(peekTimer); clearTimeout(peekOpenTimer);
+  if(peekSuppressed) return;
   peekOpenTimer = setTimeout(()=> setPeek(true), 250);   // 驻留 250ms 才算悬浮意图
 });
-$('btnSide').addEventListener('mouseleave', peekRelease);
+$('btnSide').addEventListener('mouseleave', ()=>{ peekSuppressed = false; peekRelease(); });
 document.querySelector('.sidebar').addEventListener('mouseenter',
   ()=>{ clearTimeout(peekTimer); clearTimeout(peekOpenTimer); });
 document.querySelector('.sidebar').addEventListener('mouseleave', peekRelease);

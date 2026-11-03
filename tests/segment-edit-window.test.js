@@ -7,7 +7,7 @@ function body(name){return html.match(new RegExp(`function ${name}\\([^)]*\\)\\{
 test('double click cancels pending playback; single click still seeks', ()=>{
   let pending, seeks=0;
   const ctx={clearTimeout:()=>{pending=null;},setTimeout:fn=>{pending=fn;return 1;},player:{getAttribute:()=> 'audio.mp3'},seekTo:()=>seeks++};
-  vm.createContext(ctx);vm.runInContext('let segmentPlaybackTimer=null;'+body('queueSegmentPlayback'),ctx);
+  vm.createContext(ctx);vm.runInContext('let segmentPlaybackTimer=null;const swallowedByEdit=()=>false;'+body('queueSegmentPlayback'),ctx);
   const row={dataset:{},isConnected:true};
   const click=detail=>ctx.queueSegmentPlayback({detail,target:{closest:()=>null}},row,12);
   click(1);assert.equal(seeks,0);click(2);assert.equal(pending,null);assert.equal(seeks,0);

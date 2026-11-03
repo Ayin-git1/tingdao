@@ -18,7 +18,7 @@ test('loading masks only the manuscript and clears interaction and accessibility
 test('sidebar transitions settle before the long-manuscript request starts',async()=>{
  const start=html.indexOf('async function loadSession('),end=html.indexOf('\nfunction exitView()',start);
  let releaseMotion,reply,requests=0;
- const c=vm.createContext({hideTranscriptFormatTools(){},transcriptViewGeneration:0,setTranscriptLoading(){},view:null,
+ const c=vm.createContext({hideTranscriptFormatTools(){},transcriptViewGeneration:0,setTranscriptLoading(){},view:null,$:()=>({classList:{remove(){}}}),
  closeAllNotes(){},hideTranscriptImageDropIndicator(){},posDirty:false,lastHistRaw:[{id:'long',duration:7201}],
  showTranscriptLoadingPreview(){},transcriptNeedsLoading:d=>d.duration>7200,waitForSidebarEntryMotion:()=>new Promise(resolve=>releaseMotion=resolve),
  api:()=>{requests++;return new Promise(resolve=>reply=resolve);}});
@@ -65,5 +65,8 @@ test('skeleton sentences arrive in order with varied paragraph lengths and keep 
  c.Math.random=(()=>{let n=0;return()=>[.1,.9,.5,.3,.7][n++%5];})();c.prepareTranscriptSkeleton();
  const paces=new Set([...skeleton.innerHTML.matchAll(/class="tsb" style="[^"]*--duration:(\d+)ms/g)].map(m=>m[1]));
  assert.ok(paces.size>1,'paragraphs extrude at different speeds');
- assert.match(html,/animation:skelWrite var\(--duration,220ms\) cubic-bezier\(\.22,\.61,\.36,1\) both paused/);
+ // 每条从左向右长出(随机起笔), 再叠一道同步流光; 平时暂停, 骨架出现才跑
+ assert.match(html,/animation:skelWrite var\(--duration,220ms\) cubic-bezier\(\.22,\.61,\.36,1\) var\(--delay,0ms\) both,\s*skelShine [^;]*infinite;\s*animation-play-state:paused;/);
+ assert.match(html,/@keyframes skelWrite\{\s*from\{opacity:0; clip-path:inset\(0 100% 0 0\);\}/);
+ assert.match(html,/\.sk-body \.line,\.sk-body \.tsb\{height:12px; border-radius:0;\}/);
 });

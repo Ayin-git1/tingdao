@@ -45,7 +45,7 @@ from frontend_patch import FrontendPatches
 import numpy as np
 import sherpa_onnx
 
-APP_VERSION = "3.1.9.1"
+APP_VERSION = "3.1.9.2"
 
 # Finder/Dock 启动的 GUI 进程 PATH 不含 homebrew, 主动补齐(ffmpeg/SwitchAudioSource 所在)
 if platform.system() == "Darwin":
@@ -3528,7 +3528,7 @@ def import_note_bundle(path, root, commit_lock=None):
                 meta["imported_note"] = True
                 if (d / PREF_FILE).exists():
                     pref = _bundle_json(d / PREF_FILE)
-                    if (not isinstance(pref, dict) or pref.get("play_rate", "1x") not in ("1x", "1.5x", "2x", "0.75x") or
+                    if (not isinstance(pref, dict) or pref.get("play_rate", "1x") not in ("0.75x", "1x", "1.25x", "1.5x", "2x") or
                             type(pref.get("last_pos", 0)) not in (int, float) or
                             not math.isfinite(pref.get("last_pos", 0)) or pref.get("last_pos", 0) < 0):
                         raise RuntimeError("笔记播放偏好无效")
@@ -6920,7 +6920,7 @@ class App:
         pref = self._read_pref(d)
         if play_rate is not None:
             pr = str(play_rate)
-            if pr in ("1x", "1.5x", "2x", "0.75x"):
+            if pr in ("0.75x", "1x", "1.25x", "1.5x", "2x"):
                 pref["play_rate"] = pr
         if last_pos is not None:
             try:

@@ -7,7 +7,7 @@ function body(name){const match=html.match(new RegExp(`function ${name}\\([^)]*\
 test('selected manuscript text cancels queued playback including delayed selection',()=>{
  let pending,seeks=0,selected=false;
  const ctx={clearTimeout:()=>pending=null,setTimeout:fn=>(pending=fn,1),player:{getAttribute:()=> 'audio'},seekTo:()=>seeks++,window:{getSelection:()=>({isCollapsed:!selected,rangeCount:1})}};
- vm.createContext(ctx);vm.runInContext('let segmentPlaybackTimer=null;'+body('queueSegmentPlayback'),ctx);
+ vm.createContext(ctx);vm.runInContext('let segmentPlaybackTimer=null;const swallowedByEdit=()=>false;'+body('queueSegmentPlayback'),ctx);
  const row={dataset:{},isConnected:true},event={detail:1,target:{closest:()=>null}};
  selected=true;ctx.queueSegmentPlayback(event,row,10);assert.equal(pending,null);
  selected=false;ctx.queueSegmentPlayback(event,row,10);selected=true;pending();assert.equal(seeks,0);

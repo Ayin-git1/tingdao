@@ -51,7 +51,7 @@ test('audio bar and recording pill consume separate rest and expanded material t
   assert.match(audioRest, /border:1\.5px solid var\(--material-rest-border\)/);
   assert.match(audioRest, /box-shadow:var\(--material-shadow-level-3\)/);
 
-  const audioExpanded = cssRuleMatching(/\.audiobar:hover,\.audiobar:has\(:focus-visible\)\{[^}]*\}/,
+  const audioExpanded = cssRuleMatching(/\.audiobar:hover,\.audiobar:has\(:focus-visible\)(?:,\.audiobar:has\(\.rate\.open\))?\{[^}]*\}/,
     'expanded audio bar');
   assert.match(audioExpanded, /background:var\(--material-expanded-background\)/);
   assert.match(audioExpanded, /border-color:var\(--material-expanded-border\)/);

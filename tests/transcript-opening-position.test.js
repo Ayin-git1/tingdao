@@ -10,12 +10,16 @@ test('opening scrolls to saved playback paragraph without changing or starting a
   let frame;
   const calls = [];
   const player = {currentTime:0, play(){throw Error('unexpected autoplay');}};
+  const classes = new Set(['transcript-restoring']);
   const context = vm.createContext({d:{last_pos:12}, generation:1, transcriptViewGeneration:1,
     player, segTimes:[0, 5, 10, 20], requestAnimationFrame(fn){frame=fn;},
+    $:()=>({classList:{remove:name=>classes.delete(name)}}),
     followTo(...args){calls.push(args);}});
   vm.runInContext(lookup + opening, context);
+  assert.ok(classes.has('transcript-restoring'));
   frame();
   assert.deepEqual(calls, [[2, 'instant']]);
+  assert.equal(classes.has('transcript-restoring'), false);
   assert.equal(player.currentTime, 0);
 });
 
@@ -31,4 +35,9 @@ test('new projects stay at top and stale opening callbacks cannot move another p
     if(frame)frame();
     assert.deepEqual(calls, []);
   }
+});
+
+test('saved position hides the transcript until it has been positioned', () => {
+  assert.match(html, /\.feedzone\.transcript-restoring #feed\{visibility:hidden;\}/);
+  assert.match(html, /classList\.toggle\('transcript-restoring',Number\(d\.last_pos\)>0\)/);
 });
