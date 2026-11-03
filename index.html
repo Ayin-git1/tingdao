@@ -866,6 +866,8 @@
   #transcriptImagePreview:is(:hover,:focus-within,.expanded) .preview-surface{transform:translateX(var(--preview-gap)) scale(var(--preview-scale));}
   #transcriptImagePreview:is(:hover,:focus-within,.expanded) img{filter:none;transform:none;}
   #transcriptImagePreview:is(:hover,:focus-within,.expanded) .preview-surface::after{opacity:0;}
+  #transcriptImagePreview.blur-exiting .preview-surface::after{opacity:0;transition:none;}
+  #transcriptImagePreview.blur-exiting .preview-surface img{filter:none;transform:none;transition:none;}
   #transcriptImagePreview.expanded .preview-surface{transform:translateX(var(--preview-gap)) scale(1);}
   #transcriptImagePreview:not([inert])::before{content:"";position:absolute;
     left:var(--preview-left);top:var(--preview-handle-top);
@@ -10030,7 +10032,26 @@ window.addEventListener('resize',()=>{if(view)renderTimelineNotes();});
   const artwork=image.firstElementChild;
   let activeSource=null, dismissedSource=null;
   image.addEventListener('click',()=>preview.classList.toggle('expanded'));
-  preview.addEventListener('pointerleave',()=>preview.classList.remove('expanded'));
+  let blurExit;
+  preview.addEventListener('pointerenter',()=>blurExit?.cancel());
+  preview.addEventListener('pointerleave',()=>{
+    if(!preview.classList.contains('expanded')) return;
+    const transform=getComputedStyle(image).transform;
+    preview.classList.remove('expanded');
+    if(matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    blurExit?.cancel();
+    preview.classList.add('blur-exiting');
+    blurExit=image.animate(
+      [{transform,scale:1,filter:'blur(0px)',opacity:1,easing:'ease-out'},
+       {transform,scale:1,filter:'blur(20px)',opacity:1,offset:.4,easing:'cubic-bezier(.25,.7,.3,1)'},
+       {transform,scale:1.045,filter:'blur(30px)',opacity:0}],
+      {duration:420}
+    );
+    const animation=blurExit;
+    animation.onfinish=animation.oncancel=()=>{
+      if(blurExit===animation) preview.classList.remove('blur-exiting');
+    };
+  });
   const closeButton=preview.querySelector('button');
   let candidates=[], frame=0, returning=false, lastScrollTop=wrap.scrollTop;
   let exitAnimation, buttonExit;
@@ -10088,7 +10109,10 @@ window.addEventListener('resize',()=>{if(view)renderTimelineNotes();});
     if(source===dismissedSource){if(!exitAnimation) preview.hidden=true;return;}
     if(exitAnimation){preview.hidden=true;cancelPreviewExit();}
     dismissedSource=null;
-    if(source!==activeSource) preview.classList.remove('expanded');
+    if(source!==activeSource){
+      blurExit?.cancel();
+      preview.classList.remove('expanded');
+    }
     activeSource=source;
     const rect=source.getBoundingClientRect();
     const scale=Math.min(.7,200/rect.width,134/rect.height);
