@@ -5982,8 +5982,10 @@ function renderAllNotes(){
     for(const {note,index} of group.items){
       const item=document.createElement('button');item.type='button';item.className='all-notes-item';
       item.setAttribute('aria-label',`${fmt(note.t)} ${note.text||'图片笔记'}`);
-      const text=document.createElement('div');renderTimelineNoteText(text,note.content,note.text);
-      if(note.segmentTime != null)text.style.backgroundColor=note.background;
+      // 摘录与文稿共用半透明荧光笔样式：行内 span 逐行绘制，不铺满整块。
+      const excerpt=note.segmentTime != null;
+      const text=document.createElement(excerpt?'span':'div');renderTimelineNoteText(text,note.content,note.text);
+      if(excerpt)text.style.cssText=transcriptFormatCSS({background:note.background});
       item.appendChild(text);
       for(const node of note.content||[]){
         if(!node||node.type!=='image')continue;
