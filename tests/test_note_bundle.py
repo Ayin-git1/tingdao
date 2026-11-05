@@ -96,10 +96,12 @@ class NoteBundleTests(unittest.TestCase):
             self.assertEqual(result['ids'][0]['name'], name)
             actual = self.dest / result['ids'][0]['id']
             expected = dict(self.meta, name=name, imported_note=True)
+            for item in expected['segments']:
+                item.pop('formats', None)
             loaded = json.loads((actual / 'session.json').read_text())
             loaded.pop('share_author', None)
             self.assertEqual(loaded, expected)
-            for f in ['audio.wav', 'audio.m4a', 'note-images/a.png', '.pref.json']:
+            for f in ['audio.wav', 'audio.m4a', 'note-images/a.png']:
                 self.assertEqual((actual / f).read_bytes(), (self.d / f).read_bytes())
             self.assertTrue((actual / 'transcript.md').read_text().startswith('# ' + name))
 
@@ -136,12 +138,29 @@ class NoteBundleTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             self.export()
 
-    def test_roundtrip_keeps_independent_study_note_title_and_bytes(self):
-        text = '# 快捷键速查\n\n自己的标题不等于项目名\n'
-        (self.d / 'note.md').write_text(text)
+    def test_export_omits_personal_settings_and_text_effects(self):
+        self.meta.update(review={'items': []}, last_pos=8, play_rate='2x', music_follow=True, noteText='私人文字笔记')
+        self.meta['segments'][0]['formats'] = [{'start': 0, 'end': 2, 'style': 'highlight'}]
+        self.meta['notes'][0]['formats'] = [{'start': 0, 'end': 2, 'style': 'bold'}]
+        (self.d / 'session.json').write_text(json.dumps(self.meta))
+        (self.d / '.review.json').write_text('{"items": []}')
+        before = (self.d / 'session.json').read_bytes()
         self.export()
+        with zipfile.ZipFile(self.zip) as z:
+            for file in ('note.md', '.pref.json', '.review.json'):
+                self.assertNotIn('课程/' + file, z.namelist())
+            exported = json.loads(z.read('课程/session.json'))
+            for key in ('review', 'last_pos', 'play_rate', 'music_follow', 'noteText'):
+                self.assertNotIn(key, exported)
+            for item in exported['segments'] + exported['notes']:
+                self.assertNotIn('formats', item)
+            for key in ('summary', 'outline', 'notes'):
+                self.assertTrue(exported[key])
         result = self.ns['import_note_bundle'](self.zip, self.dest)
-        self.assertEqual((self.dest / result['ids'][0]['id'] / 'note.md').read_text(), text)
+        actual = self.dest / result['ids'][0]['id']
+        self.assertFalse((actual / 'note.md').exists())
+        self.assertFalse((actual / '.pref.json').exists())
+        self.assertEqual((self.d / 'session.json').read_bytes(), before)
 
     def test_text_only_note_after_audio_deletion_clears_stale_audio_refs(self):
         self.meta['audio'] = None

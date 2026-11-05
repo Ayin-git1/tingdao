@@ -4,6 +4,7 @@ const test = require('node:test');
 const vm = require('node:vm');
 const html = fs.readFileSync('index.html', 'utf8');
 const opening = html.slice(html.indexOf('  const openingPosition ='), html.indexOf('  // 若该项目正在后台精修'));
+const run = (context) => vm.runInContext(lookup + 'var done=(async()=>{const isCurrent=()=>generation===transcriptViewGeneration;\n' + opening + '})();', context);
 const lookup = html.match(/function curHit\([^)]*\)\{[\s\S]*?\n\}/)[0];
 
 test('opening scrolls to saved playback paragraph without changing or starting audio', () => {
@@ -15,7 +16,7 @@ test('opening scrolls to saved playback paragraph without changing or starting a
     player, segTimes:[0, 5, 10, 20], requestAnimationFrame(fn){frame=fn;},
     $:()=>({classList:{remove:name=>classes.delete(name)}}),
     followTo(...args){calls.push(args);}});
-  vm.runInContext(lookup + opening, context);
+  run(context);
   assert.ok(classes.has('transcript-restoring'));
   frame();
   assert.deepEqual(calls, [[2, 'instant']]);
@@ -30,7 +31,7 @@ test('new projects stay at top and stale opening callbacks cannot move another p
     const context = vm.createContext({d:{last_pos:position}, generation:1, transcriptViewGeneration:1,
       player:{currentTime:0}, segTimes:[0, 10], requestAnimationFrame(fn){frame=fn;},
       followTo(...args){calls.push(args);}});
-    vm.runInContext(lookup + opening, context);
+    run(context);
     context.transcriptViewGeneration=2;
     if(frame)frame();
     assert.deepEqual(calls, []);

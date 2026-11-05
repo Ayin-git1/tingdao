@@ -8,7 +8,7 @@ const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 const app = fs.readFileSync(path.join(root, 'app.py'), 'utf8');
 const soundFiles = [
   'task_complete_warm.mp3',
-  'task_complete_distant.mp3',
+  'task_complete_cheerful.mp3',
   'project_delete.mp3',
 ];
 
@@ -31,8 +31,8 @@ test('serves only approved bundled notification sounds as MP3', () => {
 test('persists warm completion sound by default and offers both completion choices', () => {
   assert.match(html, /id="setCompletionSound"/);
   assert.match(html, /data-v="warm"[^>]*>温馨</);
-  assert.match(html, /data-v="distant"[^>]*>悠远</);
-  assert.match(html, /const COMPLETION_SOUNDS = \['warm', 'distant'\]/);
+  assert.match(html, /data-v="cheerful"[^>]*>雀跃</);
+  assert.match(html, /const COMPLETION_SOUNDS = \['warm', 'cheerful'\]/);
   assert.match(html, /completionSound = COMPLETION_SOUNDS\.includes\(st\.completion_sound\) \? st\.completion_sound : 'warm'/);
   assert.match(html, /key:'completion_sound', value:completionSound/);
 });

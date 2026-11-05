@@ -13,6 +13,9 @@
 | Pinyon Script 字体 | 侧栏与「关于」页的 Folio 手写字标，内嵌于 `index.html` | SIL Open Font License 1.1 | Google Fonts |
 | Tauri 及其 Rust 依赖 | 原生窗口壳 | MIT / Apache-2.0 | tauri-apps/tauri |
 | ed25519-dalek 2.2.0 / curve25519-dalek 4.1.3 及签名依赖 | 静默前端补丁签名验证，编译进原生壳 | BSD-3-Clause / MIT / Apache-2.0（许可文本随包 `program/licenses/frontend-patches.txt` 或 `program-windows/licenses/frontend-patches.txt`） | dalek-cryptography/curve25519-dalek；见 `licenses/frontend-patches.txt` |
+| 删除提示音 `sounds/project_delete.mp3`（经裁剪、调音量） | 项目/录音移入废纸篓时播放 | CC BY（Freesound 页面所示版本） | “Paper ball, crumpled, throwing to ground…” by MattRuthSound，Freesound https://freesound.org/s/562031/ |
+| 完成提示音「雀跃」`sounds/task_complete_cheerful.mp3`（经裁剪、调音量） | 转录等任务完成时播放 | CC0 1.0 | “Short Success Sound Glockenspiel Treasure Video Game”，Freesound https://freesound.org/s/456965/ |
+| ts-fsrs 5.4.2 | 复习打卡的间隔重复排期，内嵌于 `index.html`（保留原许可声明） | MIT | open-spaced-repetition/ts-fsrs |
 | opencc-python-reimplemented 0.1.7 | 转写结果中文简繁统一，随程序放在 `opencc/`（含 OpenCC 词典） | Apache-2.0（`opencc/LICENSE.txt`、`opencc/NOTICE.txt`） | yichen0831/opencc-python · BYVoid/OpenCC |
 
 macOS 安装包不内置 FFmpeg；Windows 安装器在系统缺少 Microsoft Edge WebView2 时会联网下载该运行时，其许可由微软提供。

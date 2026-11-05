@@ -154,6 +154,7 @@ test(`exitView defers history refresh until the sidebar selection transition is 
   global.updateNoteBtn = () => {};
   global.updateRefineUI = () => {};
   global.setTranscriptLoading = () => {};
+  global.document = {body: {classList: {remove() {}, contains: () => false}}};
 
   exitView();
 

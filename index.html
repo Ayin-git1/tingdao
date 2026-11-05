@@ -810,6 +810,9 @@
   #feed .seg.image-aside-row{position:relative;z-index:2;}
   #feed .seg.image-aside-row>.transcript-note-image{position:absolute;top:5px;right:8px;margin:0;}
   #feed .seg.image-aside-row>.transcript-note-image[data-side="left"]{left:74px;right:auto;}
+  /* 栏宽不够绕排时，图片临时排在本段文字下方，栏宽恢复后回到侧排；保存的宽度和位置不变 */
+  #feed .seg.image-aside-row.image-aside-collapsed>.transcript-note-image{position:relative;top:auto;left:auto;right:auto;grid-column:2;margin:6px 0 2px;max-width:100%;}
+  #feed .seg.image-aside-row.image-aside-collapsed>.transcript-image-divider{display:none;}
   #feed .seg .tx.image-aside-text{box-sizing:border-box;padding-right:var(--image-aside-space);overflow-wrap:anywhere;}
   #feed .seg .tx.image-aside-text[data-image-side="left"]{padding-left:var(--image-aside-space);padding-right:0;}
   #feed .tn-note-body.image-aside-text{box-sizing:border-box;padding-right:var(--image-aside-space);overflow-wrap:anywhere;}
@@ -852,7 +855,8 @@
   #transcriptImageDragGhost img{display:block;width:100%;height:auto;}
   .transcript-note-image.tn-main-image-selected.image-dragging{outline:0;}
   .transcript-note-image.image-dragging .transcript-note-image-resize{display:none;}
-  #transcriptImagePreview{position:fixed;inset:0;z-index:12;pointer-events:none;--preview-gap:12px;--preview-handle-height:30px;--preview-handle-extension:6px;}
+  :root{--preview-handle-height:30px;--preview-handle-extension:6px;--bookmark-motion:240ms cubic-bezier(.2,.75,.25,1);--bookmark-fade:180ms ease;}
+  #transcriptImagePreview{position:fixed;inset:0;z-index:14;pointer-events:none;--preview-gap:12px;}
   #transcriptImagePreview .preview-surface{position:absolute;display:block;overflow:hidden;
     border-radius:var(--radius-3);
     box-shadow:0 4px 16px rgba(0,0,0,.22);transform-origin:top left;
@@ -879,16 +883,20 @@
     border-radius:0 6px 6px 0;clip-path:inset(0 round 0 6px 6px 0);
     background:rgba(var(--g-rgb),.72);
     -webkit-backdrop-filter:blur(9px);backdrop-filter:blur(9px);
-    transition:opacity 180ms ease;}
-  #transcriptImagePreview:is(:hover,:focus-within,.expanded)::before{
+    transition:opacity var(--bookmark-fade);}
+  #transcriptImagePreview:is(:hover,:focus-within,.expanded)::before,
+  #reviewBookmark[aria-expanded="true"]::before,
+  #musicBookmark[aria-expanded="true"]::before{
     opacity:0;}
   #transcriptImagePreview::after{content:"";position:absolute;pointer-events:none;
     left:calc(var(--preview-left) + 4px + var(--preview-handle-extension) / 2);top:calc(var(--preview-handle-top) + var(--preview-handle-height) / 2);
     width:5px;height:5px;border:solid var(--g-on);border-width:2px 2px 0 0;
-    transform:translateY(-50%) rotate(45deg);transition:opacity 180ms ease,transform 240ms cubic-bezier(.2,.75,.25,1);}
+    transform:translateY(-50%) rotate(45deg);transition:opacity var(--bookmark-fade),transform var(--bookmark-motion);}
   @media(prefers-reduced-motion:no-preference){
-    #transcriptImagePreview:not([hidden]):not(:is(:hover,:focus-within,.expanded))::before,
-    #transcriptImagePreview:not([hidden]):not(:is(:hover,:focus-within,.expanded))::after{
+    #transcriptImagePreview.bookmark-enter::before,
+    #transcriptImagePreview.bookmark-enter::after,
+    #reviewBookmark.bookmark-enter,
+    #musicBookmark.bookmark-enter{
       animation:previewBookmarkEnter 220ms cubic-bezier(.22,1,.36,1);}
   }
   @keyframes previewBookmarkEnter{
@@ -899,15 +907,19 @@
     opacity:0;transform:translate(14px,-50%) rotate(45deg);}
   #transcriptImagePreview:is(:hover,:focus-within,.expanded) .preview-surface{z-index:1;}
   #transcriptImagePreview:not(:is(:hover,:focus-within,.expanded))::before,
-  #transcriptImagePreview:not(:is(:hover,:focus-within,.expanded))::after{opacity:var(--bookmark-opacity,1);transition-property:transform;}
-  #transcriptImagePreview .incoming-bookmark{position:absolute;left:var(--preview-left);
-    top:var(--incoming-top);width:calc(18px + var(--preview-handle-extension));
-    height:var(--preview-handle-height);border-radius:0 6px 6px 0;
-    background:rgba(var(--g-rgb),.72);color:var(--g-on);opacity:var(--incoming-opacity,0);
-    -webkit-backdrop-filter:blur(9px);backdrop-filter:blur(9px);pointer-events:none;}
-  #transcriptImagePreview .incoming-bookmark::after{content:"";position:absolute;
+  #transcriptImagePreview:not(:is(:hover,:focus-within,.expanded))::after,
+  #reviewBookmark[aria-expanded="false"]::before,
+  #reviewBookmark[aria-expanded="false"]>svg,
+  #musicBookmark[aria-expanded="false"]::before,
+  #musicBookmark[aria-expanded="false"]>svg{opacity:var(--bookmark-opacity,1);transition-property:transform;}
+  #transcriptImagePreview .outgoing-bookmark{position:absolute;z-index:-1;pointer-events:none;
+    left:var(--preview-left);top:var(--preview-handle-top);
+    width:calc(18px + var(--preview-handle-extension));height:var(--preview-handle-height);
+    border-radius:0 6px 6px 0;background:rgba(var(--g-rgb),.72);
+    -webkit-backdrop-filter:blur(9px);backdrop-filter:blur(9px);}
+  #transcriptImagePreview .outgoing-bookmark::after{content:"";position:absolute;
     left:calc(4px + var(--preview-handle-extension) / 2);top:50%;
-    width:5px;height:5px;border:solid currentColor;border-width:2px 2px 0 0;
+    width:5px;height:5px;border:solid var(--g-on);border-width:2px 2px 0 0;
     transform:translateY(-50%) rotate(45deg);}
   #transcriptImagePreview button{z-index:2;}
   #transcriptImagePreview button{position:absolute;left:calc(var(--preview-left) + var(--preview-gap) + 6px);
@@ -4097,6 +4109,266 @@ html:not([data-material="mimetic"]) #setBody #materialAdvanced{display:none;}
   #setpop .setclose:focus-visible{outline:2px solid var(--g);outline-offset:3px;}
   #setBody .seg{height:38px; box-sizing:border-box; padding:3px; line-height:normal;}
   #setBody .segin{top:3px;height:calc(100% - 6px);border-radius:10px;}
+  /* —— 复习打卡（牌堆）：入口书签在课件书签下方，面板浮在文稿左侧，宽窗口时把正文推到右边 —— */
+  #reviewBookmark{position:fixed;z-index:13;width:calc(18px + var(--preview-handle-extension));height:var(--preview-handle-height);border:0;padding:0;border-radius:0 6px 6px 0;cursor:pointer;
+    background:none;}
+  #reviewBookmark::before{content:"";position:absolute;inset:0;border-radius:inherit;background:rgba(var(--g-rgb),.72);
+    -webkit-backdrop-filter:blur(9px);backdrop-filter:blur(9px);transition:opacity var(--bookmark-fade);}
+  #reviewBookmark[hidden]{display:none;}
+  #reviewBookmark>svg{position:absolute;left:50%;top:50%;width:16px;height:16px;transform:translate(-50%,-50%);color:var(--g-on);transition:opacity var(--bookmark-fade),transform var(--bookmark-motion);}
+  #reviewBookmark .rv-badge{position:absolute;left:15px;top:-6px;min-width:16px;height:16px;padding:0 4px;border-radius:var(--radius-3);background:var(--rv-seal);color:#fff;
+    font-size:10px;font-weight:700;line-height:16px;text-align:center;box-shadow:0 0 0 2px var(--bg);font-variant-numeric:tabular-nums;}
+  #reviewBookmark .rv-badge:empty{display:none;}
+  #reviewBookmark[aria-expanded="true"]{pointer-events:none;}
+  #reviewBookmark[aria-expanded="true"]>svg{opacity:0;transform:translate(calc(-50% + 14px),-50%);}
+  #reviewBookmark[aria-expanded="true"] .rv-badge{opacity:0;}
+  :root{--rv-paper:#fffaea;--rv-paper-edge:#efe4c3;--rv-paper-ink:#2a261c;--rv-paper-sub:#8c826a;--rv-seal:#b5543e;
+    --rv-mac0:#f6c9d3;--rv-mac1:#bfe8d6;--rv-mac2:#d8cff3;--rv-mac3:#f7e3a1;--rv-mac4:#f9d0b8;--rv-mac5:#c4def6;
+    --rv-face:#ffd76a;--rv-face-ink:#5a4216;--rv-face-cheek:#ffab91;--rv-face-sweat:#8ec9f2;--rv-ease:cubic-bezier(.16,1,.3,1);--rv-spring:cubic-bezier(.34,1.56,.64,1);}
+  html[data-appearance="dark"]{--rv-paper:#2c2a24;--rv-paper-edge:#433f33;--rv-paper-ink:#f1ecdf;--rv-paper-sub:#b3aa94;--rv-seal:#e08a72;
+    --rv-mac0:#8f6470;--rv-mac1:#527f6c;--rv-mac2:#6f6596;--rv-mac3:#8c7c46;--rv-mac4:#94705b;--rv-mac5:#58789a;--rv-face:#e9bf55;--rv-face-ink:#3a2a0c;}
+  .feedwrap.review-push{padding-left:calc(var(--reading-edge-gap) + 396px);}
+  #feed.review-reflow{opacity:0;transition:opacity .12s ease-out;}
+  #feed.review-settle{animation:rvDocIn .28s var(--rv-ease) both;}
+  @keyframes rvDocIn{from{opacity:0;transform:translateX(var(--rv-dx,0));}}
+  /* 回想时把文稿里对应的笔记贴上胶带，撕开或跳转后露出 */
+  #feed .seg.note.rv-taped .tn-note-body{color:transparent;user-select:none;border-radius:0;-webkit-box-decoration-break:clone;box-decoration-break:clone;
+    background:linear-gradient(180deg,rgba(255,255,255,.22),transparent 55%),linear-gradient(var(--rv-tape),var(--rv-tape));}
+  #feed .seg.note.rv-taped .tn-note-body *{visibility:hidden;}
+
+  #reviewPanel{position:fixed;z-index:14;width:384px;display:flex;flex-direction:column;background:var(--bg);border-radius:var(--radius-3);
+    box-shadow:0 0 0 1px rgba(20,30,45,.06),0 6px 18px rgba(20,30,45,.12),0 24px 60px rgba(20,30,45,.16);overflow:hidden;outline:none;
+    transform-origin:0 110px;transform:translateX(-18px) scale(.96);opacity:0;pointer-events:none;transition:transform .26s cubic-bezier(.2,.75,.25,1),opacity .18s;}
+  html[data-appearance="dark"] :is(#reviewPanel,#musicPanel){box-shadow:0 0 0 1px rgba(255,255,255,.06),0 6px 18px rgba(0,0,0,.35),0 24px 60px rgba(0,0,0,.45);}
+  #reviewPanel.open{transform:none;opacity:1;pointer-events:auto;}
+  #reviewPanel[hidden]{display:none;}
+  #reviewPanel kbd{font:inherit;font-size:11px;line-height:15px;min-width:16px;padding:0 4px;border-radius:var(--radius-1);border:1px solid color-mix(in srgb,currentColor 35%,transparent);display:inline-block;text-align:center;color:var(--heading-ink);}
+  #reviewPanel button{font:inherit;color:inherit;}
+  .rv-views{position:relative;flex:1;min-height:0;}
+  .rv-view{position:absolute;inset:0;display:flex;flex-direction:column;background:var(--bg);transition:transform .34s var(--rv-ease),opacity .25s;}
+  .rv-view.rv-side{transform:translateX(100%);opacity:0;pointer-events:none;}
+  #reviewPanel[data-view="all"] .rv-deck-v,#reviewPanel[data-view="add"] .rv-deck-v{transform:translateX(-24%);opacity:0;pointer-events:none;}
+  #reviewPanel[data-view="all"] .rv-all-v{transform:none;opacity:1;pointer-events:auto;}
+  #reviewPanel[data-view="add"] .rv-all-v{transform:translateX(-24%);opacity:0;pointer-events:none;}
+  #reviewPanel[data-view="add"] .rv-add-v{transform:none;opacity:1;pointer-events:auto;}
+  .rv-head{display:flex;align-items:center;gap:6px;padding:12px 12px 0 18px;height:44px;flex:none;}
+  .rv-head .rv-t{font-size:var(--fs-ctl);font-weight:600;color:var(--heading-ink);display:flex;align-items:center;gap:4px;}
+  .rv-head .rv-count{font-size:var(--fs-meta);color:var(--sub);font-variant-numeric:tabular-nums;margin-left:6px;font-weight:400;}
+  .rv-head .rv-sp{flex:1;}
+  .rv-icon{height:28px;min-width:28px;padding:0 6px;border:0;border-radius:var(--radius-3);background:none;color:var(--sub);display:inline-flex;align-items:center;justify-content:center;gap:4px;cursor:pointer;font-size:var(--fs-meta);}
+  .rv-icon:hover{background:var(--soft);color:var(--txt);}
+  .rv-icon svg{width:16px;height:16px;}
+  .rv-snd[aria-pressed="false"] .on,.rv-snd[aria-pressed="true"] .off{display:none;}
+  .rv-week{position:relative;z-index:6;flex:none;margin:8px 16px 0;padding:10px 12px 8px;border-radius:var(--radius-3);background:var(--soft);cursor:pointer;border:0;width:calc(100% - 32px);text-align:left;display:block;}
+  .rv-week:hover{background:color-mix(in srgb,var(--soft) 70%,var(--line));}
+  .rv-wk-row{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;}
+  .rv-wk-day{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:var(--fs-micro);color:var(--sub);}
+  .rv-wk-day.is-today{color:var(--g-ink);font-weight:600;}
+  .rv-wk-day svg{width:22px;height:22px;overflow:visible;display:block;}
+  .rv-wk-cap{display:flex;justify-content:space-between;align-items:center;margin-top:8px;font-size:var(--fs-meta);color:var(--sub);font-variant-numeric:tabular-nums;}
+  .rv-wk-cap b{color:var(--txt);font-weight:600;display:inline-block;}
+  .rv-wk-cap b.rv-bump{animation:rvBump .5s var(--rv-spring);}
+  .rv-wk-cap .rv-more{display:inline-flex;align-items:center;gap:2px;}
+  .rv-wk-cap .rv-more svg{width:12px;height:12px;transition:transform .3s var(--rv-ease);}
+  .rv-week[aria-expanded="true"] .rv-more svg{transform:rotate(180deg);}
+  @keyframes rvBump{40%{transform:translateY(-3px);color:var(--gd);}}
+  .rv-hist{position:absolute;left:0;right:0;top:calc(100% + 6px);overflow:hidden;height:0;border-radius:var(--radius-3);background:var(--bg);transition:height .36s var(--rv-ease),box-shadow .2s;}
+  .rv-week[aria-expanded="true"] .rv-hist{box-shadow:0 0 0 1px var(--line),0 10px 28px rgba(20,30,45,.16);}
+  .rv-hist-in{display:grid;grid-template-columns:auto 1fr;gap:6px;padding:12px 12px 10px;}
+  .rv-hist-rows{display:grid;grid-template-rows:repeat(7,1fr);font-size:var(--fs-micro);color:var(--sub);align-items:center;}
+  .rv-hist-cap{grid-column:1 / 3;font-size:var(--fs-micro);color:var(--sub);display:flex;justify-content:space-between;}
+  .rv-dots{display:grid;grid-template-columns:repeat(15,1fr);grid-template-rows:repeat(7,1fr);grid-auto-flow:column;gap:3px;}
+  .rv-dot{aspect-ratio:1;display:block;}
+  .rv-dot svg{display:block;width:100%;height:100%;overflow:visible;}
+  #reviewPanel svg .pt{fill:var(--line);}
+  #reviewPanel svg .fl{fill:var(--gd);}
+  #reviewPanel svg .trk{fill:none;stroke:color-mix(in srgb,var(--sub) 50%,transparent);stroke-width:1.4;stroke-dasharray:1.6 1.4;}
+  #reviewPanel svg .arc{fill:none;stroke:var(--gd);stroke-width:1.8;stroke-linecap:round;transform:rotate(-90deg);transform-origin:center;transform-box:fill-box;transition:stroke-dashoffset .6s var(--rv-ease);}
+  #reviewPanel .miss .trk{stroke:color-mix(in srgb,var(--rv-seal) 75%,transparent);stroke-width:1.6;}
+  #reviewPanel .future .trk{stroke:color-mix(in srgb,var(--sub) 35%,transparent);}
+  #reviewPanel .today .trk{stroke:rgba(var(--gd-rgb),.6);animation:rvSpin 2.4s linear infinite;transform-origin:center;transform-box:fill-box;}
+  @keyframes rvSpin{to{transform:rotate(1turn);}}
+  .rv-deck{position:relative;flex:1;min-height:0;margin:6px 16px 0;}
+  .rv-card{position:absolute;inset:0 0 18px;display:flex;flex-direction:column;border-radius:var(--radius-3);background:var(--rv-paper);color:var(--rv-paper-ink);
+    box-shadow:0 0 0 1px var(--rv-paper-edge),0 2px 4px rgba(60,45,10,.06),0 10px 24px rgba(60,45,10,.08);transition:transform .42s var(--rv-ease),opacity .3s;transform-origin:50% 100%;}
+  .rv-card.back1{transform:translateY(9px) scale(.955);z-index:1;}
+  .rv-card.back2{transform:translateY(18px) scale(.91);z-index:0;}
+  .rv-card.front{z-index:3;}
+  .rv-card.out-good{transform:translate(-30px,-60px) rotate(-6deg);opacity:0;}
+  .rv-card.out-again{transform:translate(40px,30px) rotate(5deg);opacity:0;}
+  .rv-card.in{animation:rvCardIn .42s var(--rv-ease) both;}
+  @keyframes rvCardIn{from{transform:translateY(9px) scale(.955);}}
+  .rv-c-top{display:flex;align-items:center;gap:8px;padding:16px 18px 0;font-size:var(--fs-meta);color:var(--rv-paper-sub);}
+  .rv-chip{padding:1px 7px;border-radius:var(--radius-4);border:1px solid var(--rv-paper-edge);font-size:var(--fs-micro);line-height:16px;}
+  .rv-late{color:var(--rv-seal);}
+  .rv-c-top .rv-sp{flex:1;}
+  .rv-mem{display:flex;align-items:center;gap:5px;font-variant-numeric:tabular-nums;}
+  .rv-mem svg{width:16px;height:16px;}
+  .rv-mem .trk{stroke:var(--rv-paper-sub)!important;opacity:.6;stroke-width:1.5!important;stroke-dasharray:2.4 1.9!important;}
+  .rv-c-body{flex:1;min-height:0;overflow:auto;padding:12px 20px 8px;display:flex;flex-direction:column;
+    --ft:0px;--fb:0px;-webkit-mask:linear-gradient(transparent,#000 var(--ft),#000 calc(100% - var(--fb)),transparent);mask:linear-gradient(transparent,#000 var(--ft),#000 calc(100% - var(--fb)),transparent);}
+  .rv-c-body.more{--fb:28px;}
+  .rv-c-body.scrolled{--ft:22px;}
+  .rv-c-in{padding:10px 0 16px;}
+  .rv-nw{white-space:nowrap;}
+  .rv-c-title{display:inline;font-size:20px;line-height:30px;font-weight:600;color:var(--rv-paper-ink);cursor:pointer;text-decoration:none;}
+  .rv-c-title:hover{color:var(--g-ink);}
+  .rv-c-title svg{width:13px;height:13px;margin-left:5px;vertical-align:0;color:var(--rv-paper-sub);}
+  .rv-c-src{margin-top:4px;font-size:var(--fs-meta);color:var(--rv-paper-sub);font-variant-numeric:tabular-nums;}
+  .rv-c-text{margin-top:16px;font-size:var(--fs-read);line-height:2;color:var(--rv-paper-ink);overflow-wrap:anywhere;}
+  .rv-full{display:none;}
+  .rv-c-text.shown .rv-vt,.rv-c-note.shown .rv-vt{display:none;}
+  .rv-c-text.shown .rv-full{display:block;line-height:1.8;animation:rvRise .32s var(--rv-ease) both;}
+  .rv-c-note.shown .rv-full{display:inline;}
+  @keyframes rvRise{from{opacity:0;transform:translateY(5px);}}
+  .rv-tape{display:inline-block;vertical-align:-3px;height:24px;line-height:24px;white-space:nowrap;rotate:-1.6deg;margin:0 5px;padding:0 6px;border:0;color:transparent;cursor:pointer;
+    background:linear-gradient(180deg,rgba(255,255,255,.22),transparent 55%),linear-gradient(var(--rv-tape),var(--rv-tape));--z:3px;
+    -webkit-mask:conic-gradient(from 45deg at left,#0000 0 0,#000 1deg 89deg,#0000 90deg) left/var(--z) 5px repeat-y,conic-gradient(from -135deg at right,#0000 0 0,#000 1deg 89deg,#0000 90deg) right/var(--z) 5px repeat-y,linear-gradient(#000 0 0) center/calc(100% - 2 * var(--z) + 1px) 100% no-repeat;
+            mask:conic-gradient(from 45deg at left,#0000 0 0,#000 1deg 89deg,#0000 90deg) left/var(--z) 5px repeat-y,conic-gradient(from -135deg at right,#0000 0 0,#000 1deg 89deg,#0000 90deg) right/var(--z) 5px repeat-y,linear-gradient(#000 0 0) center/calc(100% - 2 * var(--z) + 1px) 100% no-repeat;
+    transition:transform .3s var(--rv-ease),opacity .25s,filter .2s;user-select:none;}
+  .rv-tape:hover,.rv-tape:focus-visible{filter:brightness(1.05);transform:translateY(-1px);outline:none;}
+  .peel .rv-tape{opacity:0;transform:translate(10px,-6px) rotate(6deg);}
+  .rv-hint{margin-top:10px;font-size:var(--fs-meta);color:var(--rv-paper-sub);}
+  .rv-c-text.shown + .rv-hint{visibility:hidden;}
+  .rv-recall{margin-top:16px;font-size:var(--fs-caption);color:var(--rv-paper-sub);}
+  .rv-card.picking .rv-recall{color:var(--g-ink);font-weight:500;}
+  .rv-c-notes{margin-top:8px;display:flex;flex-direction:column;gap:2px;}
+  .rv-c-note{padding:8px 0;border-top:1px dashed var(--rv-paper-edge);font-size:var(--fs-body);line-height:1.9;}
+  .rv-c-note .rv-ts{font-size:var(--fs-meta);color:var(--rv-paper-sub);margin-right:6px;font-variant-numeric:tabular-nums;}
+  .rv-mini{display:none;grid-template-columns:repeat(4,1fr);gap:2px;margin-top:6px;background:color-mix(in srgb,var(--rv-paper-edge) 45%,transparent);border-radius:var(--radius-1);padding:2px;}
+  .rv-card.picking .rv-mini{display:grid;}
+  .rv-mini button{border:0;background:none;border-radius:var(--radius-1);height:28px;display:grid;place-items:center;opacity:.55;cursor:pointer;transition:opacity .15s;}
+  .rv-mini button:hover{opacity:.85;}
+  .rv-mini button[aria-pressed="true"]{opacity:1;background:var(--rv-paper);box-shadow:0 1px 2px rgba(60,45,10,.12);}
+  .rv-c-foot{flex:none;padding:10px 12px 12px;border-top:1px solid var(--rv-paper-edge);}
+  .rv-grades{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;}
+  .rv-g{position:relative;border:0;border-radius:var(--radius-3);background:color-mix(in srgb,var(--rv-paper-edge) 50%,transparent);padding:8px 2px 7px;cursor:pointer;
+    display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--rv-paper-ink);transition:background .15s,transform .12s,box-shadow .15s;}
+  .rv-g i{font-style:normal;font-size:var(--fs-micro);color:var(--rv-paper-sub);font-variant-numeric:tabular-nums;}
+  .rv-g:hover{background:var(--g-tint);}
+  .rv-g:active,.rv-g.press{transform:scale(.94);}
+  .rv-g[aria-pressed="true"]{background:var(--g-tint);box-shadow:inset 0 0 0 1.5px var(--gd);}
+  .rv-face{width:28px;height:28px;display:block;transition:transform .2s var(--rv-spring);}
+  .rv-face .bg{fill:var(--rv-face);}
+  .rv-face g{fill:none;stroke:var(--rv-face-ink);stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;}
+  .rv-face .f{fill:var(--rv-face-ink);stroke:none;}
+  .rv-face .ck{fill:var(--rv-face-cheek);stroke:none;opacity:.7;}
+  .rv-face .sw{fill:var(--rv-face-sweat);stroke:none;}
+  .rv-face.sm{width:20px;height:20px;margin:auto;}
+  .rv-g:hover .rv-face{transform:translateY(-2px) scale(1.06);}
+  .rv-g[aria-pressed="true"] .rv-face{transform:scale(1.1);}
+  .rv-confirm{display:none;margin-top:8px;width:100%;height:36px;border:0;border-radius:var(--radius-3);background:var(--gd);color:#fff!important;font-size:var(--fs-ctl);font-weight:600;cursor:pointer;}
+  .rv-card.picking .rv-confirm{display:block;}
+  .rv-empty{position:absolute;inset:0 0 18px;display:none;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:6px;color:var(--sub);font-size:var(--fs-caption);}
+  .rv-deck.empty .rv-empty{display:flex;}
+  .rv-empty .first{width:52px;height:52px;margin-bottom:8px;}
+  .rv-empty .first circle{fill:none;stroke:color-mix(in srgb,var(--sub) 50%,transparent);stroke-width:1.5;stroke-dasharray:3.2 2.6;}
+  .rv-empty .big{font-size:var(--fs-read);color:var(--txt);font-weight:600;}
+  .rv-btns{display:flex;gap:8px;margin-top:14px;}
+  .rv-primary{height:34px;padding:0 16px;border:0;border-radius:var(--radius-3);background:var(--gd);color:#fff!important;font-size:var(--fs-ctl);font-weight:600;cursor:pointer;}
+  .rv-primary:disabled{opacity:.35;cursor:default;}
+  .rv-ghost{height:34px;padding:0 16px;border:1px solid var(--line);border-radius:var(--radius-3);background:var(--card);color:var(--heading-ink);font-size:var(--fs-ctl);font-weight:600;cursor:pointer;}
+  .rv-ghost:hover{border-color:var(--gd);color:var(--g-ink);}
+  .rv-keys{flex:none;display:flex;justify-content:center;gap:14px;padding:6px 0 12px;font-size:var(--fs-micro);color:var(--sub);}
+  .rv-keys span{display:inline-flex;align-items:center;gap:4px;}
+  .rv-done-badge{position:relative;width:72px;height:72px;margin-bottom:34px;perspective:400px;}
+  .rv-done-badge .flip{position:absolute;inset:0;transform-style:preserve-3d;transform:rotateY(180deg);}
+  .rv-done-badge .fc{position:absolute;inset:0;border-radius:50%;backface-visibility:hidden;-webkit-backface-visibility:hidden;display:grid;place-items:center;}
+  .rv-done-badge .fc svg{width:100%;height:100%;}
+  .rv-done-badge .fc-front .dash{fill:var(--bg);stroke:color-mix(in srgb,var(--sub) 50%,transparent);stroke-width:1.6;stroke-dasharray:3.6 3;}
+  .rv-done-badge .fc-back{background:var(--gd);transform:rotateY(180deg);box-shadow:0 6px 18px rgba(var(--gd-rgb),.35);}
+  .rv-done-badge .ckp{fill:none;stroke:#fff;stroke-width:4.4;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:40;stroke-dashoffset:0;}
+  .rv-done-badge .ripple{position:absolute;inset:0;border-radius:50%;border:2px solid var(--gd);opacity:0;}
+  .rv-done-badge .burst{position:absolute;left:50%;top:50%;width:0;height:0;}
+  .rv-done-badge .p{position:absolute;left:0;top:0;opacity:0;background:var(--c);transform:rotate(var(--a)) translate(var(--d)) rotate(var(--r));}
+  .rv-done-badge .p.dot{width:8px;height:8px;margin:-4px;border-radius:50%;}
+  .rv-done-badge .p.bar{width:13px;height:3.5px;margin:-1.75px -6.5px;border-radius:0;}
+  .rv-done-badge .p.tp{width:11px;height:6px;margin:-3px -5.5px;border-radius:0;}
+  .rv-done-badge.play{animation:rvDbIn .16s ease-out both;}
+  .rv-done-badge.play .flip{animation:rvDbFlip .62s cubic-bezier(.45,0,.3,1) both;}
+  .rv-done-badge.play .ckp{animation:rvDbDraw .3s .58s cubic-bezier(.65,0,.35,1) both;}
+  .rv-done-badge.play .ripple{animation:rvDbRipple .7s .88s cubic-bezier(.16,1,.3,1) forwards;}
+  .rv-done-badge.play .p{animation:rvDbBurst .85s calc(.88s + var(--dl,0s)) cubic-bezier(.16,1,.3,1) both;}
+  .rv-done-badge.play .fc-back{animation:rvDbThump .36s .88s cubic-bezier(.34,1.56,.64,1) both;}
+  .rv-empty.play .big,.rv-empty.play .sub,.rv-empty.play .rv-btns{animation:rvRise .4s 1.05s var(--rv-ease) both;}
+  @keyframes rvDbIn{from{opacity:0;}}
+  @keyframes rvDbFlip{0%{transform:rotateY(0) scale(.8);}28%{transform:rotateY(0) scale(1);}78%{transform:rotateY(198deg) scale(1.07);}100%{transform:rotateY(180deg) scale(1);}}
+  @keyframes rvDbDraw{from{stroke-dashoffset:40;}to{stroke-dashoffset:0;}}
+  @keyframes rvDbRipple{from{opacity:.55;transform:scale(1);}to{opacity:0;transform:scale(1.9);}}
+  @keyframes rvDbThump{0%{transform:rotateY(180deg) scale(1);}40%{transform:rotateY(180deg) scale(1.12);}100%{transform:rotateY(180deg) scale(1);}}
+  @keyframes rvDbBurst{0%{opacity:0;transform:rotate(var(--a)) translate(26px) rotate(0) scale(.3);}12%{opacity:1;}70%{opacity:1;}100%{opacity:0;transform:rotate(var(--a)) translate(var(--d)) rotate(var(--r)) scale(1);}}
+  .rv-tabs{position:relative;display:flex;gap:3px;margin:8px 16px 4px;height:36px;padding:3px;border-radius:10px;background:var(--soft);flex:none;}
+  .rv-tab{position:relative;z-index:2;flex:1;border:0;background:none;border-radius:8px;font-size:var(--fs-ctl);font-weight:600;color:var(--sub);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px;}
+  .rv-tab:hover{color:var(--txt);}
+  .rv-tab[aria-selected="true"]{color:var(--g-ink);}
+  .rv-tab .n{font-size:var(--fs-meta);font-weight:500;opacity:.75;}
+  .rv-tab-slider{position:absolute;z-index:1;top:3px;bottom:3px;left:3px;border-radius:8px;background:var(--card);box-shadow:0 1px 3px rgba(20,30,50,.08);transition:transform .34s var(--rv-ease),width .34s var(--rv-ease);}
+  .rv-list,.rv-pick{flex:1;min-height:0;overflow:auto;padding:4px 8px 8px;}
+  .rv-lrow{display:grid;grid-template-columns:18px 1fr auto;column-gap:12px;align-items:center;padding:9px 10px;border-radius:var(--radius-3);cursor:pointer;}
+  .rv-lrow:hover{background:color-mix(in srgb,var(--soft) 70%,transparent);}
+  .rv-lrow svg{width:18px;height:18px;}
+  .rv-lrow .lt{min-width:0;}
+  .rv-lrow .lt b{display:block;font-weight:500;font-size:var(--fs-body);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .rv-lrow .lt small{display:block;font-size:var(--fs-meta);color:var(--sub);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .rv-lrow .lt small .del{color:var(--rv-seal);}
+  .rv-lrow .when{font-size:var(--fs-meta);color:var(--sub);font-variant-numeric:tabular-nums;}
+  .rv-lrow .ok{fill:var(--gd);}
+  .rv-lrow .x{width:22px;height:22px;border:0;border-radius:var(--radius-1);background:none;color:var(--sub);cursor:pointer;display:none;place-items:center;}
+  .rv-lrow:hover .x,.rv-lrow.gone-src .x{display:grid;}
+  .rv-lrow:hover .when{display:none;}
+  .rv-lrow .x:hover{background:var(--soft);color:var(--txt);}
+  .rv-lempty{padding:40px 20px;text-align:center;color:var(--sub);font-size:var(--fs-caption);}
+  .rv-foot{flex:none;display:flex;gap:8px;padding:10px 16px 14px;border-top:1px solid color-mix(in srgb,var(--line) 70%,transparent);}
+  .rv-foot .rv-ghost,.rv-foot .rv-primary{flex:1;}
+  .rv-pgrp{font-size:var(--fs-meta);color:var(--sub);margin:12px 10px 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .rv-prow{display:flex;align-items:center;gap:12px;width:100%;min-height:40px;padding:6px 10px;border:0;background:none;border-radius:var(--radius-3);text-align:left;cursor:pointer;}
+  .rv-prow:hover{background:color-mix(in srgb,var(--soft) 70%,transparent);}
+  .rv-prow .pt{flex:1;min-width:0;font-size:var(--fs-body);line-height:21px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .rv-prow .pt small{display:block;font-size:var(--fs-meta);color:var(--sub);}
+  .rv-cb{flex:none;width:17px;height:17px;border-radius:var(--radius-1);border:1.5px solid color-mix(in srgb,var(--sub) 50%,transparent);display:grid;place-items:center;}
+  .rv-cb svg{width:11px;height:11px;opacity:0;}
+  .rv-prow[aria-checked="true"] .rv-cb{background:var(--gd);border-color:var(--gd);}
+  .rv-prow[aria-checked="true"] .rv-cb svg,.rv-prow.in .rv-cb svg{opacity:1;}
+  .rv-prow.in{cursor:default;}
+  .rv-prow.in .pt{color:var(--sub);}
+  .rv-prow.in .rv-cb{background:color-mix(in srgb,var(--sub) 35%,transparent);border-color:transparent;}
+  .rv-tagin{flex:none;font-size:var(--fs-micro);color:var(--g-ink);background:var(--g-tint);border-radius:var(--radius-1);padding:2px 6px;}
+  .rv-toast{position:absolute;left:50%;bottom:14px;z-index:9;transform:translate(-50%,10px);opacity:0;pointer-events:none;display:flex;align-items:center;gap:12px;
+    padding:7px 7px 7px 16px;border-radius:var(--radius-4);background:var(--card);border:1px solid rgba(var(--gd-rgb),.25);white-space:nowrap;max-width:calc(100% - 24px);
+    box-shadow:0 4px 12px rgba(20,30,45,.08),0 12px 30px rgba(20,30,45,.14);font-size:var(--fs-caption);transition:transform .34s var(--rv-ease),opacity .2s;}
+  .rv-toast span{overflow:hidden;text-overflow:ellipsis;}
+  .rv-toast.on{opacity:1;transform:translate(-50%,0);pointer-events:auto;}
+  .rv-toast button{flex:none;border:0;background:var(--g-tint);color:var(--g-ink)!important;font-weight:600;font-size:var(--fs-meta);border-radius:var(--radius-4);height:26px;padding:0 12px;cursor:pointer;}
+  .rv-toast.err button{background:color-mix(in srgb,var(--rv-seal) 14%,transparent);color:var(--rv-seal)!important;}
+  @media (prefers-reduced-motion:reduce){#reviewPanel *,#reviewPanel,#reviewBookmark,#reviewBookmark::before,#reviewBookmark>svg,#feed.review-settle{animation:none!important;transition:none!important;}}
+#musicPanel .spread{display:grid;grid-template-columns:112px 1fr;gap:22px;align-items:center}#musicPanel .cover{height:125px;overflow:hidden;position:relative;background:#f0f4f3;color:#91aaa5;display:grid;place-items:center;border-radius:2px}#musicPanel .cover>svg{width:29px;height:29px;stroke-width:1}#musicPanel .cover img{width:100%;height:100%;object-fit:cover;display:none}#musicPanel h1{font-size:23px;line-height:1.45;letter-spacing:.5px;font-weight:500;margin:0 0 8px;overflow-wrap:anywhere}#musicPanel .artist{font-size:12px;line-height:1.7;color:var(--sub)}#musicPanel .transport{display:flex;align-items:center;gap:10px;margin-top:24px}#musicPanel .transport button{width:28px;height:38px;padding:0;display:grid;place-items:center}#musicPanel .transport .primary{width:38px;border-radius:50%;background:#e6f3f0;color:#347c73}#musicPanel .transport svg{width:18px;height:18px}#musicPanel .seek{margin-top:29px}#musicPanel input[type=range]{display:block;width:100%;height:16px;margin:0;accent-color:var(--accent);cursor:pointer;appearance:none;background:transparent}#musicPanel input[type=range]::-webkit-slider-runnable-track{height:2px;background:linear-gradient(to right,var(--accent) var(--fill,0%),#e8eceb var(--fill,0%));border-radius:2px}#musicPanel input[type=range]::-webkit-slider-thumb{appearance:none;width:6px;height:6px;background:var(--accent);border:0;border-radius:50%;margin-top:-2px}#musicPanel .times{display:flex;justify-content:space-between;font-size:10px;font-variant-numeric:tabular-nums;color:#939c9e;margin-top:2px}#musicPanel .actions{position:relative;display:flex;align-items:center;gap:14px;margin-top:19px;height:34px;padding-right:46px}#musicPanel .action{height:32px;display:flex;align-items:center;justify-content:center;gap:6px;font-size:11px;white-space:nowrap;color:#7c888a;padding:0}#musicPanel .action svg{width:15px;height:15px}#musicPanel .normal{flex-shrink:0;transition:width .4s var(--ease),opacity .22s ease,transform .4s var(--ease),margin .4s var(--ease)}#musicPanel #musicAdd{width:66px;justify-content:flex-start;color:#438b82}#musicPanel #musicMode{width:61px}#musicPanel #musicQueue{width:56px}#musicPanel #musicQueueCount{font-size:10px}#musicPanel .volume-shell{position:absolute;right:0;top:0;height:34px;min-width:0;width:46px;transition:width .4s var(--ease);overflow:hidden}#musicPanel .volume-fan{position:absolute;right:46px;top:0;height:32px;width:calc(100% - 46px);display:flex;align-items:center;gap:12px;min-width:0;opacity:0;transform:translateX(28px);transition:opacity .22s ease,transform .4s var(--ease);pointer-events:none;overflow:hidden}#musicPanel .volume-fan input{width:190px;flex-shrink:0}#musicPanel .volume-fan output{width:30px;font-size:11px;color:#6d7c7b;font-variant-numeric:tabular-nums}#musicPanel .volume-shell>button{position:absolute;right:0;top:0;width:46px;color:#7c888a}#musicPanel .volume-shell>button span{font-size:10px}#musicPanel .actions.volume-open{gap:0}#musicPanel .volume-open .normal{width:0!important;opacity:0;transform:translateX(-16px);pointer-events:none;overflow:hidden}#musicPanel .volume-open .volume-shell{width:100%}#musicPanel .volume-open .volume-fan{opacity:1;transform:none;pointer-events:auto}#musicPanel .volume-open .volume-shell>button{color:#438b82}#musicPanel .playlist{padding:0 26px;max-height:0;opacity:0;overflow:hidden;transition:max-height .4s var(--ease),opacity .22s ease}#musicPanel .playlist.open{max-height:330px;opacity:1;padding-bottom:17px}#musicPanel .playlist-title{border-top:1px solid var(--line);padding:18px 0 10px;font-size:11px;color:#727e80;display:flex;justify-content:space-between}#musicPanel .playlist-title button{font-size:11px;color:#438b82;padding:0}#musicPanel .tracks{list-style:none;margin:0;padding:0;max-height:250px;overflow:auto}#musicPanel .tracks li{display:flex;align-items:center;gap:12px;height:54px;border-bottom:1px solid #f0f2f1;cursor:pointer}#musicPanel .tracks li:last-child{border:0}#musicPanel .tracks .number{color:#a0a9ab;font-size:10px;min-width:17px}#musicPanel .trackname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}#musicPanel .tracks time{font-size:10px;color:#9aa3a5}#musicPanel .grip{color:#aeb6b5;cursor:grab}#musicPanel .grip svg{width:12px;height:16px}#musicPanel .tracks .active .trackname,#musicPanel .tracks .active .number{color:#438b82}#musicPanel .tracks .dragging{opacity:.28}#musicPanel .tracks .over{border-top:1px solid var(--accent)}#musicPanel .empty-note{margin:4px 0 0;color:#8d9799;font-size:11px;line-height:1.8}#musicPanel .notice{min-height:20px;max-width:360px;margin:14px 0;font-size:11px;color:#7b888b;line-height:1.8}
+  #musicBookmark{position:fixed;z-index:13;width:calc(18px + var(--preview-handle-extension));height:var(--preview-handle-height);border:0;padding:0;border-radius:0 6px 6px 0;cursor:pointer;background:none;}
+  #musicBookmark[hidden]{display:none;}
+  #musicBookmark::before{content:"";position:absolute;inset:0;border-radius:inherit;background:rgba(var(--g-rgb),.72);backdrop-filter:blur(9px);-webkit-backdrop-filter:blur(9px);transition:opacity var(--bookmark-fade);}
+  #musicBookmark>svg{position:absolute;left:50%;top:50%;width:16px;height:16px;color:var(--g-on);transform:translate(-50%,-50%);transition:opacity var(--bookmark-fade),transform var(--bookmark-motion);}
+  #musicBookmark[aria-expanded="true"]{pointer-events:none;}
+  #musicBookmark[aria-expanded="true"]>svg{opacity:0;transform:translate(calc(-50% + 14px),-50%);}
+  #musicPanel{position:fixed;z-index:15;width:360px;max-width:calc(100vw - 36px);max-height:calc(100vh - 100px);overflow:auto;background:var(--bg);color:var(--txt);border-radius:var(--radius-3);border:1px solid var(--line);box-shadow:0 0 0 1px rgba(20,30,45,.06),0 6px 18px rgba(20,30,45,.12),0 24px 60px rgba(20,30,45,.16);opacity:0;pointer-events:none;transform-origin:0 110px;transform:translateX(-18px) scale(.96);transition:transform .26s cubic-bezier(.2,.75,.25,1),opacity .18s;--ink:var(--txt);--accent:var(--g);--ease:cubic-bezier(.16,1,.3,1);}
+  #musicPanel.open{opacity:1;pointer-events:auto;transform:none;}
+  #musicPanel[hidden]{display:none;}
+  #musicPanel .inner{padding:27px 26px 15px;}
+  #musicPanel svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;display:block;flex:none;}
+  #musicPanel button{font:inherit;color:inherit;cursor:pointer;background:none;border:0;}
+  #musicPanel button:disabled{opacity:.35;cursor:default;}
+  #musicPanel .cover{background:var(--soft);color:var(--sub);}
+  #musicPanel .cover img{display:block;}
+  #musicPanel .cover img[hidden],#musicPanel .cover>svg[hidden]{display:none;}
+  #musicPanel .transport .primary{background:rgba(var(--g-rgb),.12);color:var(--g-ink);}
+  #musicPanel .follow{display:flex;align-items:center;gap:8px;margin:0;padding:13px 0 4px;border-top:1px solid var(--line);font-size:12px;color:var(--sub);cursor:pointer;}
+  #musicPanel .follow input{accent-color:var(--g);margin:0;}
+  #musicPanel .playlist-title{font-size:12px;}
+  #musicPanel .grip{touch-action:none;user-select:none;cursor:grab;}
+  #musicPanel .tracks .group-dragging{opacity:0;}
+  #musicPanel .tracks li.group-shifting{transition:transform .2s cubic-bezier(.2,.8,.2,1);}
+  #musicDragGhost{position:fixed;z-index:9999;pointer-events:none;border-radius:0;background:transparent;box-shadow:none;}
+  body.transcript-bookmarks-loading :is(#musicBookmark,#musicPanel){visibility:hidden;}
+  @media(prefers-reduced-motion:reduce){#musicBookmark,#musicBookmark::before,#musicBookmark>svg,#musicPanel,#musicPanel *{animation:none!important;transition:none!important;}}
+
 </style>
 
 <!-- 重载快捷键。单独成块、放在主脚本之前: pywebview 的默认菜单里没有 Reload,
@@ -4651,7 +4923,7 @@ html:not([data-material="mimetic"]) #setBody #materialAdvanced{display:none;}
          <div class="seg" id="setCompletionSound" role="group" aria-labelledby="completionSoundLabel">
           <i class="segin" aria-hidden="true"></i>
           <button type="button" data-v="warm" class="on">温馨</button>
-          <button type="button" data-v="distant">悠远</button>
+          <button type="button" data-v="cheerful">雀跃</button>
          </div>
         </div>
        </section>
@@ -4916,7 +5188,7 @@ html:not([data-material="mimetic"]) #setBody #materialAdvanced{display:none;}
       <span id="noteSourceText"></span>
     </div>
   </div>
-  <div id="transcriptImagePreview" hidden><div class="preview-surface"><img alt="" draggable="false"></div><button type="button" aria-label="临时关闭当前插图"><svg aria-hidden="true" width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M3 3l6 6M9 3L3 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button><span class="incoming-bookmark" aria-hidden="true"></span></div>
+  <div id="transcriptImagePreview" hidden><div class="preview-surface"><img alt="" draggable="false"></div><button type="button" aria-label="临时关闭当前插图"><svg aria-hidden="true" width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M3 3l6 6M9 3L3 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button></div>
   <nav class="transcript-anchors" id="transcriptAnchors" aria-label="文稿时间分段" hidden></nav>
   <div class="transcript-loading-label" id="transcriptLoading" role="status" hidden>正在加载文稿…</div>
   <div class="skel" id="skel">
@@ -5463,6 +5735,2087 @@ html:not([data-material="mimetic"]) #setBody #materialAdvanced{display:none;}
   <div class="toast" id="toast" role="status"></div>
 </div>
 
+<!-- 复习打卡：入口书签 + 牌堆面板（内容由 reviewRender* 生成） -->
+<svg style="display:none"><defs><symbol id="icon-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></symbol><symbol id="icon-play" viewBox="0 0 24 24"><path d="m8 5 11 7-11 7z"/></symbol><symbol id="icon-prev" viewBox="0 0 24 24"><path d="M6 5v14M19 5l-10 7 10 7z"/></symbol><symbol id="icon-next" viewBox="0 0 24 24"><path d="M18 5v14M5 5l10 7-10 7z"/></symbol><symbol id="icon-note" viewBox="0 0 24 24"><path d="M10 17V3c1 4 8 3 8 8M10 15c-7-2-7 6-2 5 2 0 2-2 2-5"/></symbol><symbol id="icon-volume" viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4zM15 8c3 2 3 6 0 8M18 5c5 4 5 10 0 14"/></symbol><symbol id="icon-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol><symbol id="icon-loop" viewBox="0 0 24 24"><path d="M5 7h13l-3-3M19 17H6l3 3M19 7v5M5 17v-5"/></symbol><symbol id="icon-shuffle" viewBox="0 0 24 24"><path d="M3 6h3c5 0 5 12 10 12h5m-3-3 3 3-3 3M3 18h3c5 0 5-12 10-12h5m-3-3 3 3-3 3"/></symbol><symbol id="icon-order" viewBox="0 0 24 24"><path d="M4 6h2M10 6h10M4 12h2M10 12h10M4 18h2M10 18h10"/></symbol><symbol id="icon-list" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></symbol><symbol id="icon-drag" viewBox="0 0 24 24"><path d="M9 5h.01M15 5h.01M9 12h.01M15 12h.01M9 19h.01M15 19h.01"/></symbol></defs></svg>
+<button id="musicBookmark" type="button" aria-label="配乐播放器" aria-controls="musicPanel" aria-expanded="false" hidden><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 17V3c1 4 8 3 8 8M10 15c-7-2-7 6-2 5 2 0 2-2 2-5"/></svg></button><section id="musicPanel" aria-label="配乐播放器" hidden><div class="inner"><div class="spread"><div class="cover"><svg><use href="#icon-note"/></svg><img id="musicCoverImage" alt="专辑封面"></div><div><h1 id="musicTitle">添加你的配乐</h1><div class="artist" id="musicArtist">让喜欢的音乐陪伴阅读</div><div class="transport"><button id="musicPrevious" aria-label="上一首" disabled><svg><use href="#icon-prev"/></svg></button><button class="primary" id="musicPlayButton" aria-label="播放" disabled><svg><use href="#icon-play"/></svg></button><button id="musicNext" aria-label="下一首" disabled><svg><use href="#icon-next"/></svg></button></div></div></div><div class="seek"><input id="musicSeek" type="range" min="0" max="100" value="0" aria-label="播放进度" disabled><div class="times"><span id="musicElapsed">00:00</span><span id="musicDuration">00:00</span></div></div><div class="actions" id="musicActions"><button class="action normal" id="musicAdd"><svg><use href="#icon-plus"/></svg><span>添加音乐</span></button><button class="action normal" id="musicMode" title="循环 · 点击切换随机"><svg><use href="#icon-loop"/></svg><span>循环</span></button><button class="action normal" id="musicQueue" aria-label="播放列表" aria-expanded="false"><svg><use href="#icon-list"/></svg><span id="musicQueueCount">0</span></button><div class="volume-shell" id="musicVolumeShell"><div class="volume-fan" id="musicVolumeFan" inert><input id="musicVolume" type="range" min="0" max="100" value="35" style="--fill:35%" aria-label="配乐音量"><output id="musicVolumeValue">35%</output></div><button class="action" id="musicVolumeButton" aria-label="调节音量" aria-expanded="false"><svg><use href="#icon-volume"/></svg></button></div></div></div><div class="playlist" id="musicPlaylist" inert><label class="follow"><input type="checkbox" id="musicFollow">随文稿播放</label><div class="playlist-title"><span>播放列表</span><button id="musicAddMore">添加音乐</button></div><ol class="tracks" id="musicTracks"></ol><p class="empty-note" id="musicEmptyNote">还没有音乐，添加后会显示在这里。</p></div></section>
+<button class="review-bookmark" id="reviewBookmark" type="button" aria-label="复习打卡" aria-expanded="false" aria-controls="reviewPanel" hidden><svg aria-hidden="true" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="7.5" stroke="currentColor" stroke-width="1.6" stroke-dasharray="2.5 2"/><path d="m6.5 10 2.3 2.3 4.7-4.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="rv-badge" id="reviewBadge"></span></button>
+<section id="reviewPanel" role="dialog" aria-label="复习打卡" data-view="deck" tabindex="-1" hidden>
+  <div class="rv-views">
+    <div class="rv-view rv-deck-v">
+      <div class="rv-head">
+        <span class="rv-t">复习<span class="rv-count" id="reviewCount"></span></span><span class="rv-sp"></span>
+        <button class="rv-icon rv-snd" id="reviewSound" type="button" aria-pressed="true" title="复习音效"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 6h2.2L8 3.2v9.6L4.7 10H2.5z"/><path class="on" d="M10.6 5.6a3.2 3.2 0 0 1 0 4.8M12.4 3.9a5.6 5.6 0 0 1 0 8.2"/><path class="off" d="m11 6 3.4 4M14.4 6 11 10"/></svg></button>
+        <button class="rv-icon" type="button" data-rv-go="all" title="全部条目"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M5.5 4h8M5.5 8h8M5.5 12h8"/><circle cx="2.6" cy="4" r=".6" fill="currentColor"/><circle cx="2.6" cy="8" r=".6" fill="currentColor"/><circle cx="2.6" cy="12" r=".6" fill="currentColor"/></svg>全部</button>
+        <button class="rv-icon" id="reviewClose" type="button" aria-label="收起"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5 5.5 8l4.5 4.5"/></svg></button>
+      </div>
+      <button class="rv-week" id="reviewWeek" type="button" aria-expanded="false">
+        <div class="rv-wk-row" id="reviewWeekRow"></div>
+        <div class="rv-hist" id="reviewHist"><div class="rv-hist-in"><div class="rv-hist-rows"><span>一</span><span></span><span>三</span><span></span><span>五</span><span></span><span>日</span></div><div class="rv-dots" id="reviewDots"></div><div class="rv-hist-cap"><span>15 周前</span><span>本周</span></div></div></div>
+        <div class="rv-wk-cap"><span id="reviewWeekCap"></span><span class="rv-more">近 15 周<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m3 4.5 3 3 3-3"/></svg></span></div>
+      </button>
+      <div class="rv-deck" id="reviewDeck"><div class="rv-empty" id="reviewEmpty"></div></div>
+      <div class="rv-keys" id="reviewKeys"><span><kbd>空格</kbd>撕开胶带</span><span><kbd>1</kbd>–<kbd>4</kbd>评分</span><span><kbd>Z</kbd>撤销</span></div>
+    </div>
+    <div class="rv-view rv-side rv-all-v">
+      <div class="rv-head"><span class="rv-t"><button class="rv-icon" type="button" data-rv-go="deck" aria-label="返回"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5 5.5 8l4.5 4.5"/></svg></button>全部条目</span></div>
+      <div class="rv-tabs" id="reviewTabs"><span class="rv-tab-slider"></span>
+        <button class="rv-tab" type="button" data-tab="due">今天<span class="n"></span></button>
+        <button class="rv-tab" type="button" data-tab="later">未到期<span class="n"></span></button>
+        <button class="rv-tab" type="button" data-tab="done">已完成<span class="n"></span></button>
+      </div>
+      <div class="rv-list" id="reviewList"></div>
+      <div class="rv-foot"><button class="rv-ghost" type="button" data-rv-add="chap">＋ 选章节</button><button class="rv-ghost" type="button" data-rv-add="note">＋ 选笔记</button></div>
+    </div>
+    <div class="rv-view rv-side rv-add-v">
+      <div class="rv-head"><span class="rv-t"><button class="rv-icon" type="button" data-rv-go="all" aria-label="返回"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5 5.5 8l4.5 4.5"/></svg></button>加入复习</span></div>
+      <div class="rv-tabs" id="reviewAddTabs"><span class="rv-tab-slider"></span>
+        <button class="rv-tab" type="button" data-tab="chap">章节</button><button class="rv-tab" type="button" data-tab="note">笔记</button>
+      </div>
+      <div class="rv-pick" id="reviewPick"></div>
+      <div class="rv-foot"><button class="rv-primary" id="reviewAddGo" type="button" disabled>加入</button></div>
+    </div>
+  </div>
+  <div class="rv-toast" id="reviewToast" role="status"><span id="reviewToastText"></span><button id="reviewToastBtn" type="button">撤销</button></div>
+</section>
+
+<script>
+/* ts-fsrs 5.4.2 —— 复习打卡的间隔重复排期（https://github.com/open-spaced-repetition/ts-fsrs）
+ * MIT License
+ *
+ * Copyright (c) 2026 Open Spaced Repetition
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+(function (global, factory) {
+  typeof exports === 'object' && typeof module !== 'undefined' ? factory(exports) :
+  typeof define === 'function' && define.amd ? define(['exports'], factory) :
+  (global = typeof globalThis !== 'undefined' ? globalThis : global || self, factory(global.FSRS = {}));
+})(this, (function (exports) { 'use strict';
+
+  class FSRSError extends Error {
+    constructor(message = "FSRS Error") {
+      var _a;
+      super(message);
+      this.name = "FSRSError";
+      (_a = Error.captureStackTrace) == null ? void 0 : _a.call(Error, this, FSRSError);
+    }
+  }
+  class FSRSValidationError extends FSRSError {
+    constructor(message) {
+      var _a;
+      super(message);
+      this.name = "FSRSValidationError";
+      (_a = Error.captureStackTrace) == null ? void 0 : _a.call(Error, this, FSRSValidationError);
+    }
+  }
+
+  var State = /* @__PURE__ */ ((State2) => {
+    State2[State2["New"] = 0] = "New";
+    State2[State2["Learning"] = 1] = "Learning";
+    State2[State2["Review"] = 2] = "Review";
+    State2[State2["Relearning"] = 3] = "Relearning";
+    return State2;
+  })(State || {});
+  var Rating = /* @__PURE__ */ ((Rating2) => {
+    Rating2[Rating2["Manual"] = 0] = "Manual";
+    Rating2[Rating2["Again"] = 1] = "Again";
+    Rating2[Rating2["Hard"] = 2] = "Hard";
+    Rating2[Rating2["Good"] = 3] = "Good";
+    Rating2[Rating2["Easy"] = 4] = "Easy";
+    return Rating2;
+  })(Rating || {});
+
+  var __defProp$6 = Object.defineProperty;
+  var __defProps$2 = Object.defineProperties;
+  var __getOwnPropDescs$2 = Object.getOwnPropertyDescriptors;
+  var __getOwnPropSymbols$2 = Object.getOwnPropertySymbols;
+  var __hasOwnProp$2 = Object.prototype.hasOwnProperty;
+  var __propIsEnum$2 = Object.prototype.propertyIsEnumerable;
+  var __defNormalProp$6 = (obj, key, value) => key in obj ? __defProp$6(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
+  var __spreadValues$2 = (a, b) => {
+    for (var prop in b || (b = {}))
+      if (__hasOwnProp$2.call(b, prop))
+        __defNormalProp$6(a, prop, b[prop]);
+    if (__getOwnPropSymbols$2)
+      for (var prop of __getOwnPropSymbols$2(b)) {
+        if (__propIsEnum$2.call(b, prop))
+          __defNormalProp$6(a, prop, b[prop]);
+      }
+    return a;
+  };
+  var __spreadProps$2 = (a, b) => __defProps$2(a, __getOwnPropDescs$2(b));
+  class TypeConvert {
+    static card(card) {
+      return __spreadProps$2(__spreadValues$2({}, card), {
+        state: TypeConvert.state(card.state),
+        due: TypeConvert.time(card.due),
+        last_review: card.last_review ? TypeConvert.time(card.last_review) : void 0
+      });
+    }
+    static rating(value) {
+      if (typeof value === "string") {
+        const firstLetter = value.charAt(0).toUpperCase();
+        const restOfString = value.slice(1).toLowerCase();
+        const ret = Rating[`${firstLetter}${restOfString}`];
+        if (ret === void 0) {
+          throw new FSRSValidationError(`Invalid rating:[${value}]`);
+        }
+        return ret;
+      } else if (typeof value === "number") {
+        return value;
+      }
+      throw new FSRSValidationError(`Invalid rating:[${value}]`);
+    }
+    static state(value) {
+      if (typeof value === "string") {
+        const firstLetter = value.charAt(0).toUpperCase();
+        const restOfString = value.slice(1).toLowerCase();
+        const ret = State[`${firstLetter}${restOfString}`];
+        if (ret === void 0) {
+          throw new FSRSValidationError(`Invalid state:[${value}]`);
+        }
+        return ret;
+      } else if (typeof value === "number") {
+        return value;
+      }
+      throw new FSRSValidationError(`Invalid state:[${value}]`);
+    }
+    static time(value) {
+      if (value instanceof Date) {
+        return value;
+      }
+      const date = new Date(value);
+      if (typeof value === "object" && value !== null && !Number.isNaN(Date.parse(value) || +date)) {
+        return date;
+      } else if (typeof value === "string") {
+        const timestamp = Date.parse(value);
+        if (!Number.isNaN(timestamp)) {
+          return new Date(timestamp);
+        } else {
+          throw new FSRSValidationError(`Invalid date:[${value}]`);
+        }
+      } else if (typeof value === "number") {
+        return new Date(value);
+      }
+      throw new FSRSValidationError(`Invalid date:[${value}]`);
+    }
+    static review_log(log) {
+      return __spreadProps$2(__spreadValues$2({}, log), {
+        due: TypeConvert.time(log.due),
+        rating: TypeConvert.rating(log.rating),
+        state: TypeConvert.state(log.state),
+        review: TypeConvert.time(log.review)
+      });
+    }
+  }
+
+  /* istanbul ignore next -- @preserve */
+  Date.prototype.scheduler = function(t, isDay) {
+    return date_scheduler(this, t, isDay);
+  };
+  /* istanbul ignore next -- @preserve */
+  Date.prototype.diff = function(pre, unit) {
+    return date_diff(this, pre, unit);
+  };
+  /* istanbul ignore next -- @preserve */
+  Date.prototype.format = function() {
+    return formatDate(this);
+  };
+  /* istanbul ignore next -- @preserve */
+  Date.prototype.dueFormat = function(last_review, unit, timeUnit) {
+    return show_diff_message(this, last_review, unit, timeUnit);
+  };
+  function date_scheduler(now, t, isDay) {
+    return new Date(
+      isDay ? TypeConvert.time(now).getTime() + t * 24 * 60 * 60 * 1e3 : TypeConvert.time(now).getTime() + t * 60 * 1e3
+    );
+  }
+  function date_diff(now, pre, unit) {
+    if (!now || !pre) {
+      throw new FSRSValidationError("Invalid date");
+    }
+    const diff = TypeConvert.time(now).getTime() - TypeConvert.time(pre).getTime();
+    let r = 0;
+    switch (unit) {
+      case "days":
+        r = Math.floor(diff / (24 * 60 * 60 * 1e3));
+        break;
+      case "minutes":
+        r = Math.floor(diff / (60 * 1e3));
+        break;
+    }
+    return r;
+  }
+  function formatDate(dateInput) {
+    const date = TypeConvert.time(dateInput);
+    const year = date.getFullYear();
+    const month = date.getMonth() + 1;
+    const day = date.getDate();
+    const hours = date.getHours();
+    const minutes = date.getMinutes();
+    const seconds = date.getSeconds();
+    return `${year}-${padZero(month)}-${padZero(day)} ${padZero(hours)}:${padZero(
+    minutes
+  )}:${padZero(seconds)}`;
+  }
+  function padZero(num) {
+    return num < 10 ? `0${num}` : `${num}`;
+  }
+  const TIMEUNIT = [60, 60, 24, 31, 12];
+  const TIMEUNITFORMAT = ["second", "min", "hour", "day", "month", "year"];
+  function show_diff_message(due, last_review, unit, timeUnit = TIMEUNITFORMAT) {
+    due = TypeConvert.time(due);
+    last_review = TypeConvert.time(last_review);
+    if (timeUnit.length !== TIMEUNITFORMAT.length) {
+      timeUnit = TIMEUNITFORMAT;
+    }
+    let diff = due.getTime() - last_review.getTime();
+    let i = 0;
+    diff /= 1e3;
+    for (i = 0; i < TIMEUNIT.length; i++) {
+      if (diff < TIMEUNIT[i]) {
+        break;
+      } else {
+        diff /= TIMEUNIT[i];
+      }
+    }
+    return `${Math.floor(diff)}${unit ? timeUnit[i] : ""}`;
+  }
+  /* istanbul ignore next -- @preserve */
+  function fixDate(value) {
+    return TypeConvert.time(value);
+  }
+  /* istanbul ignore next -- @preserve */
+  function fixState(value) {
+    return TypeConvert.state(value);
+  }
+  /* istanbul ignore next -- @preserve */
+  function fixRating(value) {
+    return TypeConvert.rating(value);
+  }
+  const Grades = Object.freeze([
+    Rating.Again,
+    Rating.Hard,
+    Rating.Good,
+    Rating.Easy
+  ]);
+  const FUZZ_RANGES = [
+    {
+      start: 2.5,
+      end: 7,
+      factor: 0.15
+    },
+    {
+      start: 7,
+      end: 20,
+      factor: 0.1
+    },
+    {
+      start: 20,
+      end: Infinity,
+      factor: 0.05
+    }
+  ];
+  function get_fuzz_range(interval, elapsed_days, maximum_interval) {
+    let delta = 1;
+    for (const range of FUZZ_RANGES) {
+      delta += range.factor * Math.max(Math.min(interval, range.end) - range.start, 0);
+    }
+    interval = Math.min(interval, maximum_interval);
+    let min_ivl = Math.max(2, Math.round(interval - delta));
+    const max_ivl = Math.min(Math.round(interval + delta), maximum_interval);
+    if (interval > elapsed_days) {
+      min_ivl = Math.max(min_ivl, elapsed_days + 1);
+    }
+    min_ivl = Math.min(min_ivl, max_ivl);
+    return { min_ivl, max_ivl };
+  }
+  function clamp(value, min, max) {
+    return Math.min(Math.max(value, min), max);
+  }
+  function roundTo(num, decimals) {
+    const factor = 10 ** decimals;
+    return Math.round(num * factor) / factor;
+  }
+  function dateDiffInDays(last, cur) {
+    const utc1 = Date.UTC(
+      last.getUTCFullYear(),
+      last.getUTCMonth(),
+      last.getUTCDate()
+    );
+    const utc2 = Date.UTC(
+      cur.getUTCFullYear(),
+      cur.getUTCMonth(),
+      cur.getUTCDate()
+    );
+    return Math.floor(
+      (utc2 - utc1) / 864e5
+      /** 1000 * 60 * 60 * 24*/
+    );
+  }
+
+  const ConvertStepUnitToMinutes = (step) => {
+    const unit = step.slice(-1);
+    const value = parseInt(step.slice(0, -1), 10);
+    if (Number.isNaN(value) || !Number.isFinite(value) || value < 0) {
+      throw new FSRSValidationError(`Invalid step value: ${step}`);
+    }
+    switch (unit) {
+      case "m":
+        return value;
+      case "h":
+        return value * 60;
+      case "d":
+        return value * 1440;
+      default:
+        throw new FSRSValidationError(
+          `Invalid step unit: ${step}, expected m/h/d`
+        );
+    }
+  };
+  const BasicLearningStepsStrategy = (params, state, cur_step) => {
+    const learning_steps = state === State.Relearning || state === State.Review ? params.relearning_steps : params.learning_steps;
+    const steps_length = learning_steps.length;
+    if (steps_length === 0 || cur_step >= steps_length) return {};
+    const firstStep = learning_steps[0];
+    const toMinutes = ConvertStepUnitToMinutes;
+    const getAgainInterval = () => {
+      return toMinutes(firstStep);
+    };
+    const getHardInterval = () => {
+      if (steps_length === 1) return Math.round(toMinutes(firstStep) * 1.5);
+      const nextStep = learning_steps[1];
+      return Math.round((toMinutes(firstStep) + toMinutes(nextStep)) / 2);
+    };
+    const getStepInfo = (index) => {
+      if (index < 0 || index >= steps_length) {
+        return null;
+      } else {
+        return learning_steps[index];
+      }
+    };
+    const getGoodMinutes = (step) => {
+      return toMinutes(step);
+    };
+    const result = {};
+    const step_info = getStepInfo(Math.max(0, cur_step));
+    if (state === State.Review) {
+      result[Rating.Again] = {
+        scheduled_minutes: toMinutes(step_info),
+        next_step: 0
+      };
+      return result;
+    } else {
+      result[Rating.Again] = {
+        scheduled_minutes: getAgainInterval(),
+        next_step: 0
+      };
+      result[Rating.Hard] = {
+        scheduled_minutes: getHardInterval(),
+        next_step: cur_step
+      };
+      const next_info = getStepInfo(cur_step + 1);
+      if (next_info) {
+        const nextMin = getGoodMinutes(next_info);
+        if (nextMin) {
+          result[Rating.Good] = {
+            scheduled_minutes: Math.round(nextMin),
+            next_step: cur_step + 1
+          };
+        }
+      }
+    }
+    return result;
+  };
+
+  function DefaultInitSeedStrategy() {
+    const time = this.review_time.getTime();
+    const reps = this.current.reps;
+    const mul = this.current.difficulty * this.current.stability;
+    return `${time}_${reps}_${mul}`;
+  }
+  function GenSeedStrategyWithCardId(card_id_field) {
+    return function() {
+      var _a;
+      const card_id = (_a = Reflect.get(this.current, card_id_field)) != null ? _a : 0;
+      const reps = this.current.reps;
+      return String(card_id + reps || 0);
+    };
+  }
+
+  var StrategyMode = /* @__PURE__ */ ((StrategyMode2) => {
+    StrategyMode2["SCHEDULER"] = "Scheduler";
+    StrategyMode2["LEARNING_STEPS"] = "LearningSteps";
+    StrategyMode2["SEED"] = "Seed";
+    return StrategyMode2;
+  })(StrategyMode || {});
+
+  var __defProp$5 = Object.defineProperty;
+  var __defNormalProp$5 = (obj, key, value) => key in obj ? __defProp$5(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
+  var __publicField$5 = (obj, key, value) => __defNormalProp$5(obj, typeof key !== "symbol" ? key + "" : key, value);
+  class AbstractScheduler {
+    // init
+    constructor(card, now, algorithm, strategies) {
+      __publicField$5(this, "last");
+      __publicField$5(this, "current");
+      __publicField$5(this, "review_time");
+      __publicField$5(this, "next", /* @__PURE__ */ new Map());
+      __publicField$5(this, "algorithm");
+      __publicField$5(this, "strategies");
+      __publicField$5(this, "elapsed_days", 0);
+      this.algorithm = algorithm;
+      this.last = TypeConvert.card(card);
+      this.current = TypeConvert.card(card);
+      this.review_time = TypeConvert.time(now);
+      this.strategies = strategies;
+      this.init();
+    }
+    checkGrade(grade) {
+      if (!Number.isFinite(grade) || grade < 1 || grade > 4) {
+        throw new FSRSValidationError(`Invalid grade "${grade}",expected 1-4`);
+      }
+    }
+    init() {
+      const { state, last_review } = this.current;
+      let interval = 0;
+      if (state !== State.New && last_review) {
+        interval = dateDiffInDays(last_review, this.review_time);
+      }
+      this.current.last_review = this.review_time;
+      this.elapsed_days = interval;
+      this.current.elapsed_days = interval;
+      this.current.reps += 1;
+      let seed_strategy = DefaultInitSeedStrategy;
+      if (this.strategies) {
+        const custom_strategy = this.strategies.get(StrategyMode.SEED);
+        if (custom_strategy) {
+          seed_strategy = custom_strategy;
+        }
+      }
+      this.algorithm.seed = seed_strategy.call(this);
+    }
+    preview() {
+      return {
+        [Rating.Again]: this.review(Rating.Again),
+        [Rating.Hard]: this.review(Rating.Hard),
+        [Rating.Good]: this.review(Rating.Good),
+        [Rating.Easy]: this.review(Rating.Easy),
+        [Symbol.iterator]: this.previewIterator.bind(this)
+      };
+    }
+    *previewIterator() {
+      for (const grade of Grades) {
+        yield this.review(grade);
+      }
+    }
+    review(grade) {
+      const { state } = this.last;
+      let item;
+      this.checkGrade(grade);
+      switch (state) {
+        case State.New:
+          item = this.newState(grade);
+          break;
+        case State.Learning:
+        case State.Relearning:
+          item = this.learningState(grade);
+          break;
+        case State.Review:
+          item = this.reviewState(grade);
+          break;
+      }
+      return item;
+    }
+    buildLog(rating) {
+      const { last_review, due, elapsed_days } = this.last;
+      return {
+        rating,
+        state: this.current.state,
+        due: last_review || due,
+        stability: this.current.stability,
+        difficulty: this.current.difficulty,
+        elapsed_days: this.elapsed_days,
+        last_elapsed_days: elapsed_days,
+        scheduled_days: this.current.scheduled_days,
+        learning_steps: this.current.learning_steps,
+        review: this.review_time
+      };
+    }
+  }
+
+  var __defProp$4 = Object.defineProperty;
+  var __defNormalProp$4 = (obj, key, value) => key in obj ? __defProp$4(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
+  var __publicField$4 = (obj, key, value) => __defNormalProp$4(obj, typeof key !== "symbol" ? key + "" : key, value);
+  class Alea {
+    constructor(seed) {
+      __publicField$4(this, "c");
+      __publicField$4(this, "s0");
+      __publicField$4(this, "s1");
+      __publicField$4(this, "s2");
+      const mash = Mash();
+      this.c = 1;
+      this.s0 = mash(" ");
+      this.s1 = mash(" ");
+      this.s2 = mash(" ");
+      if (seed == null) seed = Date.now();
+      this.s0 -= mash(seed);
+      if (this.s0 < 0) this.s0 += 1;
+      this.s1 -= mash(seed);
+      if (this.s1 < 0) this.s1 += 1;
+      this.s2 -= mash(seed);
+      if (this.s2 < 0) this.s2 += 1;
+    }
+    next() {
+      const t = 2091639 * this.s0 + this.c * 23283064365386963e-26;
+      this.s0 = this.s1;
+      this.s1 = this.s2;
+      this.c = t | 0;
+      this.s2 = t - this.c;
+      return this.s2;
+    }
+    set state(state) {
+      this.c = state.c;
+      this.s0 = state.s0;
+      this.s1 = state.s1;
+      this.s2 = state.s2;
+    }
+    get state() {
+      return {
+        c: this.c,
+        s0: this.s0,
+        s1: this.s1,
+        s2: this.s2
+      };
+    }
+  }
+  function Mash() {
+    let n = 4022871197;
+    return function mash(data) {
+      data = String(data);
+      for (let i = 0; i < data.length; i++) {
+        n += data.charCodeAt(i);
+        let h = 0.02519603282416938 * n;
+        n = h >>> 0;
+        h -= n;
+        h *= n;
+        n = h >>> 0;
+        h -= n;
+        n += h * 4294967296;
+      }
+      return (n >>> 0) * 23283064365386963e-26;
+    };
+  }
+  function alea(seed) {
+    const xg = new Alea(seed);
+    const prng = () => xg.next();
+    prng.int32 = () => xg.next() * 4294967296 | 0;
+    prng.double = () => prng() + (prng() * 2097152 | 0) * 11102230246251565e-32;
+    prng.state = () => xg.state;
+    prng.importState = (state) => {
+      xg.state = state;
+      return prng;
+    };
+    return prng;
+  }
+
+  const version="5.4.2";
+
+  const default_request_retention = 0.9;
+  const default_maximum_interval = 36500;
+  const default_enable_fuzz = false;
+  const default_enable_short_term = true;
+  const default_learning_steps = Object.freeze([
+    "1m",
+    "10m"
+  ]);
+  const default_relearning_steps = Object.freeze([
+    "10m"
+  ]);
+  const FSRSVersion = `v${version} using FSRS-6.0`;
+  const S_MIN = 1e-3;
+  const S_MAX = 36500;
+  const INIT_S_MAX = 100;
+  const FSRS5_DEFAULT_DECAY = 0.5;
+  const FSRS6_DEFAULT_DECAY = 0.1542;
+  const default_w = Object.freeze([
+    0.212,
+    1.2931,
+    2.3065,
+    8.2956,
+    6.4133,
+    0.8334,
+    3.0194,
+    1e-3,
+    1.8722,
+    0.1666,
+    0.796,
+    1.4835,
+    0.0614,
+    0.2629,
+    1.6483,
+    0.6014,
+    1.8729,
+    0.5425,
+    0.0912,
+    0.0658,
+    FSRS6_DEFAULT_DECAY
+  ]);
+  const W17_W18_Ceiling = 2;
+  const CLAMP_PARAMETERS = (w17_w18_ceiling, enable_short_term = default_enable_short_term) => [
+    [S_MIN, INIT_S_MAX],
+    [S_MIN, INIT_S_MAX],
+    [S_MIN, INIT_S_MAX],
+    [S_MIN, INIT_S_MAX],
+    [1, 10],
+    [1e-3, 4],
+    [1e-3, 4],
+    [1e-3, 0.75],
+    [0, 4.5],
+    [0, 0.8],
+    [1e-3, 3.5],
+    [1e-3, 5],
+    [1e-3, 0.25],
+    [1e-3, 0.9],
+    [0, 4],
+    [0, 1],
+    [1, 6],
+    [0, w17_w18_ceiling],
+    [0, w17_w18_ceiling],
+    [
+      enable_short_term ? 0.01 : 0,
+      0.8
+    ],
+    [0.1, 0.8]
+  ];
+
+  const clipParameters = (parameters, numRelearningSteps, enableShortTerm = default_enable_short_term) => {
+    const clip = CLAMP_PARAMETERS(W17_W18_Ceiling, enableShortTerm).slice(
+      0,
+      parameters.length
+    );
+    if (Math.max(0, numRelearningSteps) > 1) {
+      const w11 = clamp(parameters[11] || 0, clip[11][0], clip[11][1]);
+      const w13 = clamp(parameters[13] || 0, clip[13][0], clip[13][1]);
+      const w14 = clamp(parameters[14] || 0, clip[14][0], clip[14][1]);
+      const value = -(Math.log(w11) + Math.log(Math.pow(2, w13) - 1) + w14 * 0.3) / numRelearningSteps;
+      const w17_w18_ceiling = clamp(
+        roundTo(Math.sqrt(Math.max(value, 0)), 8),
+        0.01,
+        W17_W18_Ceiling
+      );
+      if (clip[17]) clip[17] = [clip[17][0], w17_w18_ceiling];
+      if (clip[18]) clip[18] = [clip[18][0], w17_w18_ceiling];
+    }
+    return clip.map(
+      ([min, max], index) => clamp(parameters[index] || 0, min, max)
+    );
+  };
+  const checkParameters = (parameters) => {
+    const invalid = parameters.find((param) => !Number.isFinite(param));
+    if (invalid !== void 0) {
+      throw new FSRSValidationError(
+        `Non-finite or NaN value in parameters ${parameters}`
+      );
+    } else if (![17, 19, 21].includes(parameters.length)) {
+      throw new FSRSValidationError(
+        `Invalid parameter length: ${parameters.length}. Must be 17, 19 or 21 for FSRSv4, 5 and 6 respectively.`
+      );
+    }
+    return parameters;
+  };
+  const migrateParameters = (parameters, numRelearningSteps = 0, enableShortTerm = default_enable_short_term) => {
+    if (parameters === void 0) {
+      return [...default_w];
+    }
+    switch (parameters.length) {
+      case 21:
+        return clipParameters(
+          Array.from(parameters),
+          numRelearningSteps,
+          enableShortTerm
+        );
+      case 19:
+        console.debug("[FSRS-6]auto fill w from 19 to 21 length");
+        return clipParameters(
+          Array.from(parameters),
+          numRelearningSteps,
+          enableShortTerm
+        ).concat([0, FSRS5_DEFAULT_DECAY]);
+      case 17: {
+        const w = clipParameters(
+          Array.from(parameters),
+          numRelearningSteps,
+          enableShortTerm
+        );
+        w[4] = +(w[5] * 2 + w[4]).toFixed(8);
+        w[5] = +(Math.log(w[5] * 3 + 1) / 3).toFixed(8);
+        w[6] = +(w[6] + 0.5).toFixed(8);
+        console.debug("[FSRS-6]auto fill w from 17 to 21 length");
+        return w.concat([0, 0, 0, FSRS5_DEFAULT_DECAY]);
+      }
+      default:
+        console.warn("[FSRS]Invalid parameters length, using default parameters");
+        return [...default_w];
+    }
+  };
+  const generatorParameters = (props) => {
+    var _a, _b;
+    const learning_steps = Array.isArray(props == null ? void 0 : props.learning_steps) ? props.learning_steps : default_learning_steps;
+    const relearning_steps = Array.isArray(props == null ? void 0 : props.relearning_steps) ? props.relearning_steps : default_relearning_steps;
+    const enable_short_term = (_a = props == null ? void 0 : props.enable_short_term) != null ? _a : default_enable_short_term;
+    const w = migrateParameters(
+      props == null ? void 0 : props.w,
+      relearning_steps.length,
+      enable_short_term
+    );
+    return {
+      request_retention: (props == null ? void 0 : props.request_retention) || default_request_retention,
+      maximum_interval: (props == null ? void 0 : props.maximum_interval) || default_maximum_interval,
+      w,
+      enable_fuzz: (_b = props == null ? void 0 : props.enable_fuzz) != null ? _b : default_enable_fuzz,
+      enable_short_term,
+      learning_steps,
+      relearning_steps
+    };
+  };
+  function createEmptyCard(now, afterHandler) {
+    const emptyCard = {
+      due: now ? TypeConvert.time(now) : /* @__PURE__ */ new Date(),
+      stability: 0,
+      difficulty: 0,
+      elapsed_days: 0,
+      scheduled_days: 0,
+      reps: 0,
+      lapses: 0,
+      learning_steps: 0,
+      state: State.New,
+      last_review: void 0
+    };
+    if (afterHandler && typeof afterHandler === "function") {
+      return afterHandler(emptyCard);
+    } else {
+      return emptyCard;
+    }
+  }
+
+  var __defProp$3 = Object.defineProperty;
+  var __defNormalProp$3 = (obj, key, value) => key in obj ? __defProp$3(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
+  var __publicField$3 = (obj, key, value) => __defNormalProp$3(obj, typeof key !== "symbol" ? key + "" : key, value);
+  const computeDecayFactor = (decayOrParams) => {
+    const decay = typeof decayOrParams === "number" ? -decayOrParams : -decayOrParams[20];
+    const factor = Math.exp(Math.pow(decay, -1) * Math.log(0.9)) - 1;
+    return { decay, factor: roundTo(factor, 8) };
+  };
+  function forgetting_curve(decayOrParams, elapsed_days, stability) {
+    const { decay, factor } = computeDecayFactor(decayOrParams);
+    return roundTo(Math.pow(1 + factor * elapsed_days / stability, decay), 8);
+  }
+  class FSRSAlgorithm {
+    constructor(params) {
+      __publicField$3(this, "param");
+      __publicField$3(this, "intervalModifier");
+      __publicField$3(this, "_seed");
+      __publicField$3(this, "prepare_parameters", (params) => {
+        const generated = generatorParameters(params);
+        generated.w = clipParameters(
+          Array.from(generated.w),
+          generated.relearning_steps.length,
+          generated.enable_short_term
+        );
+        return generated;
+      });
+      /**
+       * The formula used is :
+       * $$R(t,S) = (1 + \text{FACTOR} \times \frac{t}{9 \cdot S})^{\text{DECAY}}$$
+       * @param {number} elapsed_days t days since the last review
+       * @param {number} stability Stability (interval when R=90%)
+       * @return {number} r Retrievability (probability of recall)
+       */
+      __publicField$3(this, "forgetting_curve");
+      this.param = new Proxy(
+        this.prepare_parameters(params),
+        this.params_handler_proxy()
+      );
+      this.intervalModifier = this.calculate_interval_modifier(
+        this.param.request_retention
+      );
+      this.forgetting_curve = forgetting_curve.bind(this, this.param.w);
+    }
+    get interval_modifier() {
+      return this.intervalModifier;
+    }
+    set seed(seed) {
+      this._seed = seed;
+    }
+    /**
+     * @see https://github.com/open-spaced-repetition/fsrs4anki/wiki/The-Algorithm#fsrs-5
+     *
+     * The formula used is: $$I(r,s) = (r^{\frac{1}{DECAY}} - 1) / FACTOR \times s$$
+     * @param request_retention 0<request_retention<=1,Requested retention rate
+     * @throws {Error} Requested retention rate should be in the range (0,1]
+     */
+    calculate_interval_modifier(request_retention) {
+      if (request_retention <= 0 || request_retention > 1) {
+        throw new FSRSValidationError(
+          "Requested retention rate should be in the range (0,1]"
+        );
+      }
+      const { decay, factor } = computeDecayFactor(this.param.w);
+      return roundTo((Math.pow(request_retention, 1 / decay) - 1) / factor, 8);
+    }
+    /**
+     * Get the parameters of the algorithm.
+     */
+    get parameters() {
+      return this.param;
+    }
+    /**
+     * Set the parameters of the algorithm.
+     * @param params Partial<FSRSParameters>
+     */
+    set parameters(params) {
+      this.update_parameters(params);
+    }
+    params_handler_proxy() {
+      const _this = this;
+      return {
+        set: function(target, prop, value) {
+          if (prop === "request_retention" && Number.isFinite(value)) {
+            _this.intervalModifier = _this.calculate_interval_modifier(
+              Number(value)
+            );
+          } else if (prop === "w") {
+            value = migrateParameters(
+              value,
+              target.relearning_steps.length,
+              target.enable_short_term
+            );
+            value = clipParameters(
+              Array.from(value),
+              target.relearning_steps.length,
+              target.enable_short_term
+            );
+            _this.forgetting_curve = forgetting_curve.bind(this, value);
+            _this.intervalModifier = _this.calculate_interval_modifier(
+              Number(target.request_retention)
+            );
+          }
+          Reflect.set(target, prop, value);
+          return true;
+        }
+      };
+    }
+    update_parameters(params) {
+      const _params = this.prepare_parameters(params);
+      for (const key in _params) {
+        const paramKey = key;
+        this.param[paramKey] = _params[paramKey];
+      }
+    }
+    /**
+       * The formula used is :
+       * $$ S_0(G) = w_{G-1}$$
+       * $$S_0 = \max \lbrace S_0,0.1\rbrace $$
+    
+       * @param g Grade (rating at Anki) [1.again,2.hard,3.good,4.easy]
+       * @return Stability (interval when R=90%)
+       */
+    init_stability(g) {
+      return Math.max(this.param.w[g - 1], 0.1);
+    }
+    /**
+     * The formula used is :
+     * $$D_0(G) = w_4 - e^{(G-1) \cdot w_5} + 1 $$
+     * $$D_0 = \min \lbrace \max \lbrace D_0(G),1 \rbrace,10 \rbrace$$
+     * where the $$D_0(1)=w_4$$ when the first rating is good.
+     *
+     * @param {Grade} g Grade (rating at Anki) [1.again,2.hard,3.good,4.easy]
+     * @return {number} Difficulty $$D \in [1,10]$$
+     */
+    init_difficulty(g) {
+      const w = this.param.w;
+      const d = w[4] - Math.exp((g - 1) * w[5]) + 1;
+      return roundTo(d, 8);
+    }
+    /**
+     * If fuzzing is disabled or ivl is less than 2.5, it returns the original interval.
+     * @param {number} ivl - The interval to be fuzzed.
+     * @param {number} elapsed_days t days since the last review
+     * @return {number} - The fuzzed interval.
+     **/
+    apply_fuzz(ivl, elapsed_days) {
+      if (!this.param.enable_fuzz || ivl < 2.5) return Math.round(ivl);
+      const generator = alea(this._seed);
+      const fuzz_factor = generator();
+      const { min_ivl, max_ivl } = get_fuzz_range(
+        ivl,
+        elapsed_days,
+        this.param.maximum_interval
+      );
+      return Math.floor(fuzz_factor * (max_ivl - min_ivl + 1) + min_ivl);
+    }
+    /**
+     *   @see The formula used is : {@link FSRSAlgorithm.calculate_interval_modifier}
+     *   @param {number} s - Stability (interval when R=90%)
+     *   @param {number} elapsed_days t days since the last review
+     */
+    next_interval(s, elapsed_days) {
+      const newInterval = Math.min(
+        Math.max(1, Math.round(s * this.intervalModifier)),
+        this.param.maximum_interval
+      );
+      return this.apply_fuzz(newInterval, elapsed_days);
+    }
+    /**
+     * @see https://github.com/open-spaced-repetition/fsrs4anki/issues/697
+     */
+    linear_damping(delta_d, old_d) {
+      return roundTo(delta_d * (10 - old_d) / 9, 8);
+    }
+    /**
+     * The formula used is :
+     * $$\text{delta}_d = -w_6 \cdot (g - 3)$$
+     * $$\text{next}_d = D + \text{linear damping}(\text{delta}_d , D)$$
+     * $$D^\prime(D,R) = w_7 \cdot D_0(4) +(1 - w_7) \cdot \text{next}_d$$
+     * @param {number} d Difficulty $$D \in [1,10]$$
+     * @param {Grade} g Grade (rating at Anki) [1.again,2.hard,3.good,4.easy]
+     * @return {number} $$\text{next}_D$$
+     */
+    next_difficulty(d, g) {
+      const delta_d = -this.param.w[6] * (g - 3);
+      const next_d = d + this.linear_damping(delta_d, d);
+      return clamp(
+        this.mean_reversion(this.init_difficulty(Rating.Easy), next_d),
+        1,
+        10
+      );
+    }
+    /**
+     * The formula used is :
+     * $$w_7 \cdot \text{init} +(1 - w_7) \cdot \text{current}$$
+     * @param {number} init $$w_2 : D_0(3) = w_2 + (R-2) \cdot w_3= w_2$$
+     * @param {number} current $$D - w_6 \cdot (R - 2)$$
+     * @return {number} difficulty
+     */
+    mean_reversion(init, current) {
+      const w = this.param.w;
+      return roundTo(w[7] * init + (1 - w[7]) * current, 8);
+    }
+    /**
+     * The formula used is :
+     * $$S^\prime_r(D,S,R,G) = S\cdot(e^{w_8}\cdot (11-D)\cdot S^{-w_9}\cdot(e^{w_{10}\cdot(1-R)}-1)\cdot w_{15}(\text{if} G=2) \cdot w_{16}(\text{if} G=4)+1)$$
+     * @param {number} d Difficulty D \in [1,10]
+     * @param {number} s Stability (interval when R=90%)
+     * @param {number} r Retrievability (probability of recall)
+     * @param {Grade} g Grade (Rating[0.again,1.hard,2.good,3.easy])
+     * @return {number} S^\prime_r new stability after recall
+     */
+    next_recall_stability(d, s, r, g) {
+      const w = this.param.w;
+      const hard_penalty = Rating.Hard === g ? w[15] : 1;
+      const easy_bound = Rating.Easy === g ? w[16] : 1;
+      return roundTo(
+        clamp(
+          s * (1 + Math.exp(w[8]) * (11 - d) * Math.pow(s, -w[9]) * (Math.exp((1 - r) * w[10]) - 1) * hard_penalty * easy_bound),
+          S_MIN,
+          36500
+        ),
+        8
+      );
+    }
+    /**
+     * The formula used is :
+     * $$S^\prime_f(D,S,R) = w_{11}\cdot D^{-w_{12}}\cdot ((S+1)^{w_{13}}-1) \cdot e^{w_{14}\cdot(1-R)}$$
+     * enable_short_term = true : $$S^\prime_f \in \min \lbrace \max \lbrace S^\prime_f,0.01\rbrace, \frac{S}{e^{w_{17} \cdot w_{18}}} \rbrace$$
+     * enable_short_term = false : $$S^\prime_f \in \min \lbrace \max \lbrace S^\prime_f,0.01\rbrace, S \rbrace$$
+     * @param {number} d Difficulty D \in [1,10]
+     * @param {number} s Stability (interval when R=90%)
+     * @param {number} r Retrievability (probability of recall)
+     * @return {number} S^\prime_f new stability after forgetting
+     */
+    next_forget_stability(d, s, r) {
+      const w = this.param.w;
+      return roundTo(
+        clamp(
+          w[11] * Math.pow(d, -w[12]) * (Math.pow(s + 1, w[13]) - 1) * Math.exp((1 - r) * w[14]),
+          S_MIN,
+          36500
+        ),
+        8
+      );
+    }
+    /**
+     * The formula used is :
+     * $$S^\prime_s(S,G) = S \cdot e^{w_{17} \cdot (G-3+w_{18})}$$
+     * @param {number} s Stability (interval when R=90%)
+     * @param {Grade} g Grade (Rating[0.again,1.hard,2.good,3.easy])
+     */
+    next_short_term_stability(s, g) {
+      const w = this.param.w;
+      const sinc = Math.pow(s, -w[19]) * Math.exp(w[17] * (g - 3 + w[18]));
+      const maskedSinc = g >= Rating.Hard ? Math.max(sinc, 1) : sinc;
+      return roundTo(clamp(s * maskedSinc, S_MIN, 36500), 8);
+    }
+    /**
+     * Calculates the next state of memory based on the current state, time elapsed, and grade.
+     *
+     * @param memory_state - The current state of memory, which can be null.
+     * @param t - The time elapsed since the last review.
+     * @param {Rating} g Grade (Rating[0.Manual,1.Again,2.Hard,3.Good,4.Easy])
+     * @param r - Optional retrievability value. If not provided, it will be calculated.
+     * @returns The next state of memory with updated difficulty and stability.
+     */
+    next_state(memory_state, t, g, r) {
+      const { difficulty: d, stability: s } = memory_state != null ? memory_state : {
+        difficulty: 0,
+        stability: 0
+      };
+      if (t < 0) {
+        throw new FSRSValidationError(`Invalid delta_t "${t}"`);
+      }
+      if (g < 0 || g > 4) {
+        throw new FSRSValidationError(`Invalid grade "${g}"`);
+      }
+      if (d === 0 && s === 0) {
+        return {
+          difficulty: clamp(this.init_difficulty(g), 1, 10),
+          stability: this.init_stability(g)
+        };
+      }
+      if (g === 0) {
+        return {
+          difficulty: d,
+          stability: s
+        };
+      }
+      if (d < 1 || s < S_MIN) {
+        throw new FSRSValidationError(
+          `Invalid memory state { difficulty: ${d}, stability: ${s} }`
+        );
+      }
+      const w = this.param.w;
+      r = typeof r === "number" ? r : this.forgetting_curve(t, s);
+      let new_s;
+      if (t === 0 && this.param.enable_short_term) {
+        new_s = this.next_short_term_stability(s, g);
+      } else if (g === 1) {
+        const s_after_fail = this.next_forget_stability(d, s, r);
+        let [w_17, w_18] = [0, 0];
+        if (this.param.enable_short_term) {
+          w_17 = w[17];
+          w_18 = w[18];
+        }
+        const next_s_min = s / Math.exp(w_17 * w_18);
+        new_s = clamp(roundTo(next_s_min, 8), S_MIN, s_after_fail);
+      } else {
+        new_s = this.next_recall_stability(d, s, r, g);
+      }
+      const new_d = this.next_difficulty(d, g);
+      return { difficulty: new_d, stability: new_s };
+    }
+  }
+
+  var __defProp$2 = Object.defineProperty;
+  var __defNormalProp$2 = (obj, key, value) => key in obj ? __defProp$2(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
+  var __publicField$2 = (obj, key, value) => __defNormalProp$2(obj, key + "" , value);
+  class BasicScheduler extends AbstractScheduler {
+    constructor(card, now, algorithm, strategies) {
+      super(card, now, algorithm, strategies);
+      __publicField$2(this, "learningStepsStrategy");
+      let learningStepStrategy = BasicLearningStepsStrategy;
+      if (this.strategies) {
+        const custom_strategy = this.strategies.get(StrategyMode.LEARNING_STEPS);
+        if (custom_strategy) {
+          learningStepStrategy = custom_strategy;
+        }
+      }
+      this.learningStepsStrategy = learningStepStrategy;
+    }
+    getLearningInfo(card, grade) {
+      var _a, _b, _c, _d;
+      const parameters = this.algorithm.parameters;
+      card.learning_steps = card.learning_steps || 0;
+      const steps_strategy = this.learningStepsStrategy(
+        parameters,
+        card.state,
+        card.learning_steps
+      );
+      const scheduled_minutes = Math.max(
+        0,
+        (_b = (_a = steps_strategy[grade]) == null ? void 0 : _a.scheduled_minutes) != null ? _b : 0
+      );
+      const next_steps = Math.max(0, (_d = (_c = steps_strategy[grade]) == null ? void 0 : _c.next_step) != null ? _d : 0);
+      return {
+        scheduled_minutes,
+        next_steps
+      };
+    }
+    /**
+     * @description This function applies the learning steps based on the current card's state and grade.
+     */
+    applyLearningSteps(nextCard, grade, to_state) {
+      const { scheduled_minutes, next_steps } = this.getLearningInfo(
+        this.current,
+        grade
+      );
+      if (scheduled_minutes > 0 && scheduled_minutes < 1440) {
+        nextCard.learning_steps = next_steps;
+        nextCard.scheduled_days = 0;
+        nextCard.state = to_state;
+        nextCard.due = date_scheduler(
+          this.review_time,
+          Math.round(scheduled_minutes),
+          false
+          /** true:days false: minute */
+        );
+      } else {
+        nextCard.state = State.Review;
+        if (scheduled_minutes >= 1440) {
+          nextCard.learning_steps = next_steps;
+          nextCard.due = date_scheduler(
+            this.review_time,
+            Math.round(scheduled_minutes),
+            false
+            /** true:days false: minute */
+          );
+          nextCard.scheduled_days = Math.floor(scheduled_minutes / 1440);
+        } else {
+          nextCard.learning_steps = 0;
+          const interval = this.algorithm.next_interval(
+            nextCard.stability,
+            this.elapsed_days
+          );
+          nextCard.scheduled_days = interval;
+          nextCard.due = date_scheduler(this.review_time, interval, true);
+        }
+      }
+    }
+    newState(grade) {
+      const exist = this.next.get(grade);
+      if (exist) {
+        return exist;
+      }
+      const next = this.next_ds(this.elapsed_days, grade);
+      this.applyLearningSteps(next, grade, State.Learning);
+      const item = {
+        card: next,
+        log: this.buildLog(grade)
+      };
+      this.next.set(grade, item);
+      return item;
+    }
+    learningState(grade) {
+      const exist = this.next.get(grade);
+      if (exist) {
+        return exist;
+      }
+      const next = this.next_ds(this.elapsed_days, grade);
+      this.applyLearningSteps(
+        next,
+        grade,
+        this.last.state
+        /** Learning or Relearning */
+      );
+      const item = {
+        card: next,
+        log: this.buildLog(grade)
+      };
+      this.next.set(grade, item);
+      return item;
+    }
+    reviewState(grade) {
+      const exist = this.next.get(grade);
+      if (exist) {
+        return exist;
+      }
+      const interval = this.elapsed_days;
+      const retrievability = this.algorithm.forgetting_curve(
+        interval,
+        this.current.stability
+      );
+      const next_again = this.next_ds(interval, Rating.Again, retrievability);
+      const next_hard = this.next_ds(interval, Rating.Hard, retrievability);
+      const next_good = this.next_ds(interval, Rating.Good, retrievability);
+      const next_easy = this.next_ds(interval, Rating.Easy, retrievability);
+      this.next_interval(next_hard, next_good, next_easy, interval);
+      this.next_state(next_hard, next_good, next_easy);
+      this.applyLearningSteps(next_again, Rating.Again, State.Relearning);
+      next_again.lapses += 1;
+      const item_again = {
+        card: next_again,
+        log: this.buildLog(Rating.Again)
+      };
+      const item_hard = {
+        card: next_hard,
+        log: super.buildLog(Rating.Hard)
+      };
+      const item_good = {
+        card: next_good,
+        log: super.buildLog(Rating.Good)
+      };
+      const item_easy = {
+        card: next_easy,
+        log: super.buildLog(Rating.Easy)
+      };
+      this.next.set(Rating.Again, item_again);
+      this.next.set(Rating.Hard, item_hard);
+      this.next.set(Rating.Good, item_good);
+      this.next.set(Rating.Easy, item_easy);
+      return this.next.get(grade);
+    }
+    /**
+     * Review next_ds
+     */
+    next_ds(t, g, r) {
+      const next_state = this.algorithm.next_state(
+        {
+          difficulty: this.current.difficulty,
+          stability: this.current.stability
+        },
+        t,
+        g,
+        r
+      );
+      const card = TypeConvert.card(this.current);
+      card.difficulty = next_state.difficulty;
+      card.stability = next_state.stability;
+      return card;
+    }
+    /**
+     * Review next_interval
+     */
+    next_interval(next_hard, next_good, next_easy, interval) {
+      let hard_interval, good_interval;
+      hard_interval = this.algorithm.next_interval(next_hard.stability, interval);
+      good_interval = this.algorithm.next_interval(next_good.stability, interval);
+      hard_interval = Math.min(hard_interval, good_interval);
+      good_interval = Math.max(good_interval, hard_interval + 1);
+      const easy_interval = Math.max(
+        this.algorithm.next_interval(next_easy.stability, interval),
+        good_interval + 1
+      );
+      next_hard.scheduled_days = hard_interval;
+      next_hard.due = date_scheduler(this.review_time, hard_interval, true);
+      next_good.scheduled_days = good_interval;
+      next_good.due = date_scheduler(this.review_time, good_interval, true);
+      next_easy.scheduled_days = easy_interval;
+      next_easy.due = date_scheduler(this.review_time, easy_interval, true);
+    }
+    /**
+     * Review next_state
+     */
+    next_state(next_hard, next_good, next_easy) {
+      next_hard.state = State.Review;
+      next_hard.learning_steps = 0;
+      next_good.state = State.Review;
+      next_good.learning_steps = 0;
+      next_easy.state = State.Review;
+      next_easy.learning_steps = 0;
+    }
+  }
+
+  class LongTermScheduler extends AbstractScheduler {
+    newState(grade) {
+      const exist = this.next.get(grade);
+      if (exist) {
+        return exist;
+      }
+      this.current.scheduled_days = 0;
+      this.current.elapsed_days = 0;
+      const first_interval = 0;
+      const next_again = this.next_ds(first_interval, Rating.Again);
+      const next_hard = this.next_ds(first_interval, Rating.Hard);
+      const next_good = this.next_ds(first_interval, Rating.Good);
+      const next_easy = this.next_ds(first_interval, Rating.Easy);
+      this.next_interval(
+        next_again,
+        next_hard,
+        next_good,
+        next_easy,
+        first_interval
+      );
+      this.next_state(next_again, next_hard, next_good, next_easy);
+      this.update_next(next_again, next_hard, next_good, next_easy);
+      return this.next.get(grade);
+    }
+    next_ds(t, g, r) {
+      const next_state = this.algorithm.next_state(
+        {
+          difficulty: this.current.difficulty,
+          stability: this.current.stability
+        },
+        t,
+        g,
+        r
+      );
+      const card = TypeConvert.card(this.current);
+      card.difficulty = next_state.difficulty;
+      card.stability = next_state.stability;
+      return card;
+    }
+    /**
+     * @see https://github.com/open-spaced-repetition/ts-fsrs/issues/98#issuecomment-2241923194
+     */
+    learningState(grade) {
+      return this.reviewState(grade);
+    }
+    reviewState(grade) {
+      const exist = this.next.get(grade);
+      if (exist) {
+        return exist;
+      }
+      const interval = this.elapsed_days;
+      const retrievability = this.algorithm.forgetting_curve(
+        interval,
+        this.current.stability
+      );
+      const next_again = this.next_ds(interval, Rating.Again, retrievability);
+      const next_hard = this.next_ds(interval, Rating.Hard, retrievability);
+      const next_good = this.next_ds(interval, Rating.Good, retrievability);
+      const next_easy = this.next_ds(interval, Rating.Easy, retrievability);
+      this.next_interval(next_again, next_hard, next_good, next_easy, interval);
+      this.next_state(next_again, next_hard, next_good, next_easy);
+      next_again.lapses += 1;
+      this.update_next(next_again, next_hard, next_good, next_easy);
+      return this.next.get(grade);
+    }
+    /**
+     * Review/New next_interval
+     */
+    next_interval(next_again, next_hard, next_good, next_easy, interval) {
+      let again_interval, hard_interval, good_interval, easy_interval;
+      again_interval = this.algorithm.next_interval(
+        next_again.stability,
+        interval
+      );
+      hard_interval = this.algorithm.next_interval(next_hard.stability, interval);
+      good_interval = this.algorithm.next_interval(next_good.stability, interval);
+      easy_interval = this.algorithm.next_interval(next_easy.stability, interval);
+      again_interval = Math.min(again_interval, hard_interval);
+      hard_interval = Math.max(hard_interval, again_interval + 1);
+      good_interval = Math.max(good_interval, hard_interval + 1);
+      easy_interval = Math.max(easy_interval, good_interval + 1);
+      next_again.scheduled_days = again_interval;
+      next_again.due = date_scheduler(this.review_time, again_interval, true);
+      next_hard.scheduled_days = hard_interval;
+      next_hard.due = date_scheduler(this.review_time, hard_interval, true);
+      next_good.scheduled_days = good_interval;
+      next_good.due = date_scheduler(this.review_time, good_interval, true);
+      next_easy.scheduled_days = easy_interval;
+      next_easy.due = date_scheduler(this.review_time, easy_interval, true);
+    }
+    /**
+     * Review/New next_state
+     */
+    next_state(next_again, next_hard, next_good, next_easy) {
+      next_again.state = State.Review;
+      next_again.learning_steps = 0;
+      next_hard.state = State.Review;
+      next_hard.learning_steps = 0;
+      next_good.state = State.Review;
+      next_good.learning_steps = 0;
+      next_easy.state = State.Review;
+      next_easy.learning_steps = 0;
+    }
+    update_next(next_again, next_hard, next_good, next_easy) {
+      const item_again = {
+        card: next_again,
+        log: this.buildLog(Rating.Again)
+      };
+      const item_hard = {
+        card: next_hard,
+        log: super.buildLog(Rating.Hard)
+      };
+      const item_good = {
+        card: next_good,
+        log: super.buildLog(Rating.Good)
+      };
+      const item_easy = {
+        card: next_easy,
+        log: super.buildLog(Rating.Easy)
+      };
+      this.next.set(Rating.Again, item_again);
+      this.next.set(Rating.Hard, item_hard);
+      this.next.set(Rating.Good, item_good);
+      this.next.set(Rating.Easy, item_easy);
+    }
+  }
+
+  var __defProp$1 = Object.defineProperty;
+  var __defProps$1 = Object.defineProperties;
+  var __getOwnPropDescs$1 = Object.getOwnPropertyDescriptors;
+  var __getOwnPropSymbols$1 = Object.getOwnPropertySymbols;
+  var __hasOwnProp$1 = Object.prototype.hasOwnProperty;
+  var __propIsEnum$1 = Object.prototype.propertyIsEnumerable;
+  var __defNormalProp$1 = (obj, key, value) => key in obj ? __defProp$1(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
+  var __spreadValues$1 = (a, b) => {
+    for (var prop in b || (b = {}))
+      if (__hasOwnProp$1.call(b, prop))
+        __defNormalProp$1(a, prop, b[prop]);
+    if (__getOwnPropSymbols$1)
+      for (var prop of __getOwnPropSymbols$1(b)) {
+        if (__propIsEnum$1.call(b, prop))
+          __defNormalProp$1(a, prop, b[prop]);
+      }
+    return a;
+  };
+  var __spreadProps$1 = (a, b) => __defProps$1(a, __getOwnPropDescs$1(b));
+  var __publicField$1 = (obj, key, value) => __defNormalProp$1(obj, key + "" , value);
+  class Reschedule {
+    /**
+     * Creates an instance of the `Reschedule` class.
+     * @param fsrs - An instance of the FSRS class used for scheduling.
+     */
+    constructor(fsrs) {
+      __publicField$1(this, "fsrs");
+      this.fsrs = fsrs;
+    }
+    /**
+     * Replays a review for a card and determines the next review date based on the given rating.
+     * @param card - The card being reviewed.
+     * @param reviewed - The date the card was reviewed.
+     * @param rating - The grade given to the card during the review.
+     * @returns A `RecordLogItem` containing the updated card and review log.
+     */
+    replay(card, reviewed, rating) {
+      return this.fsrs.next(card, reviewed, rating);
+    }
+    /**
+     * Processes a manual review for a card, allowing for custom state, stability, difficulty, and due date.
+     * @param card - The card being reviewed.
+     * @param state - The state of the card after the review.
+     * @param reviewed - The date the card was reviewed.
+     * @param elapsed_days - The number of days since the last review.
+     * @param stability - (Optional) The stability of the card.
+     * @param difficulty - (Optional) The difficulty of the card.
+     * @param due - (Optional) The due date for the next review.
+     * @returns A `RecordLogItem` containing the updated card and review log.
+     * @throws Will throw an error if the state or due date is not provided when required.
+     */
+    handleManualRating(card, state, reviewed, elapsed_days, stability, difficulty, due) {
+      if (typeof state === "undefined") {
+        throw new FSRSValidationError(
+          "reschedule: state is required for manual rating"
+        );
+      }
+      let log;
+      let next_card;
+      if (state === State.New) {
+        log = {
+          rating: Rating.Manual,
+          state,
+          due: due != null ? due : reviewed,
+          stability: card.stability,
+          difficulty: card.difficulty,
+          elapsed_days,
+          last_elapsed_days: card.elapsed_days,
+          scheduled_days: card.scheduled_days,
+          learning_steps: card.learning_steps,
+          review: reviewed
+        };
+        next_card = createEmptyCard(reviewed);
+        next_card.last_review = reviewed;
+      } else {
+        if (typeof due === "undefined") {
+          throw new FSRSValidationError(
+            "reschedule: due is required for manual rating"
+          );
+        }
+        const scheduled_days = date_diff(due, reviewed, "days");
+        log = {
+          rating: Rating.Manual,
+          state: card.state,
+          due: card.last_review || card.due,
+          stability: card.stability,
+          difficulty: card.difficulty,
+          elapsed_days,
+          last_elapsed_days: card.elapsed_days,
+          scheduled_days: card.scheduled_days,
+          learning_steps: card.learning_steps,
+          review: reviewed
+        };
+        next_card = __spreadProps$1(__spreadValues$1({}, card), {
+          state,
+          due,
+          last_review: reviewed,
+          stability: stability || card.stability,
+          difficulty: difficulty || card.difficulty,
+          elapsed_days,
+          scheduled_days,
+          reps: card.reps + 1
+        });
+      }
+      return { card: next_card, log };
+    }
+    /**
+     * Reschedules a card based on its review history.
+     *
+     * @param current_card - The card to be rescheduled.
+     * @param reviews - An array of review history objects.
+     * @returns An array of record log items representing the rescheduling process.
+     */
+    reschedule(current_card, reviews) {
+      const collections = [];
+      let cur_card = createEmptyCard(current_card.due);
+      for (const review of reviews) {
+        let item;
+        review.review = TypeConvert.time(review.review);
+        if (review.rating === Rating.Manual) {
+          let interval = 0;
+          if (cur_card.state !== State.New && cur_card.last_review) {
+            interval = date_diff(review.review, cur_card.last_review, "days");
+          }
+          item = this.handleManualRating(
+            cur_card,
+            review.state,
+            review.review,
+            interval,
+            review.stability,
+            review.difficulty,
+            review.due ? TypeConvert.time(review.due) : void 0
+          );
+        } else {
+          item = this.replay(cur_card, review.review, review.rating);
+        }
+        collections.push(item);
+        cur_card = item.card;
+      }
+      return collections;
+    }
+    calculateManualRecord(current_card, now, record_log_item, update_memory) {
+      if (!record_log_item) {
+        return null;
+      }
+      const { card: reschedule_card, log } = record_log_item;
+      const cur_card = TypeConvert.card(current_card);
+      if (cur_card.due.getTime() === reschedule_card.due.getTime()) {
+        return null;
+      }
+      cur_card.scheduled_days = date_diff(
+        reschedule_card.due,
+        cur_card.due,
+        "days"
+      );
+      return this.handleManualRating(
+        cur_card,
+        reschedule_card.state,
+        TypeConvert.time(now),
+        log.elapsed_days,
+        update_memory ? reschedule_card.stability : void 0,
+        update_memory ? reschedule_card.difficulty : void 0,
+        reschedule_card.due
+      );
+    }
+  }
+
+  var __defProp = Object.defineProperty;
+  var __defProps = Object.defineProperties;
+  var __getOwnPropDescs = Object.getOwnPropertyDescriptors;
+  var __getOwnPropSymbols = Object.getOwnPropertySymbols;
+  var __hasOwnProp = Object.prototype.hasOwnProperty;
+  var __propIsEnum = Object.prototype.propertyIsEnumerable;
+  var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
+  var __spreadValues = (a, b) => {
+    for (var prop in b || (b = {}))
+      if (__hasOwnProp.call(b, prop))
+        __defNormalProp(a, prop, b[prop]);
+    if (__getOwnPropSymbols)
+      for (var prop of __getOwnPropSymbols(b)) {
+        if (__propIsEnum.call(b, prop))
+          __defNormalProp(a, prop, b[prop]);
+      }
+    return a;
+  };
+  var __spreadProps = (a, b) => __defProps(a, __getOwnPropDescs(b));
+  var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
+  function applyAfterHandler(value, afterHandler) {
+    return typeof afterHandler === "function" ? afterHandler(value) : value;
+  }
+  class FSRS extends FSRSAlgorithm {
+    constructor(param) {
+      super(param);
+      __publicField(this, "strategyHandler", /* @__PURE__ */ new Map());
+      __publicField(this, "Scheduler");
+      const { enable_short_term } = this.parameters;
+      this.Scheduler = enable_short_term ? BasicScheduler : LongTermScheduler;
+    }
+    params_handler_proxy() {
+      const _this = this;
+      return {
+        set: function(target, prop, value) {
+          if (prop === "request_retention" && Number.isFinite(value)) {
+            _this.intervalModifier = _this.calculate_interval_modifier(
+              Number(value)
+            );
+          } else if (prop === "enable_short_term") {
+            _this.Scheduler = value === true ? BasicScheduler : LongTermScheduler;
+          } else if (prop === "w") {
+            value = migrateParameters(
+              value,
+              target.relearning_steps.length,
+              target.enable_short_term
+            );
+            value = clipParameters(
+              Array.from(value),
+              target.relearning_steps.length,
+              target.enable_short_term
+            );
+            _this.forgetting_curve = forgetting_curve.bind(this, value);
+            _this.intervalModifier = _this.calculate_interval_modifier(
+              Number(target.request_retention)
+            );
+          }
+          Reflect.set(target, prop, value);
+          return true;
+        }
+      };
+    }
+    useStrategy(mode, handler) {
+      this.strategyHandler.set(mode, handler);
+      return this;
+    }
+    clearStrategy(mode) {
+      if (mode) {
+        this.strategyHandler.delete(mode);
+      } else {
+        this.strategyHandler.clear();
+      }
+      return this;
+    }
+    getScheduler(card, now) {
+      const schedulerStrategy = this.strategyHandler.get(
+        StrategyMode.SCHEDULER
+      );
+      const Scheduler = schedulerStrategy || this.Scheduler;
+      const instance = new Scheduler(card, now, this, this.strategyHandler);
+      return instance;
+    }
+    /**
+     * Display the collection of cards and logs for the four scenarios after scheduling the card at the current time.
+     * @param card Card to be processed
+     * @param now Current time or scheduled time
+     * @param afterHandler Convert the result to another type. (Optional)
+     * @example
+     * ```typescript
+     * const card: Card = createEmptyCard(new Date());
+     * const f = fsrs();
+     * const recordLog = f.repeat(card, new Date());
+     * ```
+     * @example
+     * ```typescript
+     * interface RevLogUnchecked
+     *   extends Omit<ReviewLog, "due" | "review" | "state" | "rating"> {
+     *   cid: string;
+     *   due: Date | number;
+     *   state: StateType;
+     *   review: Date | number;
+     *   rating: RatingType;
+     * }
+     *
+     * interface RepeatRecordLog {
+     *   card: CardUnChecked; //see method: createEmptyCard
+     *   log: RevLogUnchecked;
+     * }
+     *
+     * function repeatAfterHandler(recordLog: RecordLog) {
+     *     const record: { [key in Grade]: RepeatRecordLog } = {} as {
+     *       [key in Grade]: RepeatRecordLog;
+     *     };
+     *     for (const grade of Grades) {
+     *       record[grade] = {
+     *         card: {
+     *           ...(recordLog[grade].card as Card & { cid: string }),
+     *           due: recordLog[grade].card.due.getTime(),
+     *           state: State[recordLog[grade].card.state] as StateType,
+     *           last_review: recordLog[grade].card.last_review
+     *             ? recordLog[grade].card.last_review!.getTime()
+     *             : null,
+     *         },
+     *         log: {
+     *           ...recordLog[grade].log,
+     *           cid: (recordLog[grade].card as Card & { cid: string }).cid,
+     *           due: recordLog[grade].log.due.getTime(),
+     *           review: recordLog[grade].log.review.getTime(),
+     *           state: State[recordLog[grade].log.state] as StateType,
+     *           rating: Rating[recordLog[grade].log.rating] as RatingType,
+     *         },
+     *       };
+     *     }
+     *     return record;
+     * }
+     * const card: Card = createEmptyCard(new Date(), cardAfterHandler); //see method:  createEmptyCard
+     * const f = fsrs();
+     * const recordLog = f.repeat(card, new Date(), repeatAfterHandler);
+     * ```
+     */
+    repeat(card, now, afterHandler) {
+      const instance = this.getScheduler(card, now);
+      const recordLog = instance.preview();
+      return applyAfterHandler(recordLog, afterHandler);
+    }
+    /**
+     * Display the collection of cards and logs for the card scheduled at the current time, after applying a specific grade rating.
+     * @param card Card to be processed
+     * @param now Current time or scheduled time
+     * @param grade Rating of the review (Again, Hard, Good, Easy)
+     * @param afterHandler Convert the result to another type. (Optional)
+     * @example
+     * ```typescript
+     * const card: Card = createEmptyCard(new Date());
+     * const f = fsrs();
+     * const recordLogItem = f.next(card, new Date(), Rating.Again);
+     * ```
+     * @example
+     * ```typescript
+     * interface RevLogUnchecked
+     *   extends Omit<ReviewLog, "due" | "review" | "state" | "rating"> {
+     *   cid: string;
+     *   due: Date | number;
+     *   state: StateType;
+     *   review: Date | number;
+     *   rating: RatingType;
+     * }
+     *
+     * interface NextRecordLog {
+     *   card: CardUnChecked; //see method: createEmptyCard
+     *   log: RevLogUnchecked;
+     * }
+     *
+    function nextAfterHandler(recordLogItem: RecordLogItem) {
+      const recordItem = {
+        card: {
+          ...(recordLogItem.card as Card & { cid: string }),
+          due: recordLogItem.card.due.getTime(),
+          state: State[recordLogItem.card.state] as StateType,
+          last_review: recordLogItem.card.last_review
+            ? recordLogItem.card.last_review!.getTime()
+            : null,
+        },
+        log: {
+          ...recordLogItem.log,
+          cid: (recordLogItem.card as Card & { cid: string }).cid,
+          due: recordLogItem.log.due.getTime(),
+          review: recordLogItem.log.review.getTime(),
+          state: State[recordLogItem.log.state] as StateType,
+          rating: Rating[recordLogItem.log.rating] as RatingType,
+        },
+      };
+      return recordItem
+    }
+     * const card: Card = createEmptyCard(new Date(), cardAfterHandler); //see method:  createEmptyCard
+     * const f = fsrs();
+     * const recordLogItem = f.repeat(card, new Date(), Rating.Again, nextAfterHandler);
+     * ```
+     */
+    next(card, now, grade, afterHandler) {
+      const instance = this.getScheduler(card, now);
+      const g = TypeConvert.rating(grade);
+      if (g === Rating.Manual) {
+        throw new FSRSValidationError("Cannot review a manual rating");
+      }
+      const recordLogItem = instance.review(g);
+      return applyAfterHandler(recordLogItem, afterHandler);
+    }
+    /**
+     * Get the retrievability of the card
+     * @param card  Card to be processed
+     * @param now  Current time or scheduled time
+     * @param format  default:true , Convert the result to another type. (Optional)
+     * @returns  The retrievability of the card,if format is true, the result is a string, otherwise it is a number
+     */
+    get_retrievability(card, now, format = true) {
+      const processedCard = TypeConvert.card(card);
+      now = now ? TypeConvert.time(now) : /* @__PURE__ */ new Date();
+      const t = processedCard.state !== State.New ? Math.max(date_diff(now, processedCard.last_review, "days"), 0) : 0;
+      const r = processedCard.state !== State.New ? this.forgetting_curve(t, +processedCard.stability.toFixed(8)) : 0;
+      return format ? `${(r * 100).toFixed(2)}%` : r;
+    }
+    /**
+     *
+     * @param card Card to be processed
+     * @param log last review log
+     * @param afterHandler Convert the result to another type. (Optional)
+     * @example
+     * ```typescript
+     * const now = new Date();
+     * const f = fsrs();
+     * const emptyCardFormAfterHandler = createEmptyCard(now);
+     * const repeatFormAfterHandler = f.repeat(emptyCardFormAfterHandler, now);
+     * const { card, log } = repeatFormAfterHandler[Rating.Hard];
+     * const rollbackFromAfterHandler = f.rollback(card, log);
+     * ```
+     *
+     * @example
+     * ```typescript
+     * const now = new Date();
+     * const f = fsrs();
+     * const emptyCardFormAfterHandler = createEmptyCard(now, cardAfterHandler);  //see method: createEmptyCard
+     * const repeatFormAfterHandler = f.repeat(emptyCardFormAfterHandler, now, repeatAfterHandler); //see method: fsrs.repeat()
+     * const { card, log } = repeatFormAfterHandler[Rating.Hard];
+     * const rollbackFromAfterHandler = f.rollback(card, log, cardAfterHandler);
+     * ```
+     */
+    rollback(card, log, afterHandler) {
+      const processedCard = TypeConvert.card(card);
+      const processedLog = TypeConvert.review_log(log);
+      if (processedLog.rating === Rating.Manual) {
+        throw new FSRSValidationError("Cannot rollback a manual rating");
+      }
+      let last_due;
+      let last_review;
+      let last_lapses;
+      switch (processedLog.state) {
+        case State.New:
+          last_due = processedLog.due;
+          last_review = void 0;
+          last_lapses = 0;
+          break;
+        case State.Learning:
+        case State.Relearning:
+        case State.Review:
+          last_due = processedLog.review;
+          last_review = processedLog.due;
+          last_lapses = processedCard.lapses - (processedLog.rating === Rating.Again && processedLog.state === State.Review ? 1 : 0);
+          break;
+      }
+      const prevCard = __spreadProps(__spreadValues({}, processedCard), {
+        due: last_due,
+        stability: processedLog.stability,
+        difficulty: processedLog.difficulty,
+        elapsed_days: processedLog.last_elapsed_days,
+        scheduled_days: processedLog.scheduled_days,
+        reps: Math.max(0, processedCard.reps - 1),
+        lapses: Math.max(0, last_lapses),
+        learning_steps: processedLog.learning_steps,
+        state: processedLog.state,
+        last_review
+      });
+      return applyAfterHandler(prevCard, afterHandler);
+    }
+    /**
+     *
+     * @param card Card to be processed
+     * @param now Current time or scheduled time
+     * @param reset_count Should the review count information(reps,lapses) be reset. (Optional)
+     * @param afterHandler Convert the result to another type. (Optional)
+     * @example
+     * ```typescript
+     * const now = new Date();
+     * const f = fsrs();
+     * const emptyCard = createEmptyCard(now);
+     * const scheduling_cards = f.repeat(emptyCard, now);
+     * const { card, log } = scheduling_cards[Rating.Hard];
+     * const forgetCard = f.forget(card, new Date(), true);
+     * ```
+     *
+     * @example
+     * ```typescript
+     * interface RepeatRecordLog {
+     *   card: CardUnChecked; //see method: createEmptyCard
+     *   log: RevLogUnchecked; //see method: fsrs.repeat()
+     * }
+     *
+     * function forgetAfterHandler(recordLogItem: RecordLogItem): RepeatRecordLog {
+     *     return {
+     *       card: {
+     *         ...(recordLogItem.card as Card & { cid: string }),
+     *         due: recordLogItem.card.due.getTime(),
+     *         state: State[recordLogItem.card.state] as StateType,
+     *         last_review: recordLogItem.card.last_review
+     *           ? recordLogItem.card.last_review!.getTime()
+     *           : null,
+     *       },
+     *       log: {
+     *         ...recordLogItem.log,
+     *         cid: (recordLogItem.card as Card & { cid: string }).cid,
+     *         due: recordLogItem.log.due.getTime(),
+     *         review: recordLogItem.log.review.getTime(),
+     *         state: State[recordLogItem.log.state] as StateType,
+     *         rating: Rating[recordLogItem.log.rating] as RatingType,
+     *       },
+     *     };
+     * }
+     * const now = new Date();
+     * const f = fsrs();
+     * const emptyCardFormAfterHandler = createEmptyCard(now, cardAfterHandler); //see method:  createEmptyCard
+     * const repeatFormAfterHandler = f.repeat(emptyCardFormAfterHandler, now, repeatAfterHandler); //see method: fsrs.repeat()
+     * const { card } = repeatFormAfterHandler[Rating.Hard];
+     * const forgetFromAfterHandler = f.forget(card, date_scheduler(now, 1, true), false, forgetAfterHandler);
+     * ```
+     */
+    forget(card, now, reset_count = false, afterHandler) {
+      const processedCard = TypeConvert.card(card);
+      now = TypeConvert.time(now);
+      const scheduled_days = processedCard.state === State.New ? 0 : date_diff(now, processedCard.due, "days");
+      const forget_log = {
+        rating: Rating.Manual,
+        state: processedCard.state,
+        due: processedCard.due,
+        stability: processedCard.stability,
+        difficulty: processedCard.difficulty,
+        elapsed_days: 0,
+        last_elapsed_days: processedCard.elapsed_days,
+        scheduled_days,
+        learning_steps: processedCard.learning_steps,
+        review: now
+      };
+      const forget_card = __spreadProps(__spreadValues({}, processedCard), {
+        due: now,
+        stability: 0,
+        difficulty: 0,
+        elapsed_days: 0,
+        scheduled_days: 0,
+        reps: reset_count ? 0 : processedCard.reps,
+        lapses: reset_count ? 0 : processedCard.lapses,
+        learning_steps: 0,
+        state: State.New,
+        last_review: processedCard.last_review
+      });
+      const recordLogItem = { card: forget_card, log: forget_log };
+      return applyAfterHandler(recordLogItem, afterHandler);
+    }
+    /**
+     * Reschedules the current card and returns the rescheduled collections and reschedule item.
+     *
+     * @template T - The type of the record log item.
+     * @param {CardInput | Card} current_card - The current card to be rescheduled.
+     * @param {Array<FSRSHistory>} reviews - The array of FSRSHistory objects representing the reviews.
+     * @param {Partial<RescheduleOptions<T>>} options - The optional reschedule options.
+     * @returns {IReschedule<T>} - The rescheduled collections and reschedule item.
+     *
+     * @example
+     * ```typescript
+     * const f = fsrs()
+     * const grades: Grade[] = [Rating.Good, Rating.Good, Rating.Good, Rating.Good]
+     * const reviews_at = [
+     *   new Date(2024, 8, 13),
+     *   new Date(2024, 8, 13),
+     *   new Date(2024, 8, 17),
+     *   new Date(2024, 8, 28),
+     * ]
+     *
+     * const reviews: FSRSHistory[] = []
+     * for (let i = 0; i < grades.length; i++) {
+     *   reviews.push({
+     *     rating: grades[i],
+     *     review: reviews_at[i],
+     *   })
+     * }
+     *
+     * const results_short = scheduler.reschedule(
+     *   createEmptyCard(),
+     *   reviews,
+     *   {
+     *     skipManual: false,
+     *   }
+     * )
+     * console.log(results_short)
+     * ```
+     */
+    reschedule(current_card, reviews = [], options = {}) {
+      const {
+        recordLogHandler,
+        reviewsOrderBy,
+        skipManual = true,
+        now = /* @__PURE__ */ new Date(),
+        update_memory_state: updateMemoryState = false
+      } = options;
+      if (reviewsOrderBy && typeof reviewsOrderBy === "function") {
+        reviews.sort(reviewsOrderBy);
+      }
+      if (skipManual) {
+        reviews = reviews.filter((review) => review.rating !== Rating.Manual);
+      }
+      const rescheduleSvc = new Reschedule(this);
+      const collections = rescheduleSvc.reschedule(
+        options.first_card || createEmptyCard(),
+        reviews
+      );
+      const len = collections.length;
+      const cur_card = TypeConvert.card(current_card);
+      const manual_item = rescheduleSvc.calculateManualRecord(
+        cur_card,
+        now,
+        len ? collections[len - 1] : void 0,
+        updateMemoryState
+      );
+      return {
+        collections: typeof recordLogHandler === "function" ? collections.map(recordLogHandler) : collections,
+        reschedule_item: manual_item ? applyAfterHandler(manual_item, recordLogHandler) : null
+      };
+    }
+  }
+  const fsrs = (params) => {
+    return new FSRS(params || {});
+  };
+
+  exports.AbstractScheduler = AbstractScheduler;
+  exports.BasicLearningStepsStrategy = BasicLearningStepsStrategy;
+  exports.CLAMP_PARAMETERS = CLAMP_PARAMETERS;
+  exports.ConvertStepUnitToMinutes = ConvertStepUnitToMinutes;
+  exports.DefaultInitSeedStrategy = DefaultInitSeedStrategy;
+  exports.FSRS = FSRS;
+  exports.FSRS5_DEFAULT_DECAY = FSRS5_DEFAULT_DECAY;
+  exports.FSRS6_DEFAULT_DECAY = FSRS6_DEFAULT_DECAY;
+  exports.FSRSAlgorithm = FSRSAlgorithm;
+  exports.FSRSVersion = FSRSVersion;
+  exports.GenSeedStrategyWithCardId = GenSeedStrategyWithCardId;
+  exports.Grades = Grades;
+  exports.INIT_S_MAX = INIT_S_MAX;
+  exports.Rating = Rating;
+  exports.S_MAX = S_MAX;
+  exports.S_MIN = S_MIN;
+  exports.State = State;
+  exports.StrategyMode = StrategyMode;
+  exports.TypeConvert = TypeConvert;
+  exports.W17_W18_Ceiling = W17_W18_Ceiling;
+  exports.checkParameters = checkParameters;
+  exports.clamp = clamp;
+  exports.clipParameters = clipParameters;
+  exports.computeDecayFactor = computeDecayFactor;
+  exports.createEmptyCard = createEmptyCard;
+  exports.dateDiffInDays = dateDiffInDays;
+  exports.date_diff = date_diff;
+  exports.date_scheduler = date_scheduler;
+  exports.default_enable_fuzz = default_enable_fuzz;
+  exports.default_enable_short_term = default_enable_short_term;
+  exports.default_learning_steps = default_learning_steps;
+  exports.default_maximum_interval = default_maximum_interval;
+  exports.default_relearning_steps = default_relearning_steps;
+  exports.default_request_retention = default_request_retention;
+  exports.default_w = default_w;
+  exports.fixDate = fixDate;
+  exports.fixRating = fixRating;
+  exports.fixState = fixState;
+  exports.forgetting_curve = forgetting_curve;
+  exports.formatDate = formatDate;
+  exports.fsrs = fsrs;
+  exports.generatorParameters = generatorParameters;
+  exports.get_fuzz_range = get_fuzz_range;
+  exports.migrateParameters = migrateParameters;
+  exports.roundTo = roundTo;
+  exports.show_diff_message = show_diff_message;
+
+}));
+//# sourceMappingURL=index.umd.js.map
+
+</script>
 <script>
 let state = 'idle';
 let hostPlatform = window.__TD_PLATFORM__ || 'Darwin';
@@ -6939,6 +9292,7 @@ async function renderTimelineNotes(isCurrent=null){
   $('empty').style.display=hasTimeline?'none':'flex';$('feed').style.display=hasTimeline?'block':'none';
   if(!hasTimeline)$('emptyText').textContent='（该项目无语音内容）';
   if(!$('allNotesPop').hidden)renderAllNotes();
+  if(typeof reviewAfterTimelineRender==='function')reviewAfterTimelineRender();
 }
 
 function applyStatus(d){
@@ -8549,7 +10903,7 @@ $('setAppearance').addEventListener('click', e=>{
   window.tingdaoAppearance.set(b.dataset.v);
   syncAppearanceUI();
 });
-const COMPLETION_SOUNDS = ['warm', 'distant'];
+const COMPLETION_SOUNDS = ['warm', 'cheerful'];
 const COPY_FORMATS = [
   {value:'md', label:'Markdown 文件', detail:'.md'},
   {value:'ts', label:'带时间戳', detail:'逐行'},
@@ -9758,6 +12112,13 @@ function resolveTranscriptImageLayout(node,contentWidth){
     return {...node,layout:'inline'};
   return node;
 }
+// 侧排时给文字至少留约 10 个字的宽度；放不下就让图片临时独占一行，不再让文字压到图片底下。
+const IMAGE_ASIDE_MIN_TEXT=160, IMAGE_ASIDE_MIN_IMAGE=96;
+function fitTranscriptImageAside(contentWidth,preferredWidth){
+  const room=Number(contentWidth)-16-IMAGE_ASIDE_MIN_TEXT;
+  if(!(room>=IMAGE_ASIDE_MIN_IMAGE))return 0;
+  return Math.round(Math.max(IMAGE_ASIDE_MIN_IMAGE,Math.min(Number(preferredWidth)||room,room)));
+}
 function resolveImageAsideWidth(contentWidth,preferredWidth=null){
   const available=Number(contentWidth)-16;
   if(available<96)return 0;
@@ -10163,12 +12524,13 @@ window.addEventListener('resize',()=>{if(view)renderTimelineNotes();});
   function refreshPreview(){
     frame=0;
     const bounds=wrap.getBoundingClientRect();
-    if(!bounds.height || !wrap.classList.contains('viewing')){preview.hidden=true;return;}
+    if(document.body.classList.contains('transcript-bookmarks-loading') || !wrap.classList.contains('viewing')){activeSource=null;preview.hidden=true;return;}
+    if(!bounds.height){preview.hidden=true;return;}
     const scrollTop=wrap.scrollTop;
     if(scrollTop!==lastScrollTop) returning=scrollTop<lastScrollTop;
     lastScrollTop=scrollTop;
     const top=bounds.top+8;
-    let source=null, next=Infinity, nextImage=false;
+    let source=null, next=Infinity;
     for(const candidate of candidates){
       const rect=candidate.getBoundingClientRect();
       if(!rect.height) continue;
@@ -10176,34 +12538,40 @@ window.addEventListener('resize',()=>{if(view)renderTimelineNotes();});
       const edge=heading||returning?rect.top:rect.bottom;
       if(edge>top){
         next=edge;
-        nextImage=!heading && !!candidate.naturalWidth;
         break;
       }
       source=heading?null:candidate;
     }
     if(!source || !source.naturalWidth){preview.hidden=true;return;}
-    if(source===dismissedSource){if(!exitAnimation) preview.hidden=true;return;}
+    const figure=source.closest('.transcript-note-image');
+    const sourceKey=JSON.stringify([figure.dataset.imageSessionId,figure.dataset.imageFile,figure.dataset.noteIndex,figure.dataset.noteContentIndex]);
+    if(sourceKey===dismissedSource){if(!exitAnimation) preview.hidden=true;return;}
     if(exitAnimation){preview.hidden=true;cancelPreviewExit();}
     dismissedSource=null;
-    if(source!==activeSource){
+    if(sourceKey!==activeSource){
+      if(activeSource && !preview.hidden && !preview.matches(':hover,:focus-within,.expanded') && !matchMedia('(prefers-reduced-motion: reduce)').matches){
+        const outgoing=document.createElement('span');
+        outgoing.className='outgoing-bookmark';
+        outgoing.setAttribute('aria-hidden','true');
+        preview.appendChild(outgoing);
+        const exit=outgoing.animate([{translate:'0 0',opacity:1},{translate:'14px 0',opacity:0}],
+          {duration:220,easing:'cubic-bezier(.22,1,.36,1)',fill:'forwards'});
+        exit.onfinish=exit.oncancel=()=>outgoing.remove();
+      }
+      preview.classList.remove('bookmark-enter');
+      void preview.offsetWidth;
+      preview.classList.add('bookmark-enter');
       floatExit?.cancel();
       preview.classList.remove('expanded');
     }
-    activeSource=source;
+    activeSource=sourceKey;
     const rect=source.getBoundingClientRect();
     const scale=Math.min(.7,200/rect.width,134/rect.height);
     const topGap=top-bounds.top;
-    const handleHeight=parseFloat(getComputedStyle(preview).getPropertyValue('--preview-handle-height'));
     const imageHeight=rect.height*(preview.classList.contains('expanded')?1:scale);
-    // Both layers must clear the clip edge before the next source takes over.
     const push=Math.min(0,next-top-imageHeight-topGap);
-    const handlePush=Math.min(0,next-top-handleHeight-topGap);
-    preview.style.setProperty('--preview-handle-top',(top+handlePush)+'px');
-    const handoffDistance=handleHeight+topGap;
-    const progress=Math.min(1,Math.max(0,-handlePush/handoffDistance));
-    preview.style.setProperty('--bookmark-opacity',1-progress);
-    preview.style.setProperty('--incoming-opacity',nextImage?progress:0);
-    preview.style.setProperty('--incoming-top',(top+handoffDistance*(1-progress))+'px');
+    // The bookmark stays fixed; source changes trigger a complete time-based entrance.
+    preview.style.setProperty('--preview-handle-top',top+'px');
     if(artwork.src!==source.src) artwork.src=source.src;
     image.style.width=rect.width+'px';
     image.style.height=rect.height+'px';
@@ -10227,6 +12595,7 @@ window.addEventListener('resize',()=>{if(view)renderTimelineNotes();});
   }).observe(feed,{childList:true,subtree:true});
   new ResizeObserver(schedulePreview).observe(wrap);
   wrap.addEventListener('scroll',schedulePreview,{passive:true});
+  wrap.addEventListener('transcript-ready',()=>{activeSource=null;schedulePreview();});
   feed.addEventListener('load',schedulePreview,true);
 }
 
@@ -10485,23 +12854,55 @@ function refreshTranscriptImageAsideFlow(){
   resetImageAsideFlow();
   $('feed').querySelectorAll('.image-aside-row').forEach(anchor=>{
     const figure=anchor.querySelector('.transcript-note-image');if(!figure)return;
-    const width=Number(figure.dataset.noteDisplayWidth),image=figure.querySelector('img');
+    const preferred=Number(figure.dataset.noteDisplayWidth),image=figure.querySelector('img');
+    const content=anchor.querySelector('.tx'),contentWidth=content?content.getBoundingClientRect().width:0;
+    // 按当前栏宽重新决定显示宽度；dataset.noteDisplayWidth 仍是用户保存的宽度，不被改写
+    const width=fitTranscriptImageAside(contentWidth,preferred);
+    const divider=anchor.querySelector('.transcript-image-divider');
+    anchor.classList.toggle('image-aside-collapsed',!width);
+    if(!width){
+      figure.style.width=`${Math.max(48,Math.round(Math.min(preferred||contentWidth,contentWidth||preferred)))}px`;
+      anchor.style.removeProperty('--image-aside-width');return;
+    }
+    figure.style.width=`${width}px`;
     anchor.style.setProperty('--image-aside-width',`${width}px`);
     const height=width*(Number(image.height)||1)/(Number(image.width)||1);
     applyImageAsideFlow(anchor,width,height,figure.dataset.side);
-    const divider=anchor.querySelector('.transcript-image-divider');if(divider)divider.style.height=`${Math.max(32,height)}px`;
+    if(divider)divider.style.height=`${Math.max(32,height)}px`;
   });
 }
+let transcriptAsideFlowWidth=0;
+// 记下视口顶部正在读的那一段；栏宽变化导致重排后，用它把阅读位置补回来
+let transcriptReadingMark=null;
+function transcriptReadingAnchor(){
+  const wrap=$('feedwrap'),rect=wrap.getBoundingClientRect();
+  const hit=document.elementFromPoint(rect.left+rect.width/2,rect.top+8);
+  const row=hit&&hit.closest&&hit.closest('#feed .seg,#feed .transcript-heading');
+  return row?{row,offset:row.getBoundingClientRect().top-rect.top}:null;
+}
+function markTranscriptReadingPosition(){ if($('feed').querySelector('.image-aside-row'))transcriptReadingMark=transcriptReadingAnchor(); }
 new ResizeObserver(()=>{
-  if($('feed').querySelector('.image-aside-row'))refreshTranscriptImageAsideFlow();
+  if(!$('feed').querySelector('.image-aside-row'))return;
+  const width=$('feed').clientWidth,widthChanged=transcriptAsideFlowWidth&&Math.abs(width-transcriptAsideFlowWidth)>1;
+  transcriptAsideFlowWidth=width;
+  // 栏宽变化会让图片和文字重排；以视口里第一段为锚补偿滚动，阅读位置不跳
+  // ResizeObserver 回调时文字已按新宽度重排，所以用重排前滚动时记下的位置
+  const anchor=widthChanged?transcriptReadingMark:null;
+  refreshTranscriptImageAsideFlow();
+  if(anchor&&anchor.row.isConnected){
+    const wrap=$('feedwrap'),drift=anchor.row.getBoundingClientRect().top-wrap.getBoundingClientRect().top-anchor.offset;
+    if(Math.abs(drift)>1)wrap.scrollTop+=drift;
+  }
+  transcriptReadingMark=transcriptReadingAnchor();
 }).observe($('feed'));
+$('feedwrap').addEventListener('scroll',scrollFrameUpdate(markTranscriptReadingPosition),{passive:true});
 
 function startTranscriptImageColumnResize(event,divider){
   const target=transcriptMainImageTarget(divider.parentElement.querySelector('.transcript-note-image'));if(!target)return;
   startTranscriptMainImageResize(event,target);
   if(transcriptMainImageResizeState){
     transcriptMainImageResizeState.direction=divider.dataset.side==='right'?-1:1;
-    transcriptMainImageResizeState.maxWidth=divider.parentElement.querySelector('.tx').getBoundingClientRect().width-64;
+    transcriptMainImageResizeState.maxWidth=Math.max(IMAGE_ASIDE_MIN_IMAGE,divider.parentElement.querySelector('.tx').getBoundingClientRect().width-16-IMAGE_ASIDE_MIN_TEXT);
   }
 }
 function setTranscriptMainImageWidth(row,width){
@@ -12576,6 +14977,11 @@ function showTranscriptLoadingPreview(item){
 async function loadSession(sid, keepList){
   hideTranscriptFormatTools();
   const generation=++transcriptViewGeneration;
+  document.body.classList.add('transcript-bookmarks-loading');
+  if(typeof musicOnSession==='function') musicOnSession();
+  $('reviewBookmark').hidden=true;
+  $('transcriptImagePreview').hidden=true;
+  if($('reviewPanel').classList.contains('open')) reviewSetOpen(false);
   setTranscriptLoading(false);
   $('feedzone').classList.remove('transcript-restoring');
   const enteringNotes=view===null;
@@ -12717,17 +15123,26 @@ async function loadSession(sid, keepList){
   if(enteringNotes)animateNotesEntry();
   if(!await rendering||!isCurrent())return;
   const openingPosition = Math.max(0, Number(d.last_pos) || 0);
-  if(openingPosition > 0) requestAnimationFrame(()=>{
-    if(generation !== transcriptViewGeneration) return;
-    followTo(curHit(openingPosition), 'instant');
-    $('feedzone').classList.remove('transcript-restoring');
-  });
+  if(openingPosition > 0) await new Promise(resolve=>requestAnimationFrame(()=>{
+    if(isCurrent()){
+      followTo(curHit(openingPosition), 'instant');
+      $('feedzone').classList.remove('transcript-restoring');
+    }
+    resolve();
+  }));
+  if(!isCurrent())return;
   // 若该项目正在后台精修, 补上指示器(页面刷新/切回该项目时事件已错过)
   fetchStatus().then(st=>{
     syncJobs(st);
     updateRefineUI();
   }).catch(()=>{});
   if(loading) await nextTranscriptPaint();
+  if(!isCurrent())return;
+  setTranscriptLoading(false);
+  document.body.classList.remove('transcript-bookmarks-loading');
+  if(typeof reviewOnSession==='function') reviewOnSession();
+  if(typeof musicOnSession==='function') musicOnSession();
+  $('feedwrap').dispatchEvent(new Event('transcript-ready'));
   }catch(error){
     if(isCurrent()){ $('feedzone').classList.remove('transcript-restoring'); toast('文稿加载失败，请重新打开'); }
   }finally{
@@ -12738,10 +15153,13 @@ async function loadSession(sid, keepList){
 function exitView(){
   if(view && posDirty) savePos(true);
   transcriptViewGeneration++;
+  document.body.classList.remove('transcript-bookmarks-loading');
   setTranscriptLoading(false);
   $('feedzone').classList.remove('transcript-restoring');
   renameArmed = false; setConfirm(false);
   view = null; spkOrder = [];
+  if(typeof reviewOnSession==='function') reviewOnSession();
+  if(typeof musicOnSession==='function') musicOnSession();
   $('btnSpk').style.display = 'none'; spkPop(false);
   clearTranscriptAnchors();
   $('audiobar').classList.remove('show');
@@ -15110,6 +17528,612 @@ $('patchRestart').onclick = ()=>{ closePatchModal(); location.href = 'tingdao-ap
 refreshPatchStatus();   // 先取一次: 「关于」里显示正在使用的补丁序号
 setTimeout(refreshPatchStatus, 8000);
 setInterval(refreshPatchStatus, 10 * 60 * 1000);
+/* ============ 复习打卡（牌堆） ============
+   状态随课件存进 .review.json：{version, items:[{src,kind,added,card,succ,done,doneOn,lastG,lastOn}], days:{日期:{due,done}}}
+   排期用 ts-fsrs 默认参数（关闭当日短期学习步与随机扰动），按本地自然日结算，下一轮最早在次日。 */
+const REVIEW_GRADES=[['again','忘了'],['hard','想了很久'],['good','记得'],['easy','很轻松']];
+const REVIEW_GL=Object.fromEntries(REVIEW_GRADES);
+const REVIEW_FACE={
+  again:'<path d="M7.6 8.6l2.6 2.6M10.2 8.6l-2.6 2.6M13.8 8.6l2.6 2.6M16.4 8.6l-2.6 2.6"/><path d="M8.5 16.2q1.75-1.4 3.5 0t3.5 0"/>',
+  hard:'<circle cx="8.9" cy="10" r="1.2" class="f"/><circle cx="15.1" cy="10" r="1.2" class="f"/><path d="M9 15.6l6-1.2"/><path class="sw" d="M18.6 4.2c1.1 1.5 1.6 2.4 1.6 3.1a1.6 1.6 0 0 1-3.2 0c0-.7.5-1.6 1.6-3.1z"/>',
+  good:'<circle cx="8.9" cy="10" r="1.2" class="f"/><circle cx="15.1" cy="10" r="1.2" class="f"/><path d="M8.6 14.2q3.4 3.2 6.8 0"/><circle cx="6.6" cy="13.4" r="1.3" class="ck"/><circle cx="17.4" cy="13.4" r="1.3" class="ck"/>',
+  easy:'<path d="M7.4 10.4q1.5-2 3 0M13.6 10.4q1.5-2 3 0"/><path d="M7.6 13.4h8.8q-.6 4.4-4.4 4.4t-4.4-4.4z" class="f"/><circle cx="6.4" cy="13.6" r="1.3" class="ck"/><circle cx="17.6" cy="13.6" r="1.3" class="ck"/>'};
+const REVIEW_SOUNDS={add:['review_add.mp3',.7],master:['review_master.mp3',.42],check:['review_check.mp3',.55],bell:['review_bell.mp3',.32]};
+const REVIEW_JMP='<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 3h4.5v4.5M9 3 3.5 8.5"/></svg>';
+const REVIEW_WK='日一二三四五六';
+let reviewData=null, reviewSid=null, reviewOrder=[], reviewPick=null, reviewSub={}, reviewUndo=null, reviewToastTimer=0;
+let reviewTab='due', reviewAddTab='chap'; const reviewSel=new Set();
+let reviewSoundOn=true; try{ reviewSoundOn=localStorage.getItem('tingdao-review-sound')!=='off'; }catch(e){}
+let reviewScheduler=null;
+function reviewFsrs(){
+  if(!reviewScheduler&&window.FSRS) reviewScheduler=FSRS.fsrs(FSRS.generatorParameters({enable_fuzz:false,enable_short_term:false}));
+  return reviewScheduler;
+}
+const reviewRating=g=>({again:FSRS.Rating.Again,hard:FSRS.Rating.Hard,good:FSRS.Rating.Good,easy:FSRS.Rating.Easy})[g];
+function reviewDayKey(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+function reviewToday(){ const n=new Date(); return new Date(n.getFullYear(),n.getMonth(),n.getDate()); }
+function reviewAddDays(d,n){ return new Date(d.getFullYear(),d.getMonth(),d.getDate()+n); }
+function reviewMd(d){ return `${d.getMonth()+1}月${d.getDate()}日`; }
+function reviewMdKey(k){ const [,m,d]=String(k||'').split('-'); return m?`${+m}月${+d}日`:''; }
+function reviewDueDay(item){ const d=new Date(item.card.due); return new Date(d.getFullYear(),d.getMonth(),d.getDate()); }
+function reviewDueOffset(item){ return Math.round((reviewDueDay(item)-reviewToday())/864e5); }
+const reviewEsc=x=>String(x).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function reviewPlay(key){
+  if(!reviewSoundOn||!REVIEW_SOUNDS[key]) return;
+  try{ const [file,vol]=REVIEW_SOUNDS[key]; const a=new Audio('/sound/'+encodeURIComponent(file)); a.volume=vol; a.play().catch(()=>{}); }catch(e){}
+}
+
+/* —— 来源：章节取目录里的一、二级标题（以时间为标识，改名不丢进度），笔记取有文字的时间线笔记（以 id 为标识） —— */
+function reviewChapters(){
+  const source=(view&&view.outline)||[], legacy=source.length>0&&source.every(item=>[2,4].includes(Number(item&&item.level)));
+  const list=source.map(item=>{ const raw=Number(item&&item.level), level=legacy?(raw===2?1:2):raw;
+    return {t:Number(item&&item.t),level,title:String((item||{}).title||'').trim()}; })
+    .filter(h=>[1,2].includes(h.level)&&Number.isFinite(h.t)&&h.title).sort((a,b)=>a.t-b.t);
+  const total=Math.max(Number(view&&view.duration)||0,list.length?list[list.length-1].t+1:0);
+  return list.map((h,i)=>({src:`ch:${h.t}`,kind:'chap',t:h.t,end:i+1<list.length?list[i+1].t:total,title:h.title}));
+}
+function reviewNotes(){
+  return ((view&&view.notes)||[]).map((n,index)=>({index,note:n,text:String(n&&n.text||'').trim()}))
+    .filter(x=>x.text).map(x=>({src:x.note.id?`note:${x.note.id}`:null,kind:'note',index:x.index,t:Number(x.note.t)||0,title:x.text,note:x.note}));
+}
+function reviewSource(item){
+  if(item.kind==='chap') return reviewChapters().find(c=>c.src===item.src)||null;
+  return reviewNotes().find(n=>n.src===item.src)||null;
+}
+function reviewChapterOf(t){ const chs=reviewChapters(); return chs.find(c=>t>=c.t&&t<c.end)||null; }
+
+/* —— 集合 —— */
+const reviewItems=()=>reviewData?reviewData.items:[];
+const reviewIsToday=item=>item.lastOn===reviewDayKey(reviewToday());
+function reviewDue(){ return reviewItems().filter(i=>!i.done&&!reviewIsToday(i)&&reviewDueOffset(i)<=0&&reviewSource(i)); }
+function reviewLater(){ return reviewItems().filter(i=>!i.done&&(reviewDueOffset(i)>0||!reviewSource(i))).sort((a,b)=>reviewDueOffset(a)-reviewDueOffset(b)); }
+const reviewDone=()=>reviewItems().filter(i=>i.done);
+const reviewTodayDone=()=>reviewItems().filter(reviewIsToday);
+function reviewLinked(chItem){ const ch=reviewSource(chItem); if(!ch) return [];
+  return reviewDue().filter(i=>i.kind==='note'&&(()=>{const s=reviewSource(i);return s&&s.t>=ch.t&&s.t<ch.end;})()); }
+function reviewDeckOrder(){
+  const due=reviewDue().sort((a,b)=>reviewDueOffset(a)-reviewDueOffset(b));
+  const chapIds=due.filter(i=>i.kind==='chap').map(reviewSource).filter(Boolean);
+  return due.filter(i=>{ if(i.kind!=='note') return true; const s=reviewSource(i); return !chapIds.some(c=>s.t>=c.t&&s.t<c.end); });
+}
+const reviewTodayTotal=()=>reviewTodayDone().length+reviewDue().length;
+
+/* —— 排期 —— */
+function reviewPreview(item){
+  const f=reviewFsrs(), now=new Date(), card={...item.card,due:new Date(item.card.due),last_review:item.card.last_review?new Date(item.card.last_review):undefined};
+  const out=f.repeat(card,now), res={};
+  for(const [g] of REVIEW_GRADES){ const r=out[reviewRating(g)]; res[g]=Math.max(1,Math.round(r.card.scheduled_days)); }
+  return res;
+}
+function reviewWillMaster(item,g,days){ return (item.kind==='chap'&&g==='easy')||((g==='good'||g==='easy')&&item.succ+1>=3&&days>=30); }
+function reviewIvText(n){ return n===1?'明天':n<30?`${n} 天后`:n<365?`${Math.round(n/30)} 个月后`:`${Math.round(n/365)} 年后`; }
+function reviewApply(item,g){
+  const f=reviewFsrs(), now=new Date(), card={...item.card,due:new Date(item.card.due),last_review:item.card.last_review?new Date(item.card.last_review):undefined};
+  const r=f.next(card,now,reviewRating(g)), days=Math.max(1,Math.round(r.card.scheduled_days));
+  const mastered=reviewWillMaster(item,g,days);
+  // 按自然日结算：下次到期落在当天 0 点，最早明天
+  const due=reviewAddDays(reviewToday(),days);
+  item.card={...r.card,due:due.toISOString(),last_review:now.toISOString()};
+  if(g==='good'||g==='easy') item.succ=(item.succ||0)+1;
+  item.lastG=g; item.lastOn=reviewDayKey(reviewToday());
+  if(mastered){ item.done=true; item.doneOn=reviewDayKey(reviewToday()); }
+  return mastered;
+}
+function reviewNewItem(src,kind){
+  const tomorrow=reviewAddDays(reviewToday(),1), card=FSRS.createEmptyCard(tomorrow);
+  return {src,kind,added:reviewDayKey(reviewToday()),card:{...card,due:tomorrow.toISOString()},succ:0,done:false,doneOn:null,lastG:null,lastOn:null};
+}
+function reviewStampDays(){
+  const key=reviewDayKey(reviewToday()), days=reviewData.days||(reviewData.days={});
+  const rec=days[key]||(days[key]={due:0,done:0});
+  rec.done=reviewTodayDone().length; rec.due=Math.max(rec.due||0,reviewTodayTotal());
+  if(!rec.due&&!rec.done) delete days[key];
+}
+
+/* —— 保存：先改本地，写盘失败就回滚并给出重试 —— */
+async function reviewSave(before,{toastText,undo,onSaved}={}){
+  const sid=reviewSid, next=JSON.parse(JSON.stringify(reviewData));
+  try{
+    const r=await api('/api/review_save',{id:sid,review:next});
+    if(!r||r.ok===false) throw new Error(r&&r.error||'save failed');
+    if(sid!==reviewSid) return true;
+    if(undo){ reviewUndo=before; reviewShowToast(toastText,'撤销',reviewUndoLast); }
+    else if(toastText) reviewShowToast(toastText);
+    if(onSaved) onSaved();
+    return true;
+  }catch(e){
+    if(sid!==reviewSid) return false;
+    reviewData=JSON.parse(before); reviewRenderAll();
+    reviewShowToast('没保存上，进度没有变','重试',()=>{ reviewData=next; reviewRenderAll(); reviewSave(before,{toastText,undo,onSaved}); },true);
+    return false;
+  }
+}
+async function reviewUndoLast(){
+  if(!reviewUndo) return; const before=JSON.stringify(reviewData), snap=reviewUndo; reviewUndo=null;
+  reviewData=JSON.parse(snap); reviewRenderAll(true); reviewHideToast();
+  await reviewSave(before);
+}
+
+/* —— 胶带摘字 —— */
+function reviewSplit(t){
+  const m=t.slice(0,22).search(/[，。；：、,;:！？]/);
+  const cap=Math.max(3,Math.min(7,Math.ceil(t.length*.3)));
+  const cut=(m>=3&&m<=cap)?m:cap;
+  const title=t.slice(0,cut), rest=t.slice(cut).replace(/^[，。；：、,;:！？\s]+/,'');
+  const core=rest.replace(/[，。；：、,;:！？”"]+$/,''), punct=rest.slice(core.length);
+  const head=core.slice(0,2), tail=core.length>=12?core.slice(-2)+punct:punct, mid=core.slice(2,core.length-(core.length>=12?2:0));
+  return {title,head,tail,mid:mid.slice(0,8)||'　　　'};
+}
+const reviewMac=t=>`var(--rv-mac${[...t].reduce((a,c)=>a+c.charCodeAt(0),0)%6})`;
+function reviewTape(t,withTitle){ const s=reviewSplit(t);
+  return `<span class="rv-vt">${withTitle?reviewEsc(s.title):''}${reviewEsc(s.head)}<button type="button" class="rv-tape" style="--rv-tape:${reviewMac(t)}" aria-label="撕开胶带">${reviewEsc(s.mid)}</button>${reviewEsc(s.tail)}</span><span class="rv-full">${reviewEsc(t)}</span>`; }
+const reviewFaceSvg=(g,cls)=>`<svg class="rv-face ${cls||''}" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" class="bg"/><g>${REVIEW_FACE[g]}</g></svg>`;
+
+/* —— 点阵 —— */
+function reviewDotSvg(st,p,r=4.4){
+  const c=2*Math.PI*r;
+  if(st==='none') return '<svg viewBox="0 0 12 12"><circle class="pt" cx="6" cy="6" r="1.5"/></svg>';
+  if(st==='full') return `<svg viewBox="0 0 12 12"><circle class="fl" cx="6" cy="6" r="${r+.5}"/></svg>`;
+  return `<svg viewBox="0 0 12 12"><circle class="trk" cx="6" cy="6" r="${r}"/>${p?`<circle class="arc" cx="6" cy="6" r="${r}" stroke-dasharray="${c.toFixed(2)}" stroke-dashoffset="${(c*(1-p)).toFixed(2)}"/>`:''}</svg>`;
+}
+function reviewDayState(d){
+  const today=reviewToday(), off=Math.round((d-today)/864e5), key=reviewDayKey(d), lbl=`${reviewMd(d)} 周${REVIEW_WK[d.getDay()]}`;
+  if(off<0){
+    const rec=(reviewData.days||{})[key];
+    const missed=reviewItems().filter(i=>!i.done&&!reviewIsToday(i)&&reviewSource(i)&&reviewDayKey(reviewDueDay(i))===key).length;
+    if(rec&&rec.due){ if(rec.done>=rec.due) return {s:'full',tip:`${lbl} · 打卡 ${rec.done} 条`};
+      if(rec.done>0) return {s:'part',p:rec.done/rec.due,tip:`${lbl} · 打卡 ${rec.done}/${rec.due}`}; }
+    if(missed||(rec&&rec.due)) return {s:'miss',tip:`${lbl} · 漏打 ${missed||rec.due} 条`};
+    return {s:'none',tip:`${lbl} · 无到期`};
+  }
+  if(off===0){ const tot=reviewTodayTotal(), dn=reviewTodayDone().length;
+    if(!tot) return {s:'part',cls:'today',tip:'今天 · 无到期'};
+    if(dn>=tot) return {s:'full',tip:`今天 · 已打完 ${dn} 条`};
+    return {s:'part',cls:'today',p:dn/tot,tip:`今天 · ${dn}/${tot}`}; }
+  const n=reviewItems().filter(i=>!i.done&&reviewDueOffset(i)===off).length;
+  return n?{s:'future',tip:`${lbl} · ${n} 条到期`}:{s:'none',tip:'',fut:true};
+}
+function reviewRenderWeek(){
+  const today=reviewToday(), mon=reviewAddDays(today,-((today.getDay()+6)%7)); let h='';
+  for(let i=0;i<7;i++){ const d=reviewAddDays(mon,i), st=reviewDayState(d), isT=+d===+today;
+    h+=`<span class="rv-wk-day ${isT?'is-today':''}" title="${st.tip}"><span class="${st.cls||st.s}">${reviewDotSvg(st.s,st.p,4.6)}</span>${isT?'今天':REVIEW_WK[d.getDay()]}</span>`; }
+  $('reviewWeekRow').innerHTML=h;
+  const first=reviewAddDays(mon,-14*7); let dh='';
+  for(let w=0;w<15;w++) for(let r=0;r<7;r++){ const d=reviewAddDays(first,w*7+r), st=reviewDayState(d);
+    dh+=`<span class="rv-dot ${st.cls||st.s}" title="${st.tip}" ${st.fut?'style="opacity:.45"':''}>${reviewDotSvg(st.s,st.p)}</span>`; }
+  $('reviewDots').innerHTML=dh;
+  const tot=reviewTodayTotal(), dn=reviewTodayDone().length, cap=$('reviewWeekCap');
+  if(!reviewItems().length) cap.textContent='还没有复习安排';
+  else if(dn>=tot) cap.innerHTML=`今天 <b>${dn}</b> 条都打完了`;
+  else { if(!$('reviewCapDone')) cap.innerHTML='今天已打 <b id="reviewCapDone"></b> / <b id="reviewCapTotal"></b> 条';
+    reviewBump($('reviewCapDone'),dn); reviewBump($('reviewCapTotal'),tot); }
+}
+function reviewBump(el,v){ if(el.textContent!==String(v)){ el.textContent=v; el.classList.remove('rv-bump'); void el.offsetWidth; el.classList.add('rv-bump'); } }
+
+/* —— 牌堆 —— */
+function reviewMemSvg(n){ const c=2*Math.PI*6.5,p=Math.min(n,3)/3;
+  return `<svg viewBox="0 0 16 16"><circle class="trk" cx="8" cy="8" r="6.5"/><circle class="arc" cx="8" cy="8" r="6.5" stroke-dasharray="${c.toFixed(2)}" stroke-dashoffset="${(c*(1-p)).toFixed(2)}"/></svg>`; }
+function reviewCardHtml(item){
+  const s=reviewSource(item), chap=item.kind==='chap', linked=chap?reviewLinked(item):[], off=reviewDueOffset(item), prev=reviewPreview(item);
+  const late=off<0?`<span class="rv-late">逾期 ${-off} 天</span>`:'<span>今天到期</span>';
+  const titleLink=text=>`<a class="rv-c-title" role="link" tabindex="0" title="跳到原文">${reviewEsc(text.slice(0,-1))}<span class="rv-nw">${reviewEsc(text.slice(-1))}${REVIEW_JMP}</span></a>`;
+  let body;
+  if(chap){
+    body=`${titleLink(s.title)}<div class="rv-c-src">章节 · 从 ${fmt(s.t)} 开始</div>
+      <div class="rv-recall">先回想这一章讲了什么${linked.length?`，再对一对章里 ${linked.length} 条到期的笔记`:''}</div>
+      <div class="rv-c-notes">${linked.map(n=>{ const ns=reviewSource(n); return `<div class="rv-c-note" data-src="${reviewEsc(n.src)}"><span class="rv-ts">${fmt(ns.t)}</span>${reviewTape(ns.title,true)}
+        <div class="rv-mini">${REVIEW_GRADES.map(([g,l])=>`<button type="button" data-sg="${g}" aria-pressed="false" aria-label="${l}" title="${l}">${reviewFaceSvg(g,'sm')}</button>`).join('')}</div></div>`; }).join('')}</div>`;
+  }else{
+    const sp=reviewSplit(s.title), ch=reviewChapterOf(s.t);
+    body=`${titleLink(sp.title+'…')}<div class="rv-c-src">${ch?reviewEsc(ch.title)+' · ':''}${fmt(s.t)}</div>
+      <div class="rv-c-text">${reviewTape(s.title)}</div><div class="rv-hint">想不起来就撕开胶带，或点标题回原文</div>`;
+  }
+  return `<div class="rv-card front" data-src="${reviewEsc(item.src)}">
+    <div class="rv-c-top"><span class="rv-chip">${chap?'章节':'笔记'}</span>${late}<span class="rv-sp"></span><span class="rv-mem" title="已记住 ${item.succ} 次；${chap?'选「很轻松」或':''}记住满 3 次、间隔到 30 天就算掌握">${reviewMemSvg(item.succ)}记住 ${item.succ} 次</span></div>
+    <div class="rv-c-body"><div class="rv-c-in">${body}</div></div>
+    <div class="rv-c-foot"><div class="rv-grades">${REVIEW_GRADES.map(([g,l],i)=>`<button type="button" class="rv-g" data-g="${g}" aria-pressed="false" aria-label="${l}" title="${l} · 按 ${i+1}">${reviewFaceSvg(g)}<i>${reviewWillMaster(item,g,prev[g])?'掌握了':reviewIvText(prev[g])}</i></button>`).join('')}</div>
+      <button type="button" class="rv-confirm">确认本轮 · 含 ${linked.length} 条笔记</button></div>
+  </div>`;
+}
+const reviewFront=()=>$('reviewDeck').querySelector('.rv-card.front');
+function reviewFade(c){ if(!c) return; const b=c.querySelector('.rv-c-body'); const f=()=>{ b.classList.toggle('more',b.scrollTop+b.clientHeight<b.scrollHeight-4); b.classList.toggle('scrolled',b.scrollTop>4); }; f(); b.onscroll=f; setTimeout(f,400); }
+function reviewRenderDeck(anim,celebrate,mastered){
+  reviewOrder=reviewDeckOrder(); reviewPick=null; reviewSub={};
+  const deck=$('reviewDeck'); deck.querySelectorAll('.rv-card').forEach(c=>c.remove());
+  deck.classList.toggle('empty',!reviewOrder.length);
+  $('reviewCount').textContent=reviewOrder.length?`还剩 ${reviewDue().length} 条`:'';
+  $('reviewKeys').style.visibility=reviewOrder.length?'visible':'hidden';
+  if(!reviewOrder.length){
+    const e=$('reviewEmpty'); e.innerHTML=reviewEmptyHtml(celebrate); e.classList.toggle('play',!!celebrate); reviewTapeTranscript();
+    if(celebrate&&reviewItems().length){ setTimeout(()=>reviewPlay('check'),580); setTimeout(()=>reviewPlay(mastered?'master':'bell'),880); }
+    return;
+  }
+  for(let i=Math.min(reviewOrder.length-1,2);i>=1;i--) deck.insertAdjacentHTML('beforeend',`<div class="rv-card back${i}" aria-hidden="true"></div>`);
+  deck.insertAdjacentHTML('beforeend',reviewCardHtml(reviewOrder[0]));
+  if(anim) reviewFront().classList.add('in');
+  reviewFade(reviewFront()); reviewTapeTranscript();
+}
+function reviewBadgeHtml(play){
+  const mac=['var(--rv-mac0)','var(--rv-mac1)','var(--rv-mac2)','var(--rv-mac3)','var(--rv-mac4)','var(--rv-mac5)','var(--gd)']; let ps='';
+  for(let i=0;i<20;i++){ const a=18*i+(i%2?9:-6), d=52+((i*37)%34), shape=['dot','bar','tp','dot'][i%4], r=(i*53)%180-90;
+    ps+=`<i class="p ${shape}" style="--a:${a}deg;--d:${d}px;--r:${r}deg;--c:${mac[i%mac.length]};--dl:${(i%3)*.03}s"></i>`; }
+  return `<div class="rv-done-badge${play?' play':''}" aria-hidden="true"><div class="ripple"></div><div class="burst">${ps}</div>
+    <div class="flip"><div class="fc fc-front"><svg viewBox="0 0 64 64"><circle class="dash" cx="32" cy="32" r="30"/></svg></div>
+    <div class="fc fc-back"><svg viewBox="0 0 64 64"><path class="ckp" d="m20 33 8.5 8L45 24"/></svg></div></div></div>`;
+}
+function reviewEmptyHtml(celebrate){
+  if(!reviewItems().length) return `<svg class="first" viewBox="0 0 52 52"><circle cx="26" cy="26" r="24"/></svg><div class="big">选择要复习的章节或笔记</div><div>加入后从明天开始，按你记住的程度安排下一次</div>
+    <div class="rv-btns"><button type="button" class="rv-primary" data-rv-add="chap">选章节</button><button type="button" class="rv-ghost" data-rv-add="note">选笔记</button></div>`;
+  const later=reviewLater().filter(reviewSource), nx=later[0];
+  const head=reviewTodayDone().length?`今天的 ${reviewTodayDone().length} 条都过完了`:'今天没有要复习的';
+  return `${reviewBadgeHtml(celebrate)}<div class="big">${head}</div>
+    <div class="sub">${nx?`下一次在 ${reviewMd(reviewDueDay(nx))}，共 ${later.filter(i=>reviewDueOffset(i)===reviewDueOffset(nx)).length} 条`:'暂时没有新的到期'}</div>
+    <div class="rv-btns"><button type="button" class="rv-ghost" data-rv-go="all">查看全部</button></div>`;
+}
+function reviewPeel(el){
+  el=el||reviewFront()?.querySelector('.rv-c-text:not(.shown), .rv-c-note:not(.shown)'); if(!el) return;
+  el.classList.add('peel'); setTimeout(()=>{ el.classList.add('shown'); reviewTapeTranscript(); reviewFade(reviewFront()); },200);
+}
+function reviewChoose(g){
+  const c=reviewFront(); if(!c) return; const item=reviewItems().find(i=>i.src===c.dataset.src); if(!item) return;
+  const b=c.querySelector(`.rv-g[data-g="${g}"]`); b.classList.add('press'); setTimeout(()=>b.classList.remove('press'),140);
+  if(item.kind==='chap'&&reviewLinked(item).length){
+    reviewPick=g; c.classList.add('picking');
+    c.querySelectorAll('.rv-g').forEach(x=>x.setAttribute('aria-pressed',x.dataset.g===g));
+    c.querySelectorAll('.rv-c-note').forEach(n=>{ const v=reviewSub[n.dataset.src]||g; n.querySelectorAll('.rv-mini button').forEach(x=>x.setAttribute('aria-pressed',x.dataset.sg===v)); });
+    c.querySelector('.rv-recall').textContent=`章内 ${c.querySelectorAll('.rv-c-note').length} 条笔记先跟着选了「${REVIEW_GL[g]}」，可以逐条改，再点确认`;
+    const body=c.querySelector('.rv-c-body'); setTimeout(()=>{ body.scrollTo({top:body.scrollHeight,behavior:'smooth'}); reviewFade(c); },60);
+    return;
+  }
+  reviewCommit([{src:item.src,g}]);
+}
+function reviewCommit(entries){
+  const before=JSON.stringify(reviewData); let grads=0;
+  for(const {src,g} of entries){ const it=reviewItems().find(i=>i.src===src); if(it&&reviewApply(it,g)) grads++; }
+  reviewStampDays();
+  const c=reviewFront(), g0=entries[0].g; if(c) c.classList.add(g0==='again'?'out-again':'out-good');
+  $('reviewDeck').querySelectorAll('.rv-card.back1').forEach(b=>b.style.transform='none');
+  reviewRenderWeek(); reviewRenderBadge();
+  const celebrate=reviewDeckOrder().length===0;
+  if(grads&&!celebrate) setTimeout(()=>reviewPlay('master'),160);
+  setTimeout(()=>reviewRenderDeck(false,celebrate,grads>0),380);
+  const main=reviewItems().find(i=>i.src===entries[0].src);
+  const tail=main&&main.done?'已掌握，移到已完成':reviewIvText(reviewDueOffset(main));
+  const text=`${REVIEW_GL[g0]} · ${tail}${entries.length>1?` · 含 ${entries.length-1} 条笔记`:''}${grads>1||(grads&&!main.done)?` · ${grads} 条已掌握`:''}`;
+  reviewSave(before,{toastText:text,undo:true});
+}
+
+/* —— 文稿：回想时贴住对应笔记；章节卡贴住章内到期笔记 —— */
+function reviewTapeTranscript(){
+  $('feed').querySelectorAll('.seg.note.rv-taped').forEach(n=>{ n.classList.remove('rv-taped'); n.style.removeProperty('--rv-tape'); });
+  const panel=$('reviewPanel'), c=reviewFront();
+  if(!panel.classList.contains('open')||panel.dataset.view!=='deck'||!c) return;
+  const item=reviewItems().find(i=>i.src===c.dataset.src); if(!item) return;
+  const targets=item.kind==='chap'?reviewLinked(item).map(n=>[n,c.querySelector(`.rv-c-note[data-src="${CSS.escape(n.src)}"]`)]):[[item,c.querySelector('.rv-c-text')]];
+  for(const [n,el] of targets){ if(el&&el.classList.contains('shown')) continue; const s=reviewSource(n); if(!s) continue;
+    const row=$('feed').querySelector(`.seg.note[data-note-index="${s.index}"]`); if(row){ row.classList.add('rv-taped'); row.style.setProperty('--rv-tape',reviewMac(s.title)); } }
+}
+function reviewJump(item){
+  const s=reviewSource(item); if(!s) return;
+  $('feed').querySelectorAll('.seg.note.rv-taped').forEach(n=>n.classList.remove('rv-taped'));
+  if(document.body.classList.contains('review-overlay')) reviewSetOpen(false);
+  if(item.kind==='note') scrollToTimelineNote(s.index);
+  else{ const el=$('feed').querySelector(`.transcript-heading[data-t="${CSS.escape(String(s.t))}"]`)||[...$('feed').querySelectorAll('.seg[data-t]')].find(x=>Number(x.dataset.t)>=s.t);
+    if(el){ markUserScroll(); const wrap=$('feedwrap'),rect=el.getBoundingClientRect(); wrap.scrollTo({top:Math.max(0,wrap.scrollTop+rect.top-wrap.getBoundingClientRect().top-24),behavior:'instant'}); } }
+  if(view&&view.audioUrl){ hideResume(); player.currentTime=Math.max(0,Number(s.t)||0); }
+}
+
+/* —— 全部条目与添加 —— */
+function reviewSlide(box){ const on=box.querySelector('.rv-tab[aria-selected="true"]'), s=box.querySelector('.rv-tab-slider'); if(on&&s){ s.style.width=on.offsetWidth+'px'; s.style.transform=`translateX(${on.offsetLeft-3}px)`; } }
+function reviewRing(p,ok){ return ok?'<svg viewBox="0 0 18 18"><circle class="ok" cx="9" cy="9" r="9"/><path d="m5.2 9.3 2.6 2.5 5-5.3" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+  :`<svg viewBox="0 0 18 18"><circle class="trk" cx="9" cy="9" r="7.5" style="stroke-width:1.5;stroke-dasharray:2.6 2.112"/><circle class="arc" cx="9" cy="9" r="7.5" stroke-dasharray="47.12" stroke-dashoffset="${(47.12*(1-p)).toFixed(2)}"/></svg>`; }
+function reviewRenderList(){
+  const sets={due:[...reviewDue().sort((a,b)=>reviewDueOffset(a)-reviewDueOffset(b)),...reviewTodayDone()],later:reviewLater(),done:reviewDone()};
+  $('reviewTabs').querySelectorAll('.rv-tab').forEach(t=>{ t.setAttribute('aria-selected',t.dataset.tab===reviewTab); t.querySelector('.n').textContent=sets[t.dataset.tab].length||''; });
+  reviewSlide($('reviewTabs'));
+  const rows=sets[reviewTab];
+  $('reviewList').innerHTML=rows.length?rows.map(it=>{ const s=reviewSource(it), gone=!s;
+    const title=gone?(it.kind==='chap'?'章节':'笔记'):(it.kind==='chap'||it.done||reviewIsToday(it)?s.title:reviewSplit(s.title).title+'…');
+    const off=reviewDueOffset(it);
+    const meta=gone?'<span class="del">原文已删除</span>':reviewIsToday(it)&&reviewTab==='due'?`评了「${REVIEW_GL[it.lastG]}」 · ${it.done?'已掌握':'下次 '+reviewMd(reviewDueDay(it))}`
+      :it.done?`${reviewMdKey(it.doneOn)}掌握 · 记住 ${it.succ} 次`:`${it.kind==='chap'?'章节':'笔记'} · ${fmt(s.t)}${off<0?` · 逾期 ${-off} 天`:''}`;
+    const when=!gone&&off>0&&!reviewIsToday(it)&&!it.done?reviewMd(reviewDueDay(it)):'';
+    return `<div class="rv-lrow${gone?' gone-src':''}" data-src="${reviewEsc(it.src)}">${reviewRing(Math.min(it.succ,3)/3,it.done||reviewIsToday(it))}<span class="lt"><b>${reviewEsc(title)}</b><small>${meta}</small></span>
+      <span class="when">${when}</span><button type="button" class="x" aria-label="移出"><svg viewBox="0 0 12 12" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="m3 3 6 6M9 3 3 9"/></svg></button></div>`; }).join('')
+    :`<div class="rv-lempty">${reviewTab==='done'?'记住 3 次、间隔到 30 天的条目会出现在这里':'这里还没有条目'}</div>`;
+}
+function reviewOnBoard(src){ return !!src&&reviewItems().some(i=>i.src===src); }
+function reviewRenderPick(){
+  $('reviewAddTabs').querySelectorAll('.rv-tab').forEach(t=>t.setAttribute('aria-selected',t.dataset.tab===reviewAddTab)); reviewSlide($('reviewAddTabs'));
+  const CK='<svg viewBox="0 0 12 12" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m2.8 6.2 2 1.9 4.4-4.6"/></svg>';
+  const key=x=>x.kind==='chap'?x.src:`idx:${x.index}`;
+  const row=x=>{ const inb=reviewOnBoard(x.src);
+    return `<button type="button" class="rv-prow${inb?' in':''}" role="checkbox" data-key="${reviewEsc(key(x))}" aria-checked="${inb?'true':reviewSel.has(key(x))}" ${inb?'aria-disabled="true"':''}><span class="rv-cb">${CK}</span><span class="pt">${reviewEsc(x.title)}<small>${fmt(x.t)}</small></span>${inb?'<span class="rv-tagin">已加入</span>':''}</button>`; };
+  let h='';
+  if(reviewAddTab==='chap'){ const chs=reviewChapters(); h=chs.length?chs.map(row).join(''):'<div class="rv-lempty">这份文稿还没有目录章节</div>'; }
+  else{ const notes=reviewNotes(), chs=reviewChapters();
+    if(!notes.length) h='<div class="rv-lempty">这份文稿还没有文字笔记</div>';
+    else{ const groups=new Map(); for(const n of notes){ const ch=chs.find(c=>n.t>=c.t&&n.t<c.end); const k=ch?ch.title:'未分章'; if(!groups.has(k)) groups.set(k,[]); groups.get(k).push(n); }
+      for(const [k,ns] of groups) h+=`<div class="rv-pgrp">${reviewEsc(k)}</div>`+ns.map(row).join(''); } }
+  $('reviewPick').innerHTML=h;
+  $('reviewAddGo').disabled=!reviewSel.size; $('reviewAddGo').textContent=reviewSel.size?`加入 ${reviewSel.size} 项，明天开始`:'加入';
+}
+async function reviewAddSelected(){
+  const keys=[...reviewSel]; if(!keys.length) return; const btn=$('reviewAddGo'); btn.disabled=true;
+  const notes=reviewNotes(), need=keys.filter(k=>k.startsWith('idx:')).map(k=>notes.find(n=>`idx:${n.index}`===k)).filter(n=>n&&!n.note.id);
+  if(need.length){
+    try{ const r=await api('/api/note_ids',{id:reviewSid,refs:need.map(n=>({index:n.index,t:n.note.t,text:n.note.text}))});
+      if(!r||r.ok===false) throw new Error(r&&r.error||'');
+      need.forEach((n,i)=>{ n.note.id=r.ids[i]; });
+    }catch(e){ btn.disabled=false; reviewShowToast(e.message||'笔记已变化，请重新打开后再试',null,null,true); return; }
+  }
+  const before=JSON.stringify(reviewData), fresh=reviewNotes();
+  for(const k of keys){ const src=k.startsWith('idx:')?(fresh.find(n=>`idx:${n.index}`===k)||{}).src:k; if(src&&!reviewOnBoard(src)) reviewData.items.push(reviewNewItem(src,src.startsWith('ch:')?'chap':'note')); }
+  reviewSel.clear(); reviewPlay('add'); reviewTab='later'; reviewGo('all'); reviewRenderAll();
+  await reviewSave(before,{toastText:`已加入 ${keys.length} 项，明天开始复习`,undo:true});
+}
+function reviewRemove(src){
+  const before=JSON.stringify(reviewData); reviewData.items=reviewData.items.filter(i=>i.src!==src); reviewRenderAll(); reviewRenderList();
+  reviewSave(before,{toastText:'已移出',undo:true});
+}
+
+/* —— 面板开关、定位与推挤 —— */
+function reviewGo(v){ $('reviewPanel').dataset.view=v; if(v==='all') reviewRenderList(); if(v==='add') reviewRenderPick(); reviewHideToast(); reviewTapeTranscript(); }
+function reviewShowToast(text,btn,fn,err){
+  if(!text) return; const t=$('reviewToast'); $('reviewToastText').textContent=text; const b=$('reviewToastBtn');
+  b.hidden=!btn; b.textContent=btn||''; b.onclick=()=>{ reviewHideToast(); fn&&fn(); };
+  t.classList.toggle('err',!!err); t.classList.add('on'); clearTimeout(reviewToastTimer); reviewToastTimer=setTimeout(reviewHideToast,err?9000:5000);
+}
+function reviewHideToast(){ $('reviewToast').classList.remove('on'); }
+function reviewRenderBadge(){ const n=reviewData?reviewDue().length:0; $('reviewBadge').textContent=n||''; $('reviewBookmark').title=n?`复习 · 今天还有 ${n} 条`:'复习'; }
+function reviewRenderAll(anim){ if(!reviewData) return; reviewRenderWeek(); reviewRenderBadge(); reviewRenderDeck(anim); if($('reviewPanel').dataset.view==='all') reviewRenderList(); }
+function reviewPlace(){
+  const wrap=$('feedwrap'), r=wrap.getBoundingClientRect(), bm=$('reviewBookmark'), p=$('reviewPanel');
+  bm.style.left=r.left+'px'; bm.style.top=(r.top+46)+'px';
+  p.style.left=(r.left+12)+'px'; p.style.top=r.top+'px'; p.style.height=Math.max(420,Math.min(680,r.height-16))+'px';
+}
+const reviewCanPush=()=>$('feedwrap').getBoundingClientRect().width-396>=560;
+function reviewApplyPush(open,animate=true){
+  const wrap=$('feedwrap'), feed=$('feed'), push=open&&reviewCanPush(), was=wrap.classList.contains('review-push');
+  document.body.classList.toggle('review-overlay',open&&!push);
+  if(push===was) return;
+  const go=()=>{ wrap.classList.toggle('review-push',push); feed.classList.remove('review-reflow');
+    if(animate){ feed.style.setProperty('--rv-dx',push?'-14px':'14px'); feed.classList.remove('review-settle'); void feed.offsetWidth; feed.classList.add('review-settle'); } };
+  if(animate&&!matchMedia('(prefers-reduced-motion: reduce)').matches){ feed.classList.add('review-reflow'); setTimeout(go,120); } else go();
+}
+function reviewSetOpen(v){
+  const p=$('reviewPanel'), bm=$('reviewBookmark');
+  if(v&&!reviewData) return;
+  if(v){ reviewPlace(); p.hidden=false; requestAnimationFrame(()=>{ p.classList.add('open'); reviewSlide($('reviewTabs')); }); reviewRenderAll(true); setTimeout(()=>p.focus({preventScroll:true}),30); }
+  else{ p.classList.remove('open'); reviewHideToast(); p.dataset.view='deck'; const w=$('reviewWeek'); if(w.getAttribute('aria-expanded')==='true') w.click(); }
+  bm.setAttribute('aria-expanded',v); reviewApplyPush(v); reviewTapeTranscript();
+}
+/* 进入或离开课件时调用：读入该课件的复习状态，旧课件从空打卡板开始 */
+function reviewOnSession(){
+  if(document.body.classList.contains('transcript-bookmarks-loading')){ $('reviewBookmark').hidden=true; return; }
+  const viewing=!!(view&&view.id)&&!['recording','paused','stopping'].includes(state);
+  if(!viewing){ if($('reviewPanel').classList.contains('open')) reviewSetOpen(false); $('reviewBookmark').hidden=true; reviewData=null; reviewSid=null; return; }
+  const bookmark=$('reviewBookmark'), entering=reviewSid!==view.id||bookmark.hidden;
+  if(reviewSid!==view.id){
+    if($('reviewPanel').classList.contains('open')) reviewSetOpen(false);
+    reviewSid=view.id; reviewUndo=null;
+    const saved=view.review&&Array.isArray(view.review.items)?view.review:null;
+    reviewData=saved?JSON.parse(JSON.stringify(saved)):{version:1,items:[],days:{}};
+    if(!reviewData.days) reviewData.days={};
+  }
+  if(!window.FSRS){ $('reviewBookmark').hidden=true; return; }
+  reviewPlace(); bookmark.hidden=false;
+  if(entering){ bookmark.classList.remove('bookmark-enter'); void bookmark.offsetWidth; bookmark.classList.add('bookmark-enter'); }
+  reviewRenderBadge();
+  if($('reviewPanel').classList.contains('open')) reviewRenderAll();
+}
+function reviewAfterTimelineRender(){ if(reviewData&&$('reviewPanel').classList.contains('open')) reviewTapeTranscript(); }
+
+(function wireReview(){
+  const panel=$('reviewPanel');
+  $('reviewBookmark').onclick=()=>reviewSetOpen(true);
+  $('reviewClose').onclick=()=>reviewSetOpen(false);
+  $('reviewSound').setAttribute('aria-pressed',reviewSoundOn);
+  $('reviewSound').onclick=()=>{ reviewSoundOn=!reviewSoundOn; $('reviewSound').setAttribute('aria-pressed',reviewSoundOn);
+    try{ localStorage.setItem('tingdao-review-sound',reviewSoundOn?'on':'off'); }catch(e){} if(reviewSoundOn) reviewPlay('add'); };
+  $('reviewWeek').onclick=()=>{ const w=$('reviewWeek'), h=$('reviewHist'), open=w.getAttribute('aria-expanded')!=='true'; w.setAttribute('aria-expanded',open); h.style.height=(open?h.scrollHeight:0)+'px'; };
+  panel.addEventListener('pointerdown',e=>{ const w=$('reviewWeek'); if(w.getAttribute('aria-expanded')==='true'&&!e.target.closest('#reviewWeek')) w.click(); });
+  panel.addEventListener('click',e=>{
+    const go=e.target.closest('[data-rv-go]'); if(go){ reviewGo(go.dataset.rvGo); return; }
+    const add=e.target.closest('[data-rv-add]'); if(add){ reviewAddTab=add.dataset.rvAdd; reviewSel.clear(); reviewGo('add'); return; }
+  });
+  $('reviewDeck').addEventListener('click',e=>{
+    const c=e.target.closest('.rv-card.front'); if(!c) return; const item=reviewItems().find(i=>i.src===c.dataset.src); if(!item) return;
+    const t=e.target.closest('.rv-tape'); if(t){ reviewPeel(t.closest('.rv-c-text,.rv-c-note')); return; }
+    if(e.target.closest('.rv-c-title')){ reviewJump(item); return; }
+    const g=e.target.closest('.rv-g'); if(g){ reviewChoose(g.dataset.g); return; }
+    const m=e.target.closest('.rv-mini button'); if(m){ const n=m.closest('.rv-c-note').dataset.src; reviewSub[n]=m.dataset.sg; m.parentNode.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',x===m)); return; }
+    if(e.target.closest('.rv-confirm')&&reviewPick){ const ents=[{src:item.src,g:reviewPick}]; c.querySelectorAll('.rv-c-note').forEach(n=>ents.push({src:n.dataset.src,g:reviewSub[n.dataset.src]||reviewPick})); reviewCommit(ents); }
+  });
+  $('reviewDeck').addEventListener('keydown',e=>{ if(e.key==='Enter'&&e.target.classList.contains('rv-c-title')) e.target.click(); });
+  // 快捷键只在焦点位于面板内时生效，不抢文稿和播放器的空格
+  panel.addEventListener('keydown',e=>{
+    if(e.key==='Escape'){ e.stopPropagation(); const v=panel.dataset.view; if(v==='add') reviewGo('all'); else if(v==='all') reviewGo('deck'); else reviewSetOpen(false); return; }
+    if(panel.dataset.view!=='deck'||e.metaKey||e.ctrlKey||e.altKey) return;
+    if(e.key===' '&&!e.target.closest('.rv-g,.rv-confirm,.rv-mini,.rv-icon,.rv-week')){ e.preventDefault(); e.stopPropagation(); reviewPeel(); return; }
+    if(/^[1-4]$/.test(e.key)){ e.preventDefault(); e.stopPropagation(); reviewChoose(REVIEW_GRADES[+e.key-1][0]); return; }
+    if(e.key==='Enter'){ const c=reviewFront(); if(c&&c.classList.contains('picking')){ e.preventDefault(); e.stopPropagation(); c.querySelector('.rv-confirm').click(); } return; }
+    if(e.key==='z'||e.key==='Z'){ e.preventDefault(); e.stopPropagation(); reviewUndoLast(); }
+  });
+  $('reviewTabs').addEventListener('click',e=>{ const t=e.target.closest('.rv-tab'); if(t){ reviewTab=t.dataset.tab; reviewRenderList(); } });
+  $('reviewList').addEventListener('click',e=>{ const r=e.target.closest('.rv-lrow'); if(!r) return; const item=reviewItems().find(i=>i.src===r.dataset.src); if(!item) return;
+    if(e.target.closest('.x')){ reviewRemove(item.src); return; } reviewJump(item); });
+  $('reviewAddTabs').addEventListener('click',e=>{ const t=e.target.closest('.rv-tab'); if(t){ reviewAddTab=t.dataset.tab; reviewRenderPick(); } });
+  $('reviewPick').addEventListener('click',e=>{ const r=e.target.closest('.rv-prow'); if(!r||r.classList.contains('in')) return; const k=r.dataset.key; reviewSel.has(k)?reviewSel.delete(k):reviewSel.add(k); reviewRenderPick(); });
+  $('reviewAddGo').onclick=reviewAddSelected;
+  window.addEventListener('resize',()=>{ if(!$('reviewBookmark').hidden) reviewPlace(); if($('reviewPanel').classList.contains('open')) reviewApplyPush(true,false); });
+  new ResizeObserver(()=>{
+    if(!$('reviewBookmark').hidden || panel.classList.contains('open')) reviewPlace();
+  }).observe($('feedwrap'));
+})();
+// Two audio lanes keep the outgoing music audible until its replacement actually starts.
+class MusicPlayback {
+  constructor(makeAudio=()=>new Audio(), now=()=>performance.now()){
+    this.audio=[makeAudio(),makeAudio()];this.gain=[1,0];this.index=0;this.volume=.35;this.generation=0;this.timer=null;this.track=null;this.now=now;
+    this.onchange=()=>{};this.onerror=()=>{};this.next=()=>null;
+    this.audio.forEach((a,i)=>{a.preload='auto';a.addEventListener('timeupdate',()=>{
+      if(i!==this.index||a.paused||!this.track)return;
+      this.onchange();
+      const remaining=a.duration-a.currentTime;
+      if(!this.timer&&!this.pending&&Number.isFinite(remaining)&&remaining<=Math.min(1.2,a.duration/3)&&remaining>0){const next=this.next();if(next)this.select(next,true);}
+    });a.addEventListener('ended',()=>{if(i===this.index&&!this.pending&&!this.timer){const next=this.next();if(next)this.select(next,true);else this.onchange();}});});
+    this.applyVolume();
+  }
+  get current(){return this.audio[this.index];}
+  get playing(){return !this.current.paused;}
+  applyVolume(){this.audio.forEach((a,i)=>a.volume=Math.max(0,Math.min(1,this.volume*this.gain[i])));}
+  setVolume(value){this.volume=value;this.applyVolume();}
+  stopFade(){if(this.timer)clearInterval(this.timer);this.timer=null;}
+  async select(track,play=false){
+    const generation=++this.generation;this.stopFade();this.pending=true;
+    const oldIndex=this.index,newIndex=1-oldIndex,old=this.audio[oldIndex],incoming=this.audio[newIndex];
+    incoming.pause();this.gain[newIndex]=0;incoming.src='/music/'+track.id+'/audio';incoming.load();this.applyVolume();
+    if(play){try{await incoming.play();}catch(error){if(generation===this.generation){this.pending=false;if(error.name!=='AbortError')this.onerror('配乐无法播放，请检查音频文件');}return;}}
+    if(generation!==this.generation)return;
+    this.pending=false;this.index=newIndex;this.track=track;this.onchange();
+    const oldGain=this.gain[oldIndex];
+    if(!play||old.paused||oldGain===0){old.pause();this.gain[oldIndex]=0;this.gain[newIndex]=1;this.applyVolume();return;}
+    const started=this.now(),remaining=Number.isFinite(old.duration)?Math.max(.12,old.duration-old.currentTime):1.2;
+    const duration=Math.max(120,Math.min(1200,remaining*1000));
+    this.timer=setInterval(()=>{
+      if(generation!==this.generation)return;
+      const progress=Math.min(1,(this.now()-started)/duration);
+      this.gain[oldIndex]=oldGain*Math.cos(progress*Math.PI/2);this.gain[newIndex]=Math.sin(progress*Math.PI/2);this.applyVolume();
+      if(progress===1){this.stopFade();old.pause();this.gain[oldIndex]=0;this.gain[newIndex]=1;this.applyVolume();if(incoming.ended){const next=this.next();if(next)this.select(next,true);else this.onchange();}}
+    },25);
+  }
+  async play(){if(!this.track)return;try{await this.current.play();this.onchange();}catch(error){if(error.name!=='AbortError')this.onerror('配乐无法播放，请检查音频文件');}}
+  pause(){++this.generation;this.pending=false;this.stopFade();this.audio.forEach(a=>a.pause());this.gain=this.audio.map((_,i)=>i===this.index?1:0);this.applyVolume();this.onchange();}
+}
+// End MusicPlayback
+
+const musicPlayback=new MusicPlayback();
+let musicLibrary={tracks:[],volume:.35,mode:'loop'},musicLoaded=false,musicSessionId=null,musicSessionFollow=false,musicImporting=false,musicDrag=null,musicCloseTimer=0,musicWrites=Promise.resolve();
+const musicModes=[['loop','循环','loop'],['random','随机','shuffle'],['order','顺序','order']];
+function musicFmt(t){return Number.isFinite(t)?String(Math.floor(t/60)).padStart(2,'0')+':'+String(Math.floor(t%60)).padStart(2,'0'):'00:00';}
+function musicSave(patch){const task=musicWrites.catch(()=>{}).then(async()=>{const r=await api('/api/music/save',patch);if(r.error)throw Error(r.error);return r;});musicWrites=task;return task;}
+function musicPlace(){
+  const r=$('feedwrap').getBoundingClientRect(),b=$('musicBookmark'),p=$('musicPanel');b.style.left=r.left+'px';b.style.top=(r.top+84)+'px';p.style.left=(r.left+12)+'px';p.style.top=(r.top+8)+'px';p.style.maxHeight=Math.max(120,r.height-16)+'px';
+}
+function musicVolumeOpen(open){$('musicActions').classList.toggle('volume-open',open);$('musicVolumeButton').setAttribute('aria-expanded',open);$('musicVolumeFan').inert=!open;for(const id of ['musicAdd','musicMode','musicQueue'])$(id).inert=open;}
+function musicSetOpen(open){
+  if(open&&($('musicBookmark').hidden||document.body.classList.contains('transcript-bookmarks-loading')))return;
+  if(!open&&(musicImporting||musicDrag))return;
+  clearTimeout(musicCloseTimer);const p=$('musicPanel');
+  if(open){musicPlace();p.hidden=false;requestAnimationFrame(()=>p.classList.add('open'));}
+  else{p.classList.remove('open');musicVolumeOpen(false);}
+  $('musicBookmark').setAttribute('aria-expanded',open);
+}
+function musicSyncFollow(){if(view)musicSessionFollow=view.music_follow===true;if(view?.music_follow===true){if(!player.paused&&!player.ended)musicPlayback.play();else musicPlayback.pause();}}
+function musicOnSession(){
+  if(document.body.classList.contains('transcript-bookmarks-loading')){$('musicBookmark').hidden=true;musicSetOpen(false);return;}
+  const visible=!!view?.id&&!view.pending&&!['recording','paused','stopping'].includes(state),bm=$('musicBookmark');
+  if(!visible){bm.hidden=true;musicSetOpen(false);if(musicSessionFollow)musicPlayback.pause();musicSessionFollow=false;musicSessionId=null;return;}
+  const entering=musicSessionId!==view.id||bm.hidden;musicSessionId=view.id;musicPlace();bm.hidden=false;
+  if(entering){bm.classList.remove('bookmark-enter');void bm.offsetWidth;bm.classList.add('bookmark-enter');}
+  $('musicFollow').checked=view.music_follow===true;musicSyncFollow();
+}
+function musicRender(){
+  const track=musicPlayback.track,active=musicLibrary.tracks.find(t=>t.id===track?.id),list=$('musicTracks');
+  $('musicTitle').textContent=track?.title||'添加你的配乐';$('musicArtist').textContent=track?.artist||(!track?'让喜欢的音乐陪伴阅读':'');
+  const cover=$('musicCoverImage');cover.hidden=!track?.cover;if(track?.cover){const url='/music/'+track.id+'/cover';if(cover.getAttribute('src')!==url)cover.src=url;}else cover.removeAttribute('src');cover.previousElementSibling.toggleAttribute('hidden',!!track?.cover);
+  for(const id of ['musicPrevious','musicNext','musicPlayButton','musicSeek'])$(id).disabled=!active;
+  $('musicPlayButton').querySelector('use').setAttribute('href',musicPlayback.playing?'#icon-pause':'#icon-play');$('musicPlayButton').setAttribute('aria-label',musicPlayback.playing?'暂停配乐':'播放配乐');
+  const a=musicPlayback.current,d=Number.isFinite(a.duration)?a.duration:track?.duration||0,p=d?a.currentTime/d*100:0;$('musicElapsed').textContent=musicFmt(a.currentTime);$('musicDuration').textContent=musicFmt(d);$('musicSeek').value=p;$('musicSeek').style.setProperty('--fill',p+'%');
+  const mode=musicModes.find(m=>m[0]===musicLibrary.mode)||musicModes[0];$('musicMode').querySelector('span').textContent=mode[1];$('musicMode').querySelector('use').setAttribute('href','#icon-'+mode[2]);$('musicMode').title='播放模式：'+mode[1]+'，单击切换';
+  $('musicQueueCount').textContent=musicLibrary.tracks.length;$('musicEmptyNote').hidden=musicLibrary.tracks.length>0;
+  if(musicDrag)return;
+  const renderKey=JSON.stringify(musicLibrary.tracks.map(t=>[t.id,t.title,t.duration]));
+  if(list.dataset.renderKey===renderKey){for(const row of list.children)row.classList.toggle('active',row.dataset.id===track?.id);return;}
+  list.dataset.renderKey=renderKey;
+  list.replaceChildren();musicLibrary.tracks.forEach((t,i)=>{const row=document.createElement('li');row.dataset.id=t.id;row.classList.toggle('active',t.id===track?.id);row.tabIndex=0;row.setAttribute('role','button');row.setAttribute('aria-label','播放 '+t.title);
+    const number=document.createElement('span');number.className='number';number.textContent=String(i+1).padStart(2,'0');const title=document.createElement('span');title.className='trackname';title.textContent=t.title;const time=document.createElement('time');time.textContent=musicFmt(t.duration);const grip=document.createElement('span');grip.className='grip';grip.setAttribute('aria-label','拖动排序');grip.innerHTML='<svg><use href="#icon-drag"/></svg>';row.append(number,title,time,grip);list.append(row);
+  });
+}
+musicPlayback.onerror=message=>toast(message);musicPlayback.onchange=musicRender;
+function musicNext(delta=1,automatic=false){
+  const tracks=musicLibrary.tracks;if(!tracks.length)return null;const index=tracks.findIndex(t=>t.id===musicPlayback.track?.id);
+  if(musicLibrary.mode==='random'&&tracks.length>1){const rest=tracks.filter((_,i)=>i!==index);return rest[Math.floor(Math.random()*rest.length)];}
+  if(automatic&&musicLibrary.mode==='order'&&index===tracks.length-1)return null;
+  return tracks[(index+delta+tracks.length)%tracks.length];
+}
+musicPlayback.next=()=>musicNext(1,true);
+async function musicLoad(){
+  try{const r=await api('/api/music');if(r.error)throw Error(r.error);musicLibrary=r;musicLoaded=true;musicPlayback.setVolume(r.volume);$('musicVolume').value=Math.round(r.volume*100);$('musicVolumeValue').value=Math.round(r.volume*100)+'%';$('musicVolume').style.setProperty('--fill',r.volume*100+'%');if(r.tracks.length)await musicPlayback.select(r.tracks[0],false);musicRender();musicOnSession();}
+  catch(error){toast('配乐库读取失败：'+error.message);}
+}
+async function musicImport(){
+  if(musicImporting)return;musicImporting=true;$('musicAdd').disabled=true;$('musicAddMore').disabled=true;
+  try{await musicWrites.catch(()=>{});const picked=await api('/api/music/pick');if(picked.error)throw Error(picked.error);if(!picked.paths?.length)return;toast('正在添加配乐…');const r=await api('/api/music/import',{paths:picked.paths});if(r.error)throw Error(r.error);musicLibrary=r;if(!musicPlayback.track&&r.tracks.length)await musicPlayback.select(r.tracks[0],false);musicRender();musicSyncFollow();toast(r.added.length?'已添加 '+r.added.length+' 首配乐'+(r.errors.length?'，'+r.errors.length+' 首未能添加':''):(r.errors[0]?.error||'未添加音乐'));}
+  catch(error){toast('添加配乐失败：'+error.message);}
+  finally{musicImporting=false;$('musicAdd').disabled=false;$('musicAddMore').disabled=false;if(!$('musicPanel').matches(':hover')&&!$('musicPanel').querySelector(':focus-visible'))musicSetOpen(false);}
+}
+(function wireMusic(){
+  const panel=$('musicPanel'),bookmark=$('musicBookmark'),list=$('musicTracks');
+  const hideLater=()=>{clearTimeout(musicCloseTimer);musicCloseTimer=setTimeout(()=>{if(!panel.matches(':hover')&&!panel.querySelector(':focus-visible')&&!bookmark.matches(':hover'))musicSetOpen(false);},100);};
+  bookmark.addEventListener('pointerenter',()=>musicSetOpen(true));bookmark.addEventListener('focus',()=>musicSetOpen(true));bookmark.onclick=()=>musicSetOpen(true);panel.addEventListener('pointerenter',()=>{clearTimeout(musicCloseTimer);musicSetOpen(true);});bookmark.addEventListener('pointerleave',hideLater);panel.addEventListener('pointerleave',hideLater);panel.addEventListener('focusout',hideLater);
+  panel.addEventListener('transitionend',e=>{if(e.target===panel&&!panel.classList.contains('open'))panel.hidden=true;});
+  new ResizeObserver(()=>{if(!bookmark.hidden||panel.classList.contains('open'))musicPlace();}).observe($('feedwrap'));window.addEventListener('resize',musicPlace);
+  $('musicAdd').onclick=$('musicAddMore').onclick=musicImport;
+  $('musicMode').onclick=async()=>{const old=musicLibrary.mode,index=musicModes.findIndex(m=>m[0]===old);musicLibrary.mode=musicModes[(index+1)%3][0];musicRender();try{await musicSave({mode:musicLibrary.mode});}catch(error){musicLibrary.mode=old;musicRender();toast('播放模式未保存：'+error.message);}};
+  $('musicVolumeButton').onclick=()=>musicVolumeOpen(!$('musicActions').classList.contains('volume-open'));
+  $('musicVolume').oninput=()=>{const volume=Number($('musicVolume').value)/100;musicPlayback.setVolume(volume);$('musicVolumeValue').value=Math.round(volume*100)+'%';$('musicVolume').style.setProperty('--fill',volume*100+'%');};
+  $('musicVolume').onchange=async()=>{const old=musicLibrary.volume;musicLibrary.volume=musicPlayback.volume;try{await musicSave({volume:musicLibrary.volume});}catch(error){musicLibrary.volume=old;musicPlayback.setVolume(old);$('musicVolume').value=Math.round(old*100);$('musicVolumeValue').value=Math.round(old*100)+'%';$('musicVolume').style.setProperty('--fill',old*100+'%');toast('音量未保存：'+error.message);}};
+  $('musicQueue').onclick=()=>{const open=!$('musicPlaylist').classList.contains('open');$('musicPlaylist').classList.toggle('open',open);$('musicPlaylist').inert=!open;$('musicQueue').setAttribute('aria-expanded',open);};
+  document.addEventListener('pointerdown',e=>{if(!$('musicVolumeShell').contains(e.target))musicVolumeOpen(false);});document.addEventListener('keydown',e=>{if(e.key==='Escape'){musicVolumeOpen(false);musicSetOpen(false);}});
+  $('musicFollow').onchange=async()=>{const session=view;if(!session?.id)return;const checked=$('musicFollow').checked,old=session.music_follow===true;$('musicFollow').disabled=true;try{const r=await api('/api/session_pref',{id:session.id,music_follow:checked});if(r.error)throw Error(r.error);session.music_follow=checked;if(view===session)musicSyncFollow();}catch(error){if(view===session)$('musicFollow').checked=old;toast('跟随设置未保存：'+error.message);}finally{$('musicFollow').disabled=false;}};
+  player.addEventListener('play',musicSyncFollow);player.addEventListener('pause',musicSyncFollow);player.addEventListener('ended',musicSyncFollow);
+  $('musicPlayButton').onclick=()=>musicPlayback.playing?musicPlayback.pause():musicPlayback.play();
+  $('musicPrevious').onclick=()=>{const t=musicNext(-1);if(t)musicPlayback.select(t,musicPlayback.playing);};$('musicNext').onclick=()=>{const t=musicNext(1);if(t)musicPlayback.select(t,musicPlayback.playing);};
+  $('musicSeek').oninput=()=>{const a=musicPlayback.current;if(Number.isFinite(a.duration))a.currentTime=Number($('musicSeek').value)/100*a.duration;};
+  function pick(e){if(e.target.closest('.grip'))return;const row=e.target.closest('li');if(row){const track=musicLibrary.tracks.find(t=>t.id===row.dataset.id);if(track)musicPlayback.select(track,true);}}
+  list.addEventListener('click',pick);list.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();pick(e);}});
+  function dragMove(e){
+    if(!musicDrag||musicDrag.finishing)return;
+    const {row,ghost,offsetX,offsetY}=musicDrag;
+    ghost.style.left=(e.clientX-offsetX)+'px';ghost.style.top=(e.clientY-offsetY)+'px';
+    const siblings=[...list.children].filter(n=>n!==row),next=siblings.find(n=>e.clientY<n.getBoundingClientRect().top+n.offsetHeight/2)||null;
+    if(row.nextSibling!==next){
+      const before=new Map([...list.children].map(n=>[n,n.getBoundingClientRect().top]));
+      siblings.forEach(n=>n.getAnimations().forEach(a=>a.cancel()));list.insertBefore(row,next);
+      for(const n of siblings){const delta=before.get(n)-n.getBoundingClientRect().top;if(delta&&!matchMedia('(prefers-reduced-motion: reduce)').matches)n.animate([{transform:'translateY('+delta+'px)'},{transform:'none'}],{duration:200,easing:'cubic-bezier(.2,.8,.2,1)'});}
+    }
+  }
+  const scroller=createSidebarAutoScroller(list,()=>list.getBoundingClientRect(),dragMove,requestAnimationFrame,cancelAnimationFrame,34,6);
+  list.addEventListener('pointerdown',e=>{
+    const grip=e.target.closest('.grip');if(!grip||e.button!==0||musicDrag)return;e.preventDefault();
+    const row=grip.closest('li'),rect=row.getBoundingClientRect(),ghost=row.cloneNode(true);
+    // Freeze the full row's visual layout before moving the clone outside the scoped panel.
+    const original=[row,...row.querySelectorAll('*')],copies=[ghost,...ghost.querySelectorAll('*')];
+    original.forEach((node,i)=>{const style=getComputedStyle(node);for(const property of style)copies[i].style.setProperty(property,style.getPropertyValue(property));});
+    ghost.id='musicDragGhost';ghost.removeAttribute('data-id');ghost.setAttribute('aria-hidden','true');ghost.tabIndex=-1;ghost.inert=true;
+    Object.assign(ghost.style,{position:'fixed',left:rect.left+'px',top:rect.top+'px',width:rect.width+'px',height:rect.height+'px',margin:'0',zIndex:'9999',pointerEvents:'none',background:'transparent',borderRadius:'0',boxShadow:'none',transform:'none',transition:'none',opacity:'1'});
+    document.body.append(ghost);
+    musicDrag={row,ghost,offsetX:e.clientX-rect.left,offsetY:e.clientY-rect.top,order:musicLibrary.tracks.map(t=>t.id)};
+    row.classList.add('group-dragging');document.body.classList.add('dragging');list.setPointerCapture(e.pointerId);dragMove(e);
+  });
+  list.addEventListener('pointermove',e=>{if(musicDrag){dragMove(e);scroller.update(e);}});
+  async function finishDrag(cancel){
+    if(!musicDrag||musicDrag.finishing)return;const drag=musicDrag;drag.finishing=true;scroller.stop();
+    if(cancel){const nodes=new Map([...list.children].map(n=>[n.dataset.id,n]));for(const id of drag.order)list.append(nodes.get(id));}
+    const order=[...list.children].map(n=>n.dataset.id),from=drag.ghost.getBoundingClientRect(),to=drag.row.getBoundingClientRect();
+    if(!matchMedia('(prefers-reduced-motion: reduce)').matches){
+      await drag.ghost.animate([{transform:'translate(0,0)'},{transform:'translate('+(to.left-from.left)+'px,'+(to.top-from.top)+'px)'}],{duration:160,easing:'cubic-bezier(.2,.8,.2,1)',fill:'forwards'}).finished.catch(()=>{});
+    }
+    musicDrag=null;drag.ghost.remove();drag.row.classList.remove('group-dragging');document.body.classList.remove('dragging');
+    const byId=new Map(musicLibrary.tracks.map(t=>[t.id,t]));musicLibrary.tracks=order.map(id=>byId.get(id));musicRender();
+    if(!cancel&&order.join()!==drag.order.join())try{await musicSave({order});}catch(error){musicLibrary.tracks=drag.order.map(id=>byId.get(id));musicRender();toast('排序未保存：'+error.message);}
+    if(!panel.matches(':hover')&&!panel.querySelector(':focus-visible'))musicSetOpen(false);
+  }
+  list.addEventListener('pointerup',()=>finishDrag(false));list.addEventListener('pointercancel',()=>finishDrag(true));
+  musicLoad();
+})();
+
 </script>
 </body>
 </html>

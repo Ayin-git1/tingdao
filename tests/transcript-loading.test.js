@@ -18,12 +18,17 @@ test('loading masks only the manuscript and clears interaction and accessibility
 test('sidebar transitions settle before the long-manuscript request starts',async()=>{
  const start=html.indexOf('async function loadSession('),end=html.indexOf('\nfunction exitView()',start);
  let releaseMotion,reply,requests=0;
- const c=vm.createContext({hideTranscriptFormatTools(){},transcriptViewGeneration:0,setTranscriptLoading(){},view:null,$:()=>({classList:{remove(){}}}),
+ const classes=new Set(),nodes=new Map();
+ const node=id=>{if(!nodes.has(id))nodes.set(id,{hidden:false,classList:{remove(){},contains(){return false;}}});return nodes.get(id);};
+ const c=vm.createContext({hideTranscriptFormatTools(){},transcriptViewGeneration:0,setTranscriptLoading(){},view:null,document:{body:{classList:{add:name=>classes.add(name)}}},$:node,
  closeAllNotes(){},hideTranscriptImageDropIndicator(){},posDirty:false,lastHistRaw:[{id:'long',duration:7201}],
  showTranscriptLoadingPreview(){},transcriptNeedsLoading:d=>d.duration>7200,waitForSidebarEntryMotion:()=>new Promise(resolve=>releaseMotion=resolve),
  api:()=>{requests++;return new Promise(resolve=>reply=resolve);}});
  vm.runInContext(html.slice(start,end),c);const load=c.loadSession('long');
  assert.equal(requests,0,'session JSON must not compete with the selection transition');
+ assert.equal(nodes.get('reviewBookmark').hidden,true);
+ assert.equal(nodes.get('transcriptImagePreview').hidden,true);
+ assert.ok(classes.has('transcript-bookmarks-loading'));
  assert.equal(typeof releaseMotion,'function');c.transcriptViewGeneration++;releaseMotion();await load;
  assert.equal(requests,0,'a cancelled entry must not start a late request');
 });

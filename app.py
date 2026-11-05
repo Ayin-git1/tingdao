@@ -45,7 +45,7 @@ from frontend_patch import FrontendPatches
 import numpy as np
 import sherpa_onnx
 
-APP_VERSION = "3.1.9.2"
+APP_VERSION = "3.1.10"
 
 # Finder/Dock 启动的 GUI 进程 PATH 不含 homebrew, 主动补齐(ffmpeg/SwitchAudioSource 所在)
 if platform.system() == "Darwin":
@@ -1185,6 +1185,9 @@ NOTE_IMAGE_MIMES = {
 # 播放偏好侧车：倍速 / 上次播放位置。单独存小文件，避免每次记进度都重写整份
 # session.json（可能几 MB）或误动 transcript.md；删项目时随文件夹一起进废纸篓。
 PREF_FILE = ".pref.json"
+# 复习打卡板：按课件保存入板条目、排期状态和每日打卡记录；与 session.json 分开存，评分不重写文稿。
+REVIEW_FILE = ".review.json"
+REVIEW_MAX_BYTES = 2 * 1024 * 1024
 NOTE_TPL_SEED = [
     {"id": "detailed", "name": "详细总结",
      "prompt": "将知识串联，梳理逻辑后详细总结，不遗漏任何细节。根据内容情况使用表格，用于复盘、复习，"
@@ -3341,7 +3344,7 @@ def _bundle_clean_private_meta(meta):
 
 
 def build_export_zip(items, out, share_author, progress=None):
-    """完整笔记包：数据、录音、图片和项目偏好；不读取软件全局设置。"""
+    """完整笔记包：仅保留音频、文稿、摘要、目录、时间点笔记和插图。"""
     out = Path(out)
     tmp = out.with_name(f".{out.name}.{uuid.uuid4().hex[:8]}.part")
     if not valid_username(share_author):
@@ -3373,7 +3376,7 @@ def build_export_zip(items, out, share_author, progress=None):
                     rel = f.relative_to(d).as_posix()
                     if f.is_symlink():
                         raise RuntimeError("笔记中包含符号链接，无法导出")
-                    if f.is_file() and _bundle_supported_file(rel):
+                    if f.is_file() and rel not in {NOTE_FILE, PREF_FILE} and _bundle_supported_file(rel):
                         files[rel] = f
                 snapshot = {f: f.stat() for f in files.values()}
                 meta = _bundle_json(d / "session.json") if "session.json" in files else _bundle_legacy_meta(d, name)
@@ -3385,6 +3388,10 @@ def build_export_zip(items, out, share_author, progress=None):
                             meta[key] = None
                 # 原音频路径可能包含用户名或私人目录，不属于笔记体验所需配置。
                 _bundle_clean_private_meta(meta)
+                for key in ("review", "noteText", "last_pos", "play_rate", "music_follow"):
+                    meta.pop(key, None)
+                for item in meta.get("segments", []) + meta.get("notes", []):
+                    item.pop("formats", None)
                 _bundle_validate_meta(meta, set(files))
                 meta["share_author"] = share_author
                 _bundle_validate_meta(meta, set(files))
@@ -4997,7 +5004,7 @@ class App:
         return (result.stdout or "").strip() if result.returncode == 0 else ""
 
     # ---------- 导入音频/视频文件 ----------
-    def pick_file(self):
+    def pick_file(self, music_only=False):
         """唤起系统原生文件选择器(支持多选); 取消返回 []。
         路径按行返回 —— 逗号做分隔会被文件名里的逗号背刺, 换行才是安全的。"""
         if platform.system() == "Windows":
@@ -5007,6 +5014,8 @@ class App:
                       "$d.Title = '选择音频或视频文件'; $d.Multiselect = $true;"
                       "$d.Filter = '音频和视频|*.mp3;*.wav;*.m4a;*.aac;*.flac;*.ogg;*.mp4;*.mov;*.avi|所有文件|*.*';"
                       "if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { $d.FileNames }")
+            if music_only:
+                script = script.replace("选择音频或视频文件", "添加配乐").replace("音频和视频|*.mp3;*.wav;*.m4a;*.aac;*.flac;*.ogg;*.mp4;*.mov;*.avi", "音频|*.mp3;*.wav;*.m4a;*.aac;*.flac;*.ogg;*.opus")
             try:
                 result = subprocess.run(
                     ["powershell", "-NoProfile", "-STA", "-Command", script],
@@ -5027,7 +5036,10 @@ class App:
                  'repeat with f in theFiles\n'
                  '  set s to s & (POSIX path of f) & linefeed\n'
                  'end repeat\n'
-                 'return s'],
+                 'return s'] if not music_only else [
+                    'osascript', '-e',
+                    'set theFiles to choose file with prompt "添加配乐" of type {"public.audio"} with multiple selections allowed\n'
+                    'set s to ""\nrepeat with f in theFiles\nset s to s & (POSIX path of f) & linefeed\nend repeat\nreturn s'],
                 capture_output=True, text=True, timeout=900)
             return [p.strip() for p in (r.stdout or "").splitlines() if p.strip()]
         except Exception:
@@ -6676,7 +6688,7 @@ class App:
                 return {}
             return {SESSIONS_DIR / sid / "session.json": ((int(m), int(size)), item)
                     for sid, (m, size, item) in raw["items"].items()
-                    if isinstance(item, dict) and item.get("id") == sid}
+                    if sid.casefold() != "music" and isinstance(item, dict) and item.get("id") == sid}
         except Exception:
             return {}
 
@@ -6697,7 +6709,8 @@ class App:
 
     def history_snapshot(self):
         """首屏占位用: 直接给内存里的列表快照(启动时取自缓存文件), 不扫目录、不读 session.json。"""
-        return [item.copy() for _sig, item in self._history_cache.values()]
+        return [item.copy() for sj, (_sig, item) in self._history_cache.items()
+                if sj.parent.name.casefold() != "music"]
 
     def history(self):
         items = []
@@ -6707,7 +6720,7 @@ class App:
             self._history_cache = next_cache
             return items
         for d in sorted(SESSIONS_DIR.iterdir(), key=lambda x: x.stat().st_mtime, reverse=True):
-            if not d.is_dir():
+            if d.name.casefold() == "music" or not d.is_dir():
                 continue
             sj = d / "session.json"
             if sj.exists():
@@ -6879,6 +6892,8 @@ class App:
             pref = self._read_pref(d)
             meta["play_rate"] = pref.get("play_rate")
             meta["last_pos"] = pref.get("last_pos", 0)
+            meta["music_follow"] = pref.get("music_follow") is True
+            meta["review"] = self._read_review(d)
             return meta
         # 旧版兼容: 解析 md
         md = (d / "transcript.md").read_text(encoding="utf-8")
@@ -6896,6 +6911,7 @@ class App:
                 "hasNote": nf.is_file(),
                 "noteText": nf.read_text(encoding="utf-8") if nf.is_file() else "",
                 "play_rate": pref.get("play_rate"), "last_pos": pref.get("last_pos", 0),
+                "music_follow": pref.get("music_follow") is True,
                 "lang": "", "mode": "", "legacy": True}
 
     @staticmethod
@@ -6911,7 +6927,84 @@ class App:
                 pass
         return {}
 
-    def session_pref(self, sid, play_rate=None, last_pos=None):
+    @staticmethod
+    def _read_review(d):
+        """读复习打卡板侧车 .review.json；不存在或损坏时返回 None，前端从空打卡板开始。"""
+        rf = d / REVIEW_FILE
+        if rf.is_file():
+            try:
+                v = json.loads(rf.read_text(encoding="utf-8"))
+                if isinstance(v, dict) and isinstance(v.get("items"), list):
+                    return v
+            except Exception:
+                pass
+        return None
+
+    def save_review(self, sid, review):
+        """整份写入复习状态。先写临时文件再替换，写失败时旧文件保持原样，前端据此回滚并允许重试。"""
+        if not sid or ".." in sid or "/" in sid or "\\" in sid:
+            raise RuntimeError("非法路径")
+        d = SESSIONS_DIR / sid
+        if not d.is_dir():
+            raise RuntimeError("项目不存在")
+        if not isinstance(review, dict) or not isinstance(review.get("items"), list) \
+                or not isinstance(review.get("days", {}), dict):
+            raise RuntimeError("复习数据无效")
+        body = json.dumps(review, ensure_ascii=False)
+        if len(body.encode("utf-8")) > REVIEW_MAX_BYTES:
+            raise RuntimeError("复习数据太大")
+        target = d / REVIEW_FILE
+        tmp = target.with_name(f"{target.name}.{uuid.uuid4().hex}.tmp")
+        try:
+            tmp.write_text(body, encoding="utf-8")
+            os.replace(tmp, target)
+        finally:
+            if tmp.exists():
+                try:
+                    tmp.unlink()
+                except OSError:
+                    pass
+        return {"ok": True}
+
+    def ensure_note_ids(self, sid, refs):
+        """给要加入复习的笔记补一个稳定 id（笔记改字、改时间后复习进度仍能对上）。
+        refs 是 [{index, t, text}] 快照，任一条对不上就整体拒绝，避免列表变化时认错笔记。"""
+        if not sid or ".." in sid or "/" in sid or "\\" in sid:
+            raise RuntimeError("非法路径")
+        if self.state in ("recording", "paused", "stopping"):
+            raise RuntimeError("录制中不能修改笔记")
+        with self.lock:
+            d = SESSIONS_DIR / sid
+            sj = d / "session.json"
+            if not sj.is_file():
+                raise RuntimeError("项目不存在或没有可写文稿")
+            meta = json.loads(sj.read_text(encoding="utf-8"))
+            notes = meta.get("notes", [])
+            ids, changed = [], False
+            for ref in refs or []:
+                try:
+                    idx = int(ref.get("index"))
+                    expected_t = float(ref.get("t"))
+                except (TypeError, ValueError, AttributeError):
+                    raise RuntimeError("笔记信息无效") from None
+                if idx < 0 or idx >= len(notes):
+                    raise RuntimeError("笔记已变化，请重新打开后再试")
+                note = notes[idx]
+                try:
+                    note_t = float(note.get("t") or 0)
+                except (TypeError, ValueError):
+                    note_t = -1
+                if note_t != expected_t or note.get("text", "") != ref.get("text", ""):
+                    raise RuntimeError("笔记已变化，请重新打开后再试")
+                if not note.get("id"):
+                    note["id"] = uuid.uuid4().hex[:12]
+                    changed = True
+                ids.append(note["id"])
+            if changed:
+                sj.write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
+        return {"ok": True, "ids": ids}
+
+    def session_pref(self, sid, play_rate=None, last_pos=None, music_follow=None):
         """按项目写播放偏好（倍速 / 上次位置）。只写小巧的 .pref.json，
         绝不重写 session.json 或 transcript.md —— 位置每几秒存一次，必须便宜且无副作用。"""
         if ".." in sid or "/" in sid or "\\" in sid:
@@ -6919,21 +7012,31 @@ class App:
         d = SESSIONS_DIR / sid
         if not d.is_dir():
             raise RuntimeError("项目不存在")
-        pf = d / PREF_FILE
-        pref = self._read_pref(d)
-        if play_rate is not None:
-            pr = str(play_rate)
-            if pr in ("0.75x", "1x", "1.25x", "1.5x", "2x"):
-                pref["play_rate"] = pr
-        if last_pos is not None:
+        with self.lock:
+            pf = d / PREF_FILE
+            pref = self._read_pref(d)
+            if play_rate is not None:
+                pr = str(play_rate)
+                if pr in ("0.75x", "1x", "1.25x", "1.5x", "2x"):
+                    pref["play_rate"] = pr
+            if last_pos is not None:
+                try:
+                    lp = float(last_pos)
+                    if lp >= 0:
+                        pref["last_pos"] = round(lp, 1)
+                except (TypeError, ValueError):
+                    pass
+            if music_follow is not None:
+                if type(music_follow) is not bool:
+                    raise RuntimeError("配乐跟随设置无效")
+                pref["music_follow"] = music_follow
+            tmp = pf.with_name('.pref-' + uuid.uuid4().hex + '.tmp')
             try:
-                lp = float(last_pos)
-                if lp >= 0:
-                    pref["last_pos"] = round(lp, 1)
-            except (TypeError, ValueError):
-                pass
-        pf.write_text(json.dumps(pref, ensure_ascii=False), encoding="utf-8")
-        return {"ok": True}
+                tmp.write_text(json.dumps(pref, ensure_ascii=False), encoding='utf-8')
+                os.replace(tmp, pf)
+            finally:
+                tmp.unlink(missing_ok=True)
+            return {"ok": True}
 
     def delete_audio(self, sid):
         """旧入口：只删录音、保留文稿。现在统一走 delete_session(full=False)，
@@ -7143,8 +7246,12 @@ SOUNDS_DIR = Path(__file__).parent / "sounds"
 MATERIAL_PREVIEW_DIR = Path(__file__).parent / "assets"
 SOUND_FILES = {
     "task_complete_warm.mp3",
-    "task_complete_distant.mp3",
+    "task_complete_cheerful.mp3",
     "project_delete.mp3",
+    "review_add.mp3",
+    "review_master.mp3",
+    "review_check.mp3",
+    "review_bell.mp3",
 }
 DEMO_DIR = MATERIAL_PREVIEW_DIR / "demo"     # 「听道使用说明」演示项目, 由 tools/build_demo.py 生成
 
@@ -7175,6 +7282,194 @@ def seed_demo_project():
     return d.name
 
 
+class MusicLibrary:
+    """用户配乐独立保存；不写入项目 session.json 或完整笔记包。"""
+    SUFFIXES = {'.mp3', '.m4a', '.wav', '.aac', '.flac', '.ogg', '.opus'}
+
+    def __init__(self, root):
+        self.root = Path(root)
+        self.lock = threading.RLock()
+
+    def _read(self):
+        path = self.root / 'library.json'
+        if not path.exists():
+            return {'tracks': [], 'volume': .35, 'mode': 'loop'}
+        return json.loads(path.read_text(encoding='utf-8'))
+
+    def _write(self, data):
+        self.root.mkdir(parents=True, exist_ok=True)
+        path = self.root / 'library.json'
+        tmp = path.with_name('.library-' + uuid.uuid4().hex + '.tmp')
+        try:
+            tmp.write_text(json.dumps(data, ensure_ascii=False), encoding='utf-8')
+            os.replace(tmp, path)
+        finally:
+            tmp.unlink(missing_ok=True)
+
+    def list(self):
+        with self.lock:
+            return self._read()
+
+    @staticmethod
+    def _finder_cover(source, target):
+        """QQ 音乐等把专辑图存在 Finder 自定义图标资源中，而非音频标签。"""
+        if platform.system() != 'Darwin':
+            return False
+        try:
+            resource = Path(str(source) + '/..namedfork/rsrc')
+            if not 16 <= resource.stat().st_size <= 32 * 1024 * 1024:
+                return False
+            data = resource.read_bytes()
+            data_start = int.from_bytes(data[:4], 'big')
+            map_start = int.from_bytes(data[4:8], 'big')
+            if map_start + 28 > len(data):
+                return False
+            types = map_start + int.from_bytes(data[map_start+24:map_start+26], 'big')
+            if types + 2 > len(data):
+                return False
+            count = int.from_bytes(data[types:types+2], 'big') + 1
+            if types + 2 + count * 8 > len(data):
+                return False
+            for i in range(count):
+                entry = types + 2 + i * 8
+                if data[entry:entry+4] != b'icns':
+                    continue
+                ref = types + int.from_bytes(data[entry+6:entry+8], 'big')
+                if ref + 12 > len(data):
+                    return False
+                offset = data_start + int.from_bytes(data[ref+5:ref+8], 'big')
+                size = int.from_bytes(data[offset:offset+4], 'big')
+                if size < 8 or offset + 4 + size > len(data):
+                    return False
+                icon = data[offset+4:offset+4+size]
+                if icon[:4] != b'icns':
+                    return False
+                with tempfile.TemporaryDirectory(prefix='tingdao-cover-') as tmp:
+                    path = Path(tmp) / 'cover.icns'
+                    path.write_bytes(icon)
+                    result = subprocess.run(['/usr/bin/sips', '-Z', '600', '-s', 'format', 'jpeg',
+                                             str(path), '--out', str(target)],
+                                            capture_output=True, timeout=30)
+                    if result.returncode == 0 and target.is_file() and target.stat().st_size:
+                        return True
+                target.unlink(missing_ok=True)
+                return False
+        except (OSError, ValueError, subprocess.SubprocessError):
+            target.unlink(missing_ok=True)
+        return False
+
+    def import_files(self, paths):
+        if not isinstance(paths, list) or len(paths) > 200:
+            raise RuntimeError('每次最多添加 200 首配乐')
+        with self.lock:
+            data = self._read()
+            created, added, errors = [], [], []
+            self.root.mkdir(parents=True, exist_ok=True)
+            try:
+                for value in paths:
+                    files = []
+                    try:
+                        src = Path(value)
+                        if src.suffix.lower() not in self.SUFFIXES or not src.is_file():
+                            raise RuntimeError('请选择支持的音频文件')
+                        info = subprocess.run([ffmpeg_path('ffprobe'), '-v', 'error', '-show_format',
+                                               '-show_streams', '-of', 'json', str(src)],
+                                              capture_output=True, text=True, timeout=60, check=True)
+                        meta = json.loads(info.stdout)
+                        streams = meta.get('streams', [])
+                        if not any(s.get('codec_type') == 'audio' for s in streams):
+                            raise RuntimeError('文件中没有可播放的音频')
+                        duration = float(meta.get('format', {}).get('duration', 0))
+                        if not math.isfinite(duration) or duration <= 0:
+                            raise RuntimeError('无法读取音频时长')
+                        ident = uuid.uuid4().hex
+                        target = self.root / (ident + src.suffix.lower())
+                        files.append(target)
+                        shutil.copyfile(src, target)
+                        playable = target
+                        # WKWebView 对容器/编码的支持不一致，非 MP3/M4A/WAV 转为播放文件。
+                        if src.suffix.lower() not in {'.mp3', '.m4a', '.wav'}:
+                            playable = self.root / (ident + '.m4a')
+                            files.append(playable)
+                            subprocess.run([ffmpeg_path(), '-v', 'error', '-y', '-i', str(target),
+                                            '-vn', '-c:a', 'aac', '-b:a', '192k', str(playable)],
+                                           capture_output=True, timeout=900, check=True)
+                        tags = {k.lower(): v for k, v in meta.get('format', {}).get('tags', {}).items()}
+                        cover = None
+                        if any(s.get('codec_type') == 'video' and s.get('disposition', {}).get('attached_pic')
+                               for s in streams):
+                            image = self.root / (ident + '.jpg')
+                            files.append(image)
+                            result = subprocess.run([ffmpeg_path(), '-v', 'error', '-y', '-i', str(target),
+                                                     '-map', '0:v:0', '-frames:v', '1', '-vf',
+                                                     'scale=600:600:force_original_aspect_ratio=decrease', str(image)],
+                                                    capture_output=True, timeout=60)
+                            if result.returncode == 0 and image.is_file():
+                                cover = image.name
+                            else:
+                                image.unlink(missing_ok=True)
+                        if cover is None:
+                            image = self.root / (ident + '.jpg')
+                            if self._finder_cover(src, image):
+                                files.append(image)
+                                cover = image.name
+                        track = {'id': ident, 'title': str(tags.get('title') or src.stem),
+                                 'artist': str(tags.get('artist') or ''), 'duration': duration,
+                                 'file': playable.name, 'cover': cover}
+                        # 封面与标签读取完成后，仅保留可播放的导入文件。
+                        if playable != target:
+                            target.unlink()
+                        data['tracks'].append(track)
+                        added.append(ident)
+                        created.extend(files)
+                    except Exception as error:
+                        for file in files:
+                            file.unlink(missing_ok=True)
+                        errors.append({'name': Path(str(value)).name, 'error': str(error)[:180]})
+                if added:
+                    self._write(data)
+            except Exception:
+                for file in created:
+                    file.unlink(missing_ok=True)
+                raise
+            return {'ok': bool(added), 'added': added, 'errors': errors, **data}
+
+    def save(self, patch):
+        with self.lock:
+            data = self._read()
+            if 'order' in patch:
+                order = patch['order']
+                tracks = {t['id']: t for t in data['tracks']}
+                if not isinstance(order, list) or len(order) != len(tracks) or set(order) != set(tracks):
+                    raise RuntimeError('播放列表已发生变化，请重新加载')
+                data['tracks'] = [tracks[key] for key in order]
+            if 'volume' in patch:
+                value = patch['volume']
+                if type(value) not in (float, int) or not math.isfinite(value) or not 0 <= value <= 1:
+                    raise RuntimeError('音量无效')
+                data['volume'] = value
+            if 'mode' in patch:
+                if patch['mode'] not in {'loop', 'random', 'order'}:
+                    raise RuntimeError('播放模式无效')
+                data['mode'] = patch['mode']
+            self._write(data)
+            return {'ok': True, **data}
+
+    def media(self, ident, kind):
+        with self.lock:
+            track = next((t for t in self._read()['tracks'] if t['id'] == ident), None)
+            ref = track.get('file' if kind == 'audio' else 'cover') if track and kind in {'audio', 'cover'} else None
+            if not ref or Path(ref).name != ref:
+                raise RuntimeError('音乐文件不存在')
+            path = (self.root / ref).resolve()
+            if path.parent != self.root.resolve() or not path.is_file():
+                raise RuntimeError('音乐文件不存在')
+            return path
+
+
+MUSIC = MusicLibrary(DATA_DIR / 'music')
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
@@ -7189,6 +7484,16 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         u = urlparse(self.path)
+        if u.path == "/api/music":
+            try:
+                return self._json(MUSIC.list())
+            except Exception as error:
+                return self._json({"error": str(error)}, 500)
+        if u.path == "/api/music/pick":
+            try:
+                return self._json({"paths": APP.pick_file(music_only=True)})
+            except Exception as error:
+                return self._json({"error": str(error)}, 500)
         if u.path == "/api/export_progress":
             return self._json({"progress": APP.export_progress})
         if u.path == "/api/note_bundle_info":
@@ -7376,11 +7681,23 @@ class Handler(BaseHTTPRequestHandler):
                 }, 403)
             except Exception as e:
                 self._json({"error": str(e)}, 404)
-        elif u.path.startswith("/audio/"):
+        elif u.path.startswith(("/audio/", "/music/")):
             # /audio/<sid>/audio.m4a 或无损 WAV 回放副本
-            parts = unquote(u.path[len("/audio/"):]).split("/")
-            f = SESSIONS_DIR / parts[0] / parts[1]
-            mime = {".m4a": "audio/mp4", ".wav": "audio/wav"}.get(f.suffix.lower())
+            if u.path.startswith('/music/'):
+                parts = unquote(u.path[len('/music/'):]).split('/')
+                try:
+                    if len(parts) != 2:
+                        raise RuntimeError('路径无效')
+                    f = MUSIC.media(*parts)
+                    mime = {'.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.wav': 'audio/wav',
+                            '.jpg': 'image/jpeg'}.get(f.suffix.lower())
+                except RuntimeError:
+                    self.send_error(404)
+                    return
+            else:
+                parts = unquote(u.path[len("/audio/"):]).split("/")
+                f = SESSIONS_DIR / parts[0] / parts[1]
+                mime = {".m4a": "audio/mp4", ".wav": "audio/wav"}.get(f.suffix.lower())
             if f.is_file() and mime:
                 with f.open("rb") as audio:
                     size = os.fstat(audio.fileno()).st_size
@@ -7463,6 +7780,10 @@ class Handler(BaseHTTPRequestHandler):
         except json.JSONDecodeError:
             return self._json({"ok": False, "error": "参数错误"}, 400)
         try:
+            if u.path == "/api/music/import":
+                return self._json(MUSIC.import_files(body.get("paths", [])))
+            if u.path == "/api/music/save":
+                return self._json(MUSIC.save(body))
             if u.path == "/api/frontend_patch/ready":
                 ready = bool(FRONTEND_PATCHES and FRONTEND_PATCHES.ready(body.get("token")))
                 return self._json({"ok": ready})
@@ -7699,7 +8020,11 @@ class Handler(BaseHTTPRequestHandler):
             if u.path == "/api/session_pref":
                 return self._json(APP.session_pref(body.get("id", ""),
                                                    body.get("play_rate"),
-                                                   body.get("last_pos")))
+                                                   body.get("last_pos"), body.get("music_follow")))
+            if u.path == "/api/review_save":
+                return self._json(APP.save_review(body.get("id", ""), body.get("review")))
+            if u.path == "/api/note_ids":
+                return self._json(APP.ensure_note_ids(body.get("id", ""), body.get("refs") or []))
             if u.path == "/api/rename":
                 return self._json(APP.rename(body.get("name", ""), body.get("id") or None))
             if u.path == "/api/session_flags":

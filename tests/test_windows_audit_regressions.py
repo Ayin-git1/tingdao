@@ -138,7 +138,7 @@ class WindowsAuditTests(unittest.TestCase):
             play='audio #100%.m4a'; (d/play).touch()
             (d/'session.json').write_text(json.dumps({'audio':play}), encoding='utf-8')
             fn=load('load', 'App', SESSIONS_DIR=root, json=json, quote=quote, NOTE_FILE='note.md')
-            app=SimpleNamespace(_clean_title=lambda x:x, _read_pref=lambda d:{})
+            app=SimpleNamespace(_clean_title=lambda x:x, _read_pref=lambda d:{}, _read_review=lambda d:None)
             url=fn(app, sid)['audioUrl']
             self.assertNotIn('#', url)
             self.assertEqual(unquote(url[len('/audio/'):]).split('/'), [sid,play])

@@ -99,7 +99,7 @@ class ExportSessionsTests(unittest.TestCase):
             with zipfile.ZipFile(target.with_suffix('.zip')) as zf:
                 self.assertEqual(sorted(zf.namelist()), [
                     'tingdao-note.json', '免责声明.txt', '同名/audio.wav', '同名/note-images/a.png',
-                    '同名/note.md', '同名/session.json', '同名/transcript.md',
+                    '同名/session.json', '同名/transcript.md',
                     '同名（1）/audio.wav', '同名（1）/session.json', '同名（1）/transcript.md'])
             self.assertEqual([p.name for p in Path(directory).iterdir() if p.name.endswith('.part')], [])
 
