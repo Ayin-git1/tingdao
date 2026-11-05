@@ -19,7 +19,7 @@ mod frontend_patch;
 mod camera;
 
 #[cfg(target_os = "macos")]
-use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
+mod native_menu;
 use tauri::webview::PageLoadEvent;
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 // 不透明白底只给 mac 用(见 open_main_window 的 cfg 分支), Windows 构建里没人引用它 ——
@@ -451,45 +451,6 @@ fn request_shutdown(port: u16) {
     }
 }
 
-#[cfg(target_os = "macos")]
-fn app_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<Menu<R>> {
-    let microphone_modes = MenuItem::with_id(
-        app,
-        MICROPHONE_MODES_MENU_ID,
-        "麦克风模式…",
-        true,
-        None::<&str>,
-    )?;
-    // 预设项不给文字时 muda 用英文默认标题, 不跟系统语言走, 这里逐个写中文。
-    let edit_menu = Submenu::with_items(
-        app,
-        "编辑",
-        true,
-        &[
-            &PredefinedMenuItem::undo(app, Some("撤销"))?,
-            &PredefinedMenuItem::redo(app, Some("重做"))?,
-            &PredefinedMenuItem::separator(app)?,
-            &PredefinedMenuItem::cut(app, Some("剪切"))?,
-            &PredefinedMenuItem::copy(app, Some("拷贝"))?,
-            &PredefinedMenuItem::paste(app, Some("粘贴"))?,
-            &PredefinedMenuItem::select_all(app, Some("全选"))?,
-        ],
-    )?;
-    Menu::with_items(
-        app,
-        &[&edit_menu, &Submenu::with_items(
-            app,
-            "听道",
-            true,
-            &[
-                &microphone_modes,
-                &PredefinedMenuItem::separator(app)?,
-                &PredefinedMenuItem::quit(app, Some("退出听道"))?,
-            ],
-        )?],
-    )
-}
-
 /// 读后端回报的端口号; 文件还没写好 / 内容非法就返回 None, 交给上层轮询。
 fn read_portfile(path: &Path) -> Option<u16> {
     let mut s = String::new();
@@ -911,6 +872,8 @@ fn is_backend_page(url: &tauri::Url) -> bool {
 fn open_main_window(app: &mut tauri::App) -> tauri::Result<tauri::WebviewWindow> {
     let mut builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
         .visible(false)
+        // 只取消 WebView 默认菜单，不阻断页面自己的右键事件。
+        .initialization_script("document.addEventListener('contextmenu', event => event.preventDefault(), true);")
         // Windows 内置页也是 http (tauri.localhost)，只认后端回环地址。
         .on_page_load(|window, payload| {
             if payload.event() == PageLoadEvent::Finished && is_backend_page(payload.url()) {
@@ -930,11 +893,27 @@ fn open_main_window(app: &mut tauri::App) -> tauri::Result<tauri::WebviewWindow>
             open_repository_url(url.as_str());
             tauri::webview::NewWindowResponse::Deny
         });
+    #[cfg(target_os = "macos")]
+    { builder = builder.initialization_script(native_menu::SCRIPT); }
     // 网页 → 壳的两条指令都借导航送达, 截下后取消导航, 页面不动:
     // tingdao-app://relaunch: 热更新提示里的「重启」, 走正常退出流程后再拉起新实例。
     // tingdao-camera://take?x=&y=: 录音中的相机钮(隐藏 iframe), 弹连续互通相机菜单(见 camera.rs)。
     {
         builder = builder.on_navigation(|url| {
+            #[cfg(target_os = "macos")]
+            if url.scheme() == "tingdao-menu" {
+                if url.host_str() == Some("state") {
+                    if let Some((_, data)) = url.query_pairs().find(|(key, _)| key == "data") {
+                        if let Ok(state) = serde_json::from_str::<serde_json::Value>(&data) {
+                            // 导航回调返回后再调用 AppKit，避免嵌套事件循环。
+                            std::thread::spawn(move || {
+                                if let Some(app) = APP_HANDLE.get() { native_menu::apply_state(app, &state); }
+                            });
+                        }
+                    }
+                }
+                return false;
+            }
             if url.scheme() == APP_SCHEME {
                 if url.host_str() == Some("relaunch") {
                     // 同相机: 身处导航决策回调, 退出流程里有模态确认框, 借线程投回事件循环。
@@ -1054,7 +1033,19 @@ fn main() {
     let mut builder = tauri::Builder::default();
     #[cfg(target_os = "macos")]
     {
-        builder = builder.menu(app_menu).on_menu_event(move |_app, event| {
+        builder = builder.menu(native_menu::build).on_menu_event(move |app, event| {
+            if event.id() == "native-repository" {
+                open_repository_url(REPOSITORY_URL);
+                return;
+            }
+            if let Some(id) = event.id().as_ref().strip_prefix("native-") {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.set_focus();
+                    let id = serde_json::to_string(id).unwrap();
+                    let _ = window.eval(format!("window.tingdaoNativeMenu?.dispatch({id})"));
+                }
+                return;
+            }
             if event.id() == MICROPHONE_MODES_MENU_ID {
                 let result = BACKEND_PORT
                     .lock()

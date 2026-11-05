@@ -328,7 +328,7 @@ class WindowsAuditTests(unittest.TestCase):
         source = (ROOT / 'tauri-shell/src/main.rs').read_text(encoding='utf-8')
         self.assertIn('is_backend_page(payload.url())', source)
         self.assertIn('fn backend_page_excludes_tauri_localhost()', source)
-        self.assertIn('#[cfg(target_os = "macos")]\nuse tauri::menu', source)
+        self.assertIn('#[cfg(target_os = "macos")]\nmod native_menu;', source)
 
     def test_dependency_probe_requires_all_runtime_imports(self):
         source=(ROOT/'tauri-shell/src/main.rs').read_text(encoding='utf-8')

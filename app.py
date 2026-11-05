@@ -45,7 +45,7 @@ from frontend_patch import FrontendPatches
 import numpy as np
 import sherpa_onnx
 
-APP_VERSION = "3.1.10"
+APP_VERSION = "3.1.10.1"
 
 # Finder/Dock 启动的 GUI 进程 PATH 不含 homebrew, 主动补齐(ffmpeg/SwitchAudioSource 所在)
 if platform.system() == "Darwin":
