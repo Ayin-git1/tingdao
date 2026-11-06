@@ -22,7 +22,7 @@ class TranscriptFormatTests(unittest.TestCase):
             root=Path(temp);d=root/'sample';d.mkdir();p=d/'session.json'
             p.write_text(json.dumps({'segments':[{'t':1,'text':'测试😀文字'}],'notes':[{'t':2,'text':'保留'}]}))
             app=self.harness(root)
-            patch={'t':1,'text':'测试😀文字','formats':[{'start':2,'end':4,'style':{'bold':True,'background':'#faebdd'}}]}
+            patch={'t':1,'text':'测试😀文字','formats':[{'start':2,'end':4,'style':{'bold':True,'background':'#faebdd','highlightGroup':'selection-one'}}]}
             app.format_transcript('sample',[patch])
             saved=json.loads(p.read_text());self.assertEqual(saved['segments'][0]['formats'],patch['formats']);self.assertEqual(saved['notes'][0]['text'],'保留')
             patch['text']='旧文稿'

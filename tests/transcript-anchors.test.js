@@ -306,6 +306,7 @@ test('directory position follows third-level timestamps independently of chapter
 
 test('scrolling updates directory position even within the same chapter anchor', () => {
   const harness = Function(`
+    const transcriptSelectionPointer=null;
     const transcriptAnchorState=[{start:0,end:100}], transcriptAnchorActiveIndex=0;
     const player={paused:true,ended:false};
     const segEls=[{dataset:{t:'0'},getBoundingClientRect(){return {top:0};}},

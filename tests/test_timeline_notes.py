@@ -81,6 +81,17 @@ class TimelineNoteTests(unittest.TestCase):
             self.assertIn("[00:34] 回访时确认这项需求", transcript)
             self.assertIn("[00:20] 原有文稿内容", transcript)
 
+    def test_paragraph_anchor_survives_save_reload_and_edit(self):
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            session_dir, _ = self.make_session(root)
+            app = self.make_app(root)
+            result = app.add_transcript_note("interview-01", 20, "1", anchor_row_id="segment-0")
+            saved = json.loads((session_dir / "session.json").read_text(encoding="utf-8"))
+            self.assertEqual(saved["notes"][0]["anchorRowId"], "segment-0")
+            result = app.update_transcript_note("interview-01", 0, 20, "1", 20, "edited")
+            self.assertEqual(result["note"]["anchorRowId"], "segment-0")
+
     def test_completed_session_note_rejects_time_after_recording_duration(self):
         with TemporaryDirectory() as temp:
             root = Path(temp)

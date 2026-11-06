@@ -7,6 +7,7 @@
     ],
     "resources": [
       "program-windows/app.py",
+      "program-windows/review_index.py",
       "program-windows/frontend_patch.py",
       "program-windows/licenses/",
       "program-windows/index.html",

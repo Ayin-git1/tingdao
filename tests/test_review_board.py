@@ -81,6 +81,25 @@ class ReviewBoardTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 app.ensure_note_ids("lecture", [{"index": 0, "t": 10.0, "text": "遗忘最快"}])
 
+    def test_review_compare_and_swap_rejects_stale_and_accepts_current(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            app = self.make_app(root)
+            self.make_session(root, [])
+            initial = {"items": [], "days": {}}
+            newer = {"items": [{"src": "ch:1", "succ": 1}], "days": {}}
+            undo = {"items": [], "days": {"today": {"done": 0}}}
+            app.save_review("lecture", initial)
+            app.save_review("lecture", newer, expected=initial)
+            with self.assertRaisesRegex(RuntimeError, "复习记录已变化，请刷新后再试"):
+                app.save_review("lecture", undo, expected=initial)
+            self.assertEqual(app._read_review(root / "lecture"), newer)
+            self.assertEqual(app.save_review("lecture", undo, expected=newer), {"ok": True})
+            self.assertEqual(app._read_review(root / "lecture"), undo)
+            # Existing local saves keep their unconditional overwrite behavior.
+            app.save_review("lecture", initial)
+            self.assertEqual(app._read_review(root / "lecture"), initial)
+
     def test_editing_a_note_keeps_its_review_id(self):
         source = APP.read_text(encoding="utf-8")
         self.assertIn('item = {**current, "t": round(timestamp, 1), "text": new}', source)

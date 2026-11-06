@@ -10,7 +10,7 @@ test('clean Windows staging creates the embedded page and all source resources',
   try {
     const shell = path.join(root, 'tauri-shell');
     fs.mkdirSync(shell);
-    for (const name of ['app.py', 'frontend_patch.py', 'index.html', 'whisper_worker.py', 'whisper_worker_windows.py'])
+    for (const name of ['app.py', 'review_index.py', 'frontend_patch.py', 'index.html', 'whisper_worker.py', 'whisper_worker_windows.py'])
       fs.writeFileSync(path.join(root, name), name);
     fs.mkdirSync(path.join(root, 'assets'));
     fs.mkdirSync(path.join(root, 'sounds'));

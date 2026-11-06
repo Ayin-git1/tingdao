@@ -28,3 +28,15 @@ test('transcript outline level-2 items are black in light mode and readable in d
     /html\[data-appearance="dark"\] \.transcript-outline-item\.level-2\s*\{\s*color:var\(--txt\);\s*\}/,
   );
 });
+
+test('dark appearance softens theme-filled primary buttons without touching the light rules', () => {
+  const fs = require('node:fs');
+  const source = fs.readFileSync('index.html', 'utf8');
+  const rule = source.match(/html\[data-appearance="dark"\] :is\(([^)]*\.gr-primary[^)]*)\)\{([^}]*)\}/);
+  assert.ok(rule, 'dark primary button override exists');
+  for (const name of ['.gr-primary', '.rv-primary', '.rv-confirm', '.uc-go', '.au-go']) assert.ok(rule[1].includes(name), name);
+  assert.match(rule[2], /background:var\(--g-tint\)/);
+  assert.match(rule[2], /color:var\(--theme-text\)!important/);
+  assert.match(source, /\.gr-shell \.gr-primary\{[^}]*background:var\(--gd\);color:white/);
+  assert.match(source, /\.rv-primary\{[^}]*background:var\(--gd\);color:#fff!important/);
+});

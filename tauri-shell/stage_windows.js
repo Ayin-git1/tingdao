@@ -8,7 +8,7 @@ const { pipeline } = require('node:stream/promises');
 
 const root = path.resolve(__dirname, '..');
 const destination = path.join(__dirname, 'program-windows');
-const files = ['app.py', 'frontend_patch.py', 'index.html', 'whisper_worker.py', 'whisper_worker_windows.py'];
+const files = ['app.py', 'review_index.py', 'frontend_patch.py', 'index.html', 'whisper_worker.py', 'whisper_worker_windows.py'];
 
 // 干净检出也必须有可嵌入的启动页；实际 UI 待后端就绪后导航加载。
 fs.mkdirSync(path.join(__dirname, 'dist'), { recursive: true });

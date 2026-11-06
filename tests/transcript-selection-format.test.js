@@ -80,3 +80,48 @@ test('background swatch preserves existing text color without applying a previou
   {start:1,end:2,style:{background:'#eaf1ec'}}
  ]);
 });
+
+test('text color swatch writes the color and keeps the existing background',()=>{
+ const ctx={};vm.createContext(ctx);vm.runInContext(body('mergeTranscriptFormats'),ctx);
+ const out=ctx.mergeTranscriptFormats([{start:0,end:1,style:{background:'#eaf1ec'}}],0,2,{color:'#357dd7'},2,null,false,'color');
+ assert.deepEqual(JSON.parse(JSON.stringify(out)),[
+  {start:0,end:1,style:{background:'#eaf1ec',color:'#357dd7'}},
+  {start:1,end:2,style:{color:'#357dd7'}}
+ ]);
+});
+
+test('default swatches clear only their own color',()=>{
+ const ctx={};vm.createContext(ctx);vm.runInContext(body('mergeTranscriptFormats'),ctx);
+ const formats=[{start:0,end:2,style:{color:'#357dd7',background:'#eaf1ec',highlightGroup:'a'}}];
+ assert.deepEqual(JSON.parse(JSON.stringify(ctx.mergeTranscriptFormats(formats,0,2,{color:''},2,null,false,'color'))),
+  [{start:0,end:2,style:{background:'#eaf1ec',highlightGroup:'a'}}]);
+ assert.deepEqual(JSON.parse(JSON.stringify(ctx.mergeTranscriptFormats(formats,0,2,{background:''},2,null,false,'background'))),
+  [{start:0,end:2,style:{color:'#357dd7'}}]);
+});
+
+test('empty styles left by the color bug are dropped and never remembered',()=>{
+ const source=html.slice(html.indexOf('let transcriptFormatPrefs='),html.indexOf('let transcriptFormatSelection='));
+ const saved={last:{},recent:[{},{color:'#357dd7'}]};
+ const ctx={localStorage:{getItem:()=>JSON.stringify(saved)},JSON};vm.createContext(ctx);
+ vm.runInContext(source.replace('let transcriptFormatPrefs','var transcriptFormatPrefs'),ctx);
+ assert.deepEqual(JSON.parse(JSON.stringify(ctx.transcriptFormatPrefs.recent)),[{color:'#357dd7'}]);
+ assert.deepEqual(JSON.parse(JSON.stringify(ctx.transcriptFormatPrefs.last)),{background:'#fbe8e6',color:'#d84b60'});
+ assert.match(html.slice(html.indexOf('async function applyTranscriptFormat'),html.indexOf('function restoreTranscriptFormatRange')),/if\(Object\.keys\(style\)\.length\)\{/);
+});
+
+test('one background selection joins paragraphs and uses its first timestamp',()=>{
+ const ctx={};vm.createContext(ctx);vm.runInContext(body('transcriptBackgroundExcerpts'),ctx);
+ const segments=[{t:5,text:'第一段',formats:[{start:0,end:3,style:{background:'#eaf1ec',highlightGroup:'one'}}]},{t:9,text:'第二段',formats:[{start:0,end:1,style:{background:'#eaf1ec',highlightGroup:'one'}},{start:1,end:3,style:{background:'#eaf1ec',highlightGroup:'one',bold:true}}]},{t:12,text:'另一次',formats:[{start:0,end:3,style:{background:'#eaf1ec',highlightGroup:'two'}}]}];
+ const out=JSON.parse(JSON.stringify(ctx.transcriptBackgroundExcerpts(segments)));
+ assert.equal(out.length,2);assert.equal(out[0].text,'第一段\n第二段');assert.equal(out[0].t,5);assert.equal(out[0].segmentTime,5);
+});
+
+test('text formatting preserves highlight grouping and a new background selection replaces it',()=>{
+ const ctx={};vm.createContext(ctx);vm.runInContext(body('mergeTranscriptFormats'),ctx);
+ const original=[{start:0,end:3,style:{background:'#eaf1ec',highlightGroup:'old'}}];
+ const bold=ctx.mergeTranscriptFormats(original,1,2,{},3,'bold',true);
+ assert.ok(bold.every(range=>range.style.highlightGroup==='old'));
+ const recolored=ctx.mergeTranscriptFormats(bold,1,3,{background:'#f8f3de',highlightGroup:'new'},3,null,false,'background');
+ assert.equal(recolored[0].style.highlightGroup,'old');
+ assert.ok(recolored.slice(1).every(range=>range.style.highlightGroup==='new'));
+});

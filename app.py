@@ -45,7 +45,7 @@ from frontend_patch import FrontendPatches
 import numpy as np
 import sherpa_onnx
 
-APP_VERSION = "3.1.10.1"
+APP_VERSION = "3.1.10.2"
 
 # Finder/Dock 启动的 GUI 进程 PATH 不含 homebrew, 主动补齐(ffmpeg/SwitchAudioSource 所在)
 if platform.system() == "Darwin":
@@ -6296,7 +6296,7 @@ class App:
             if target.is_file() and target.resolve() not in refs:
                 target.unlink()
 
-    def add_transcript_note(self, sid, t, text, content=None, assets=None):
+    def add_transcript_note(self, sid, t, text, content=None, assets=None, anchor_row_id=None):
         """把课后时间线笔记写入项目元数据与逐字稿。"""
         if not sid or ".." in sid or "/" in sid or "\\" in sid:
             raise RuntimeError("非法路径")
@@ -6343,6 +6343,8 @@ class App:
                             pass
                     raise
             item = {"t": round(timestamp, 1), "text": new}
+            if isinstance(anchor_row_id, str) and anchor_row_id.startswith("segment-") and anchor_row_id[8:].isdigit():
+                item["anchorRowId"] = anchor_row_id[:120]
             if normalized is not None:
                 item["content"] = normalized
             notes = meta.setdefault("notes", [])
@@ -6513,6 +6515,9 @@ class App:
                     for key in ("bold", "underline"):
                         if item.get("style", {}).get(key) is True:
                             style[key] = True
+                    group = item.get("style", {}).get("highlightGroup")
+                    if style.get("background") and isinstance(group, str) and re.fullmatch(r"[a-zA-Z0-9-]{1,80}", group):
+                        style["highlightGroup"] = group
                     if style:
                         formats.append({"start": start, "end": end, "style": style})
                     last_end = end
@@ -6940,7 +6945,12 @@ class App:
                 pass
         return None
 
-    def save_review(self, sid, review):
+    def review_index(self):
+        """跨课复习可重建索引；课件和复习侧车始终是真源。"""
+        from review_index import read_index
+        return read_index(SESSIONS_DIR, self._clean_title)
+
+    def save_review(self, sid, review, expected=None):
         """整份写入复习状态。先写临时文件再替换，写失败时旧文件保持原样，前端据此回滚并允许重试。"""
         if not sid or ".." in sid or "/" in sid or "\\" in sid:
             raise RuntimeError("非法路径")
@@ -6953,17 +6963,20 @@ class App:
         body = json.dumps(review, ensure_ascii=False)
         if len(body.encode("utf-8")) > REVIEW_MAX_BYTES:
             raise RuntimeError("复习数据太大")
-        target = d / REVIEW_FILE
-        tmp = target.with_name(f"{target.name}.{uuid.uuid4().hex}.tmp")
-        try:
-            tmp.write_text(body, encoding="utf-8")
-            os.replace(tmp, target)
-        finally:
-            if tmp.exists():
-                try:
-                    tmp.unlink()
-                except OSError:
-                    pass
+        with self.lock:
+            if expected is not None and self._read_review(d) != expected:
+                raise RuntimeError("复习记录已变化，请刷新后再试")
+            target = d / REVIEW_FILE
+            tmp = target.with_name(f"{target.name}.{uuid.uuid4().hex}.tmp")
+            try:
+                tmp.write_text(body, encoding="utf-8")
+                os.replace(tmp, target)
+            finally:
+                if tmp.exists():
+                    try:
+                        tmp.unlink()
+                    except OSError:
+                        pass
         return {"ok": True}
 
     def ensure_note_ids(self, sid, refs):
@@ -7053,7 +7066,11 @@ class App:
             raise RuntimeError("项目不存在")
         if full:
             where = to_trash(d)
-            return {"ok": True, "full": True, "gone": not d.exists(), "trash": where}
+            gone = not d.exists()
+            if gone:
+                from review_index import remove_course
+                remove_course(SESSIONS_DIR, sid)
+            return {"ok": True, "full": True, "gone": gone, "trash": where}
         moved = []
         sj = d / "session.json"
         if sj.exists():
@@ -7586,6 +7603,8 @@ class Handler(BaseHTTPRequestHandler):
                     "error": "无法读取文稿目录。请在系统设置 → 隐私与安全性 → 文件与文件夹中允许听道访问文稿目录。",
                     "code": "data_access_denied",
                 }, 403)
+        elif u.path == "/api/review_index":
+            self._json({"sessions": APP.review_index()})
         elif u.path == "/api/hotwords":
             self._json({"words": load_hotwords()})
         elif u.path == "/api/hotword_templates":
@@ -7998,7 +8017,8 @@ class Handler(BaseHTTPRequestHandler):
                                                           body.get("t"),
                                                           body.get("text", ""),
                                                           body.get("content"),
-                                                          body.get("assets") or []))
+                                                          body.get("assets") or [],
+                                                          body.get("anchorRowId")))
             if u.path == "/api/timeline_note_update":
                 return self._json(APP.update_transcript_note(
                     body.get("id", ""), body.get("index"), body.get("expected_t"),
@@ -8022,7 +8042,8 @@ class Handler(BaseHTTPRequestHandler):
                                                    body.get("play_rate"),
                                                    body.get("last_pos"), body.get("music_follow")))
             if u.path == "/api/review_save":
-                return self._json(APP.save_review(body.get("id", ""), body.get("review")))
+                return self._json(APP.save_review(body.get("id", ""), body.get("review"),
+                                                  expected=body.get("expected_review")))
             if u.path == "/api/note_ids":
                 return self._json(APP.ensure_note_ids(body.get("id", ""), body.get("refs") or []))
             if u.path == "/api/rename":

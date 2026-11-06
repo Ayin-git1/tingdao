@@ -35,7 +35,7 @@ for(const hasImages of [false,true])test(`delete action persists removal without
  let rendered=0,hidden=0;
  const context=vm.createContext({$:()=>button,view:{id:'session',notes:[note]},transcriptNoteTargetIndex:0,
   confirm:()=>false,api:async(path,body)=>{calls.push({path,body});return {notes:hasImages?[{...note,text:'',content:[note.content[1]]}]:[]};},
-  hideTranscriptNoteMenu(){hidden++;},renderTimelineNotes(){rendered++;},refreshHistory(){},toast(){}});
+  animateTranscriptNoteRow:async()=>{},transcriptNoteTargetRow:null,hideTranscriptNoteMenu(){hidden++;},renderTimelineNotes(){rendered++;},refreshHistory(){},toast(){}});
  vm.runInContext(deleteHandler(),context);await button.onclick();
  assert.equal(calls.length,1);
  assert.equal(calls[0].path,hasImages?'/api/timeline_note_update':'/api/timeline_note_delete');

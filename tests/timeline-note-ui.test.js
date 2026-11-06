@@ -15,7 +15,7 @@ test('completed transcript rows open the nonmodal paper note composer at their t
 test('composer constrains time to the loaded recording and posts the selected timestamp', () => {
   includes(/transcriptNoteDuration\s*=\s*Math\.max\(0,Math\.floor\(Number\(view\.duration\)\|\|0\)\)/);
   includes(/Math\.min\(transcriptNoteDuration,Math\.floor\(seconds\)\)/);
-  includes(/api\('\/api\/timeline_note',\{id:sid,t,text:serialized\.text,content:serialized\.content,assets:serialized\.assets\}\)/);
+  includes(/api\('\/api\/timeline_note',\{id:sid,t,text:serialized\.text,content:serialized\.content,assets:serialized\.assets,[\s\S]*?anchorRowId:[^}]*\}\)/);
   includes(/view\.notes=result\.notes\|\|\[\.\.\.\(view\.notes\|\|\[\]\),result\.note\];[\s\S]*?renderTimelineNotes\(\)/);
 });
 

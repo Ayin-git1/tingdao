@@ -20,6 +20,7 @@
     ],
     "resources": {
       "program/app.py": "program/app.py",
+      "program/review_index.py": "program/review_index.py",
       "program/frontend_patch.py": "program/frontend_patch.py",
       "program/licenses/": "program/licenses/",
       "program/index.html": "program/index.html",
@@ -37,7 +38,7 @@
       "icons/Tingdao.icns"
     ],
     "macOS": {
-      "bundleVersion": "3.1.10.1",
+      "bundleVersion": "3.1.10.2",
       "minimumSystemVersion": "12.3",
       "infoPlist": "Info.plist",
       "dmg": {
