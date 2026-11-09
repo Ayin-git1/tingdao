@@ -12,12 +12,10 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 OUT = ROOT / "assets" / "readme"
 VERSION = sys.argv[1] if len(sys.argv) > 1 else "3.1.10.3"
 
-PAPER, INK, MUTED, RULE, EDGE, DEEP = "#F7F6F2", "#243C31", "#6E7E72", "#DADFD7", "#E3E5DE", "#567764"
+PAPER, DEEP = "#F7F6F2", "#567764"
 # 竹青 晴蓝 青莲 松石 橘红 胭脂 —— HSL presets from the app, with a deeper ink of each hue for numerals.
 SWATCHES = [("竹青", "#CBEBDB", "#416C57"), ("晴蓝", "#C9DFF2", "#395974"), ("青莲", "#DFD4F2", "#503C71"),
             ("松石", "#C8EAE5", "#416C66"), ("橘红", "#F8D9C3", "#7D4F31"), ("胭脂", "#F5D1D9", "#763846")]
-SERIF = "'Songti SC','STSong','Noto Serif CJK SC','Noto Serif SC','Source Han Serif SC',serif"
-LATIN = "Georgia,'Times New Roman',serif"
 SANS = "-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif"
 
 # Pinyon Script "Folio" outline at 100 units, baseline y=0 (from the font embedded in index.html).
@@ -25,46 +23,45 @@ FOLIO_PATH = (ROOT / "assets" / "readme" / "folio-path.txt").read_text().split("
 
 
 def hero():
-    rows = [
-        ("00:30", "点右下角的 ＋ 新建录音。", None, None),
-        ("01:04", "录音来源有三种：系统、麦克风或混合。", ("mark", 8, 17), SWATCHES[0][1]),
-        ("01:16", "录到一半也能换来源，录音不会断。", ("line", 11, 16), "#D9A3AF"),
-    ]
-    x0, size = 752, 20
-    body = []
-    for i, (stamp, text, deco, color) in enumerate(rows):
-        y = 186 + i * 50
-        if deco and deco[0] == "mark":
-            body.append(f'<rect x="{x0 + deco[1] * size - 2}" y="{y - 19}" width="{(deco[2] - deco[1]) * size + 4}" height="26" rx="3" fill="{color}"/>')
-        if deco and deco[0] == "line":
-            body.append(f'<path d="M{x0 + deco[1] * size} {y + 6}H{x0 + deco[2] * size}" stroke="{color}" stroke-width="3" stroke-linecap="round"/>')
-        body.append(f'<text x="676" y="{y}" font-family="{LATIN}" font-size="17" fill="{MUTED}" letter-spacing=".5">{stamp}</text>')
-        body.append(f'<text x="{x0}" y="{y}" font-family="{SERIF}" font-size="{size}" fill="{INK}">{text}</text>')
-    chips = []
-    for i, (name, fill, _) in enumerate(SWATCHES):
-        x = 56 + i * 76
-        chips.append(f'<rect x="{x}" y="356" width="14" height="14" rx="3" fill="{fill}" stroke="#00000014"/>'
-                     f'<text x="{x + 22}" y="368" font-family="{SERIF}" font-size="15" fill="{MUTED}">{name}</text>')
-    return f'''<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="420" viewBox="0 0 1200 420" role="img" aria-labelledby="title desc">
+    """Product-style hero: centred icon and wordmark over soft swatch light, features as pills."""
+    import base64
+    icon = base64.b64encode((OUT / "app-icon-192.png").read_bytes()).decode()
+    pills = []
+    items = [("本地转写", 0), ("AI 摘要目录", 1), ("时间线笔记", 5), ("间隔复习", 2)]
+    widths = [round(text_width(t, 18) + 52) for t, _ in items]
+    x = 600 - (sum(widths) + 12 * (len(items) - 1)) / 2
+    for (label, sw), w in zip(items, widths):
+        pills.append(f'<rect x="{x:.1f}" y="310" width="{w}" height="38" rx="19" fill="#FFFFFF" fill-opacity=".78" stroke="#1C2A22" stroke-opacity=".08"/>'
+                     f'<circle cx="{x + 20:.1f}" cy="329" r="5" fill="{SWATCHES[sw][1]}" stroke="{SWATCHES[sw][2]}" stroke-opacity=".45"/>'
+                     f'<text x="{x + 33:.1f}" y="336" font-family="{SANS}" font-size="18" font-weight="500" fill="#2E3A33">{label}</text>')
+        x += w + 12
+    folio_w = 179.2 * .62
+    title_w = 2 * 64 + 14 + folio_w
+    tx = 600 - title_w / 2
+    return f'''<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1200" height="420" viewBox="0 0 1200 420" role="img" aria-labelledby="title desc">
   <title id="title">听道 Folio</title>
-  <desc id="desc">听道 Folio：本地优先的录音、转写与笔记工具，把声音留成文字。右侧是一段带时间戳、划线和时间线笔记的文稿样张。</desc>
-  <rect x=".5" y=".5" width="1199" height="419" rx="18" fill="{PAPER}" stroke="{EDGE}"/>
-  <text x="56" y="56" font-family="{SANS}" font-size="14" font-weight="600" letter-spacing="3" fill="{MUTED}">LOCAL-FIRST AUDIO NOTEBOOK</text>
-  <text x="1144" y="56" text-anchor="end" font-family="{SANS}" font-size="14" font-weight="600" letter-spacing="3" fill="{MUTED}">MACOS · WINDOWS</text>
-  <path d="M56 76H1144" stroke="{INK}" stroke-opacity=".75" stroke-width="1.2"/>
-  <path d="M56 80H1144" stroke="{RULE}"/>
-  <text x="52" y="206" font-family="{SERIF}" font-size="104" font-weight="600" fill="{INK}" letter-spacing="2">听道</text>
-  <path transform="translate(284 204) scale(.86)" fill="{DEEP}" d="{FOLIO_PATH}"/>
-  <text x="58" y="268" font-family="{SERIF}" font-size="32" fill="{INK}">把声音，留成文字。</text>
-  <text x="58" y="314" font-family="{SANS}" font-size="19" fill="{MUTED}">录音 · 转写 · 摘要目录 · 时间线笔记 · 复习</text>
-  {"".join(chips)}
-  <path d="M636 112V384" stroke="{RULE}"/>
-  <text x="676" y="128" font-family="{SANS}" font-size="13" font-weight="600" letter-spacing="2.5" fill="{MUTED}">SPECIMEN · 文稿样张</text>
-  {"".join(body)}
-  <rect x="752.5" y="306.5" width="391" height="70" rx="10" fill="#FFFFFF" stroke="{RULE}"/>
-  <rect x="752.5" y="306.5" width="4" height="70" rx="2" fill="{SWATCHES[5][1]}"/>
-  <text x="774" y="332" font-family="{SANS}" font-size="13" font-weight="600" letter-spacing="1.5" fill="{MUTED}">时间线笔记 · 01:16</text>
-  <text x="774" y="362" font-family="{SERIF}" font-size="19" fill="{INK}">中途换成麦克风，记得戴上耳机。</text>
+  <desc id="desc">听道 Folio：本地优先的录音、转写与笔记工具，把声音留成文字。支持本地转写、AI 摘要目录、时间线笔记与间隔复习，适用于 macOS 和 Windows。</desc>
+  <defs>
+    <clipPath id="card"><rect width="1200" height="420" rx="24"/></clipPath>
+    <filter id="soft" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="70"/></filter>
+    <linearGradient id="base" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="{PAPER}"/></linearGradient>
+  </defs>
+  <g clip-path="url(#card)">
+    <rect width="1200" height="420" fill="url(#base)"/>
+    <g filter="url(#soft)" opacity=".9">
+      <circle cx="250" cy="90" r="170" fill="{SWATCHES[0][1]}"/>
+      <circle cx="980" cy="70" r="160" fill="{SWATCHES[1][1]}"/>
+      <circle cx="1040" cy="400" r="150" fill="{SWATCHES[5][1]}"/>
+      <circle cx="140" cy="420" r="130" fill="{SWATCHES[2][1]}"/>
+    </g>
+  </g>
+  <rect x=".5" y=".5" width="1199" height="419" rx="24" fill="none" stroke="#1C2A22" stroke-opacity=".07"/>
+  <image x="556" y="44" width="88" height="88" href="data:image/png;base64,{icon}" xlink:href="data:image/png;base64,{icon}"/>
+  <text x="{tx:.1f}" y="222" font-family="{SANS}" font-size="64" font-weight="700" letter-spacing="1" fill="#1C2A22">听道</text>
+  <path transform="translate({tx + 128 + 14:.1f} 220) scale(.62)" fill="{DEEP}" d="{FOLIO_PATH}"/>
+  <text x="600" y="272" text-anchor="middle" font-family="{SANS}" font-size="24" font-weight="400" fill="#55625A">把声音，留成文字。本地优先的录音、转写与笔记。</text>
+  {"".join(pills)}
+  <text x="600" y="392" text-anchor="middle" font-family="{SANS}" font-size="14" font-weight="500" letter-spacing="2" fill="#8A968E">MACOS · WINDOWS</text>
 </svg>
 '''
 
@@ -80,14 +77,12 @@ def text_width(text, size):
 
 def badge(index, title):
     _, fill, deep = SWATCHES[index % len(SWATCHES)]
-    width = round(74 + text_width(title, 22) + 22)
+    width = round(46 + text_width(title, 21) + 24)
     return f'''<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="52" viewBox="0 0 {width} 52" role="img" aria-labelledby="title">
   <title id="title">{title}</title>
-  <rect x=".5" y=".5" width="{width - 1}" height="51" rx="12" fill="{PAPER}" stroke="{RULE}"/>
-  <rect x="18" y="22" width="9" height="9" rx="2" fill="{fill}" stroke="{deep}" stroke-opacity=".35"/>
-  <text x="34" y="32" font-family="{LATIN}" font-size="15" font-style="italic" fill="{deep}">{index + 1:02d}</text>
-  <path d="M61 15V37" stroke="{RULE}"/>
-  <text x="74" y="34" font-family="{SERIF}" font-size="22" font-weight="600" fill="{INK}">{title}</text>
+  <rect x=".5" y=".5" width="{width - 1}" height="51" rx="25.5" fill="#FFFFFF" stroke="#1C2A22" stroke-opacity=".1"/>
+  <circle cx="26" cy="26" r="6" fill="{fill}" stroke="{deep}" stroke-opacity=".45"/>
+  <text x="44" y="33" font-family="{SANS}" font-size="21" font-weight="600" fill="#1C2A22">{title}</text>
 </svg>
 '''
 
