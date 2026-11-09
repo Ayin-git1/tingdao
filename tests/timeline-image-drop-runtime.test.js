@@ -58,6 +58,7 @@ test('native drag into transcript shows insertion target and drops without an op
 });
 test('direct transcript insertion saves image assets and updates session notes', async () => {
   const {context,requests,shown} = harness();
+  context.recordNoteHistory=()=>{};
   vm.runInContext('async ' + source('insertTranscriptImageFiles'),context);
   await context.insertTranscriptImageFiles(['/tmp/test.png'],{time:12},true);
   assert.equal(requests.length,1);
@@ -208,7 +209,7 @@ test('main image resizing calls the note update path with the selected node', as
     view:{id:'project',notes:[{t:10,text:'文字',content:[{type:'text',text:'文字'},
       {type:'image',file:'note-images/a.png',layout:'inline',position:{mode:'flow',x:null,y:null}}]}]},
     api:async(path,body)=>{requests.push({path,body});return {notes:context.view.notes};},
-    renderTimelineNotes:()=>{},refreshHistory:()=>{},toast:message=>messages.push(message),
+    recordNoteHistory:()=>{},renderTimelineNotes:()=>{},refreshHistory:()=>{},toast:message=>messages.push(message),
     transcriptNoteUsesFreePosition:layout=>layout==='behind'||layout==='front',
   });
   const start=html.indexOf('function transcriptMainImageTarget(');
@@ -297,10 +298,11 @@ test('aside images stay above subsequent text and text hover does not reveal div
   assert.match(html,/\.image-aside-row:has\(>\.transcript-note-image:hover\)>\.transcript-image-divider/);
 });
 
-test('aside text keeps every line in its column including long words and focused playback',()=>{
-  assert.match(html,/#feed \.seg \.tx\.image-aside-text\{box-sizing:border-box;padding-right:var\(--image-aside-space\);overflow-wrap:anywhere;\}/);
-  assert.match(html,/\.tx\.image-aside-text\[data-image-side="left"\]\{padding-left:var\(--image-aside-space\);padding-right:0;\}/);
-  assert.doesNotMatch(html,/\.tx\.image-aside-text::before/);
+test('aside text wraps around a float spacer so lines below the image return to full width',()=>{
+  assert.match(html,/#feed \.seg \.tx\.image-aside-text\{overflow-wrap:anywhere;\}/);
+  assert.match(html,/\.tx\.image-aside-text::before\{content:"";float:right;width:var\(--image-aside-right-space,0px\);height:var\(--image-aside-right-overlap,0px\);\}/);
+  assert.match(html,/\.tx\.image-aside-text :is\(\.tx-focus,\[contenteditable\]\)::before\{content:"";float:left;width:var\(--image-aside-left-space,0px\);height:var\(--image-aside-left-overlap,0px\);\}/);
+  assert.doesNotMatch(html,/#feed \.seg \.tx\.image-aside-text\{[^}]*padding/);
   assert.match(html,/#feed \.seg\.cur \.tx-focus\{/);
 });
 

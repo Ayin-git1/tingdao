@@ -27,7 +27,7 @@
       'export-bundle':entry((selected.size ? [...selected].every(id=>!locksProject(jobs[id])) : project) && idle && !exportBusy,
         selected.size ? '导出选中项目的完整笔记…' : '导出完整笔记…'),
       'copy-md':entry(project), 'copy-plain':entry(project), reveal:entry(project), archive:entry(project),
-      search:entry(idle), find:entry(project), replace:entry(project),
+      search:entry(idle), find:entry(project || (recording && available('btnRecordingFind'))), replace:entry(project),
       'cloud-transcribe':entry(project && !busy && cloudOK && available('btnCloud')),
       'cloud-refine':entry(project && !busy && cloudOK && available('btnCloud')),
       summary:entry(project && !busy && cloudOK, view?.summary ? '重新生成摘要目录…' : '生成摘要目录…'),
@@ -46,6 +46,11 @@
     };
     for (const source of ['system','mic','mix']) result['source-'+source] = entry((idle || recording) && !sourcePending, null, (recording ? recMode : mode) === source);
     RATES.forEach((rate,index) => { result['rate-'+index] = entry(audio, null, rateIdx === index); });
+    // 录音周期只保留和录音有关的命令，其余一律置灰。
+    if (['recording','paused','stopping'].includes(state)) {
+      const allowed = new Set(['find','record-pause','record-stop','microphone_modes','hotwords','note-add','note-photo','source-system','source-mic','source-mix']);
+      for (const id of Object.keys(result)) if (!allowed.has(id)) result[id].enabled = false;
+    }
     // 录音快捷键可在设置里修改，原生菜单跟随保存值。
     result['record-start'].accelerator = `CmdOrCtrl+${recordStartShortcut.shift ? 'Shift+' : ''}${recordStartShortcut.key.toUpperCase()}`;
     return result;
@@ -67,7 +72,7 @@
     'group-choose':chooseGroup, 'group-remove':()=>{menuCtx={id:view.id};moveToGroup('');},
     'export-bundle':()=>exportSessions(selected.size ? [...selected] : [view.id]),
     'copy-md':()=>copyAs('md'), 'copy-plain':()=>copyPlain(), reveal:()=>click('btnReveal'), archive:()=>click('btnDel'),
-    search:()=>click('btnHistSearch'), find:()=>{if(!findOpen())click('btnFind');else el('findInput').focus();},
+    search:()=>click('btnHistSearch'), find:()=>{if(!findOpen())click(available('btnRecordingFind') ? 'btnRecordingFind' : 'btnFind');else el('findInput').focus();},
     replace:()=>{if(!findOpen())click('btnFind');if(el('findRepRow').hidden)click('findReplToggle');else el('replaceInput').focus();},
     // 先展示既有确认界面，用户确认后才上传录音或发起处理。
     'cloud-transcribe':()=>{click('btnCloud');el('clGo').focus();}, 'cloud-refine':()=>{click('btnCloud');el('clRefine').focus();},

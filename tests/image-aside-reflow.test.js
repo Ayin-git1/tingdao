@@ -32,9 +32,9 @@ function makeAnchor(contentWidth,saved){
 }
 function refresh(contentWidth,saved){
   const item=makeAnchor(contentWidth,saved), flows=[];
-  const ctx=load({resetImageAsideFlow(){},applyImageAsideFlow:(...a)=>flows.push(a),
+  const ctx=load({keepTranscriptReadingPosition:layout=>layout(),resetImageAsideFlow(){},applyImageAsideFlow:(...a)=>flows.push(a),
     $:()=>({querySelectorAll:()=>[item.anchor]})});
-  vm.runInContext(source('refreshTranscriptImageAsideFlow'),ctx);
+  vm.runInContext(source('refreshTranscriptImageAsideFlow')+source('layoutTranscriptImageAsideFlow'),ctx);
   ctx.refreshTranscriptImageAsideFlow();
   return {...item,flows};
 }
@@ -58,4 +58,33 @@ test('a column too narrow to wrap text moves the image below its paragraph inste
   assert.equal(r.figure.style.width,'240px');
   assert.equal(r.figure.dataset.noteDisplayWidth,'260');
   assert.match(html,/\.image-aside-collapsed>\.transcript-note-image\{position:relative;/);
+});
+
+function loadKeeper({drift,hit=true}){
+  const rowRect={top:100},wrapRect={top:0,left:0,width:800};
+  const row={isConnected:true,getBoundingClientRect:()=>rowRect};
+  const wrap={scrollTop:500,getBoundingClientRect:()=>wrapRect};
+  const ctx=vm.createContext({Math,$:()=>wrap,document:{elementFromPoint:()=>hit?{closest:()=>row}:null}});
+  vm.runInContext(source('transcriptReadingAnchor')+source('keepTranscriptReadingPosition')+source('restoreTranscriptReadingPosition'),ctx);
+  return {ctx,wrap,move:()=>{rowRect.top+=drift;}};
+}
+test('reflow puts the row at the top of the viewport back where it was, however layout moved it',()=>{
+  // 跟滚动方向无关：段落被带上去或带下去都要补回
+  for(const drift of [84,-84]){
+    const {ctx,wrap,move}=loadKeeper({drift});
+    ctx.keepTranscriptReadingPosition(move);
+    assert.equal(wrap.scrollTop,500+drift);
+  }
+});
+test('reflow leaves scrolling alone when nothing moved or no row is under the viewport top',()=>{
+  const still=loadKeeper({drift:0});still.ctx.keepTranscriptReadingPosition(still.move);
+  assert.equal(still.wrap.scrollTop,500);
+  const empty=loadKeeper({drift:84,hit:false});let ran=false;
+  empty.ctx.keepTranscriptReadingPosition(()=>{ran=true;});
+  assert.equal(ran,true);assert.equal(empty.wrap.scrollTop,500);
+});
+test('rebuilding notes after a save keeps the reading position, but opening a document does not',()=>{
+  const render=source('renderTimelineNotes');
+  assert.match(render,/const readingAnchor=isCurrent\?null:transcriptReadingAnchor\(\);/);
+  assert.ok(render.indexOf('restoreTranscriptReadingPosition(readingAnchor)')>render.indexOf('resetImageAsideFlow()'));
 });

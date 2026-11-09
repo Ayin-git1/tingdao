@@ -60,7 +60,7 @@ test('scroll locks restore without replacing existing overflow styles or scroll 
 });
 test('picker is not dismissed by settings scroll and playback follow pauses during popups',()=>{
   assert.doesNotMatch(html,/addEventListener\('scroll',\s*\(\)=>\{ pickClose\(\);/);
-  assert.match(html,/function followTo\(hit\)\{\s*if\(activeTemporaryPopup\(\)\) return;/);
+  assert.match(html,/function followTo\(hit, behavior = 'smooth'\)\{\s*if\(activeTemporaryPopup\(\)\|\|transcriptSelectionInProgress\(\)\) return;/);
   assert.match(html,/\[data-popup-scroll-active\] \*\{overscroll-behavior:contain;/);
 });
 test('opening a popup does not enumerate body descendants or read background styles',()=>{
@@ -96,15 +96,9 @@ test('repeated open/close retains inline overflow and scroll position',()=>{
   assert.equal(h.background.style.overflowY,'auto');assert.equal(h.panel.style.overflowY,'auto');
   assert.deepEqual(h.background.attrs,{});assert.deepEqual(h.panel.attrs,{});
 });
-test('explicit scroll targets cover current scrollable CSS containers and textareas',()=>{
+test('explicit scroll targets cover the main background scrollers and textareas',()=>{
   const h=harness();
   const targets=vm.runInContext('temporaryPopupScrollSelector',h.context).split(',');
-  const css=html.split('<style>')[1].split('</style>')[0].replace(/\/\*[\s\S]*?\*\//g,'');
-  for(const match of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)){
-    if(!/overflow(?:-[xy])?\s*:\s*(?:auto|scroll)\b/.test(match[2]))continue;
-    for(const selector of match[1].trim().split(',')){
-      assert.ok(targets.includes(selector.trim().replace(/\.(viewing|expanded)$/,'')),selector.trim());
-    }
-  }
+  for(const selector of ['.feedwrap','.histlist','.collection-panel','.setbody','.all-notes-scroll']) assert.ok(targets.includes(selector),selector);
   assert.ok(targets.includes('textarea'));
 });

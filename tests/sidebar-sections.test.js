@@ -83,7 +83,7 @@ test('sidebar section headers expose distinct accessible SVG icons', () => {
 });
 
 test('recent and group sections are rendered inside the existing history list', () => {
-  assert.match(html, /const recent = sidebarRecentItems\(items\)/);
+  assert.match(html, /const recent = sidebarTab === 'favorites' \? items : sidebarRecentItems\(items\)/);
   assert.match(html, /sidebarSectionIcon\('recent'\)/);
   assert.match(html, /sidebarSectionIcon\('groups'\)/);
   assert.match(html, /recent\.forEach\(it=>recentItems\.appendChild\(mkHistItem\(it, '', 'recent',\s*\n?\s*sidebarItemIsActive/);

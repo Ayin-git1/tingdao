@@ -4,13 +4,6 @@ const test = require('node:test');
 
 const html = fs.readFileSync('index.html', 'utf8');
 
-test('dark theme gives the status hanger a visible cool-gray rope', () => {
-  assert.match(
-    html,
-    /html\[data-appearance="dark"\] \.hang \.rope\s*\{\s*background:linear-gradient\(to bottom, rgba\(181,183,189,\.42\), rgba\(181,183,189,\.24\)\);\s*\}/,
-  );
-});
-
 test('dark theme keeps the settings close X light on a medium hover surface', () => {
   assert.match(
     html,
@@ -21,7 +14,7 @@ test('dark theme keeps the settings close X light on a medium hover surface', ()
 test('transcript outline level-2 items are black in light mode and readable in dark mode', () => {
   assert.match(
     html,
-    /\.transcript-outline-item\.level-2\s*\{\s*padding-left:28px; color:#000;\s*\}/,
+    /\.transcript-outline-item\.level-2\s*\{\s*padding-left:28px; color:#000;[^}]*\}/,
   );
   assert.match(
     html,

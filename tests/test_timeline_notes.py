@@ -27,7 +27,7 @@ class TimelineNoteTests(unittest.TestCase):
     def make_app(self, sessions_dir):
         names = ("add_transcript_note", "update_transcript_note",
                  "delete_transcript_note", "_write_md",
-                 "note_image_path", "_cleanup_note_assets")
+                 "note_image_path", "_cleanup_note_assets", "_hold_note_images")
         if any(name not in self.methods for name in names):
             return None
         namespace = {
@@ -45,6 +45,7 @@ class TimelineNoteTests(unittest.TestCase):
         }
         module = ast.Module(body=[self.methods[name] for name in names], type_ignores=[])
         exec(compile(ast.fix_missing_locations(module), str(APP), "exec"), namespace)
+        namespace["_held_note_images"] = set()
         harness_type = type("AppHarness", (), namespace)
         app = harness_type()
         app.state = "idle"

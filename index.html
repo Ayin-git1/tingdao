@@ -406,7 +406,9 @@
      右侧仍留 150px 给三键(3×46=138 + 余量), 左侧从 18px 起(无红绿灯位)。mac 走上面的默认 14px 版式, 不回归。 */
   html[data-platform="windows"] .topbar{padding:0 150px 0 18px; height:34px;}
   /* 录音周期: 顶栏这一排整排渐隐(视觉聚焦在录音本身, 也避免与录音控件抢操作) */
-  .topbar.hide{opacity:0; pointer-events:none;}
+  /* 隐藏时子元素不能再接收点击和键盘焦点: visibility 等渐隐结束才切换 */
+  .topbar.hide{opacity:0; visibility:hidden; pointer-events:none; transition:opacity .45s ease, visibility 0s .45s;}
+  .topbar.hide > *{pointer-events:none!important;}
   .topbar > *{pointer-events:auto;}
   /* 常驻拖拽层: 整条顶部空白区(高=主区让位区 55px)都可拖动窗口。
      单独一层而不是塞进 .topbar —— 录音态顶栏整排渐隐时, 拖窗能力不能跟着消失。
@@ -480,16 +482,14 @@
   @keyframes cfIn{from{transform:translateY(-6px); opacity:0;} to{transform:translateY(0); opacity:1;}}
   /* 状态吊牌: 独立固定层(不挂顶栏, 录音态顶栏整排渐隐时它要留着)。
      细实线绳从窗口顶垂下 44px, 末端挂白底小牌, 距右边界 68px; 下落先快后慢尾段极缓 */
-  .hang{position:fixed; top:0; right:68px; z-index:var(--z-topbar); display:flex; flex-direction:column; align-items:center;
+  /* 录音状态: 无底色, 与顶部工具栏同一条中线。mac 靠右, 齿轮和下方查找图标同一竖线; Windows 靠左, 与标题左缘对齐 */
+  .hang{position:fixed; top:9px; height:38px; right:45px; justify-content:center; z-index:var(--z-topbar); display:flex; flex-direction:column; align-items:center;
         opacity:0; transform:translateY(-100%); pointer-events:none;
         transition:transform .85s cubic-bezier(.16,1,.3,1), opacity .55s ease-out;}
-  html[data-platform="windows"] .hang{right:150px;}
+  html[data-platform="windows"] .hang{top:0; height:34px; left:26px; right:auto;}
   .hang.drop{opacity:1; transform:none; pointer-events:auto;}
-  .hang .rope{width:1px; height:44px; flex:none;
-              background:linear-gradient(to bottom, rgba(20,20,20,.30), rgba(20,20,20,.16));}
   .statepill{flex:none; font-size:var(--fs-ctl); font-weight:600; display:flex; align-items:center; gap:5px;
-             background:#fff; border:1px solid var(--line); border-radius:var(--radius-4); padding:5px 12px;
-             box-shadow:var(--material-shadow-level-3);}
+             background:none; border:none; padding:0;}
   .statepill #stateTxt{line-height:1.2;}
   .statepill .sdot{width:7px; height:7px; border-radius:50%;}
   .statepill.rec{color:var(--gd);} .statepill.rec .sdot{background:var(--g); animation:blink 1.3s infinite;}
@@ -525,6 +525,7 @@
   .note-source{display:flex; align-items:center; justify-content:center; gap:6px; margin:24px 0 8px;
                font-size:var(--fs-meta); color:var(--sub); user-select:text;}
   .note-source[hidden]{display:none;}
+  #btnRecordingFind[hidden],#btnReturnLive[hidden]{display:none;}
   .note-source svg{width:16px; height:16px; flex:none; opacity:.7;}
   .note-source span{overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
   .feedwrap{flex:1; overflow-y:auto; overflow-x:hidden; padding:16px var(--reading-edge-gap) calc(var(--transcript-bottom-space, 20px) + var(--edit-bottom-space, 0px) + var(--note-bottom-space, 0px) + var(--live-tail-space, 0px));
@@ -782,13 +783,12 @@
   #feed .seg:not(.sum):not(.note){display:grid; grid-template-columns:56px minmax(0,1fr);
            column-gap:10px;}
   #feed .seg:not(.sum):not(.note) .ts{margin-right:0; padding-top:3px;}
-  #feed .seg .tx{grid-column:2; min-width:0;
-           transition:padding-left 160ms linear, padding-right 160ms linear;}
+  #feed .seg .tx{grid-column:2; min-width:0;}
   /* 保留现有正文列宽；播放强调仅改变颜色，切句不改变行宽和换行。 */
   #feed .seg .tx-focus{display:block;width:calc(100% / 1.04);transform-origin:left center;
            transition:color 180ms ease-out;}
   /* 长稿只排版、绘制视口附近的段落；占位高度按字数估算，渲染过一次后记住真实高度。 */
-  #feed .seg.lazy-seg:not(.image-aside-row):not([data-edit]){content-visibility:auto;
+  #feed .seg.lazy-seg:not(.image-aside-row):not(.image-aside-flow):not([data-edit]){content-visibility:auto;
            contain-intrinsic-block-size:auto var(--seg-h,44px);}
   #feed .seg.lazy-seg.cv-near:not(.image-aside-row):not([data-edit]){content-visibility:visible;}
   .transcript-heading{display:block; padding:5px 8px; color:var(--theme-text); cursor:pointer;
@@ -831,16 +831,19 @@
   /* 栏宽不够绕排时，图片临时排在本段文字下方，栏宽恢复后回到侧排；保存的宽度和位置不变 */
   #feed .seg.image-aside-row.image-aside-collapsed>.transcript-note-image{position:relative;top:auto;left:auto;right:auto;grid-column:2;margin:6px 0 2px;max-width:100%;}
   #feed .seg.image-aside-row.image-aside-collapsed>.transcript-image-divider{display:none;}
-  #feed .seg .tx.image-aside-text{box-sizing:border-box;padding-right:var(--image-aside-space);overflow-wrap:anywhere;}
-  #feed .seg .tx.image-aside-text[data-image-side="left"]{padding-left:var(--image-aside-space);padding-right:0;}
-  #feed .tn-note-body.image-aside-text{box-sizing:border-box;padding-right:var(--image-aside-space);overflow-wrap:anywhere;}
-  #feed .tn-note-body.image-aside-text[data-image-side="left"]{padding-left:var(--image-aside-space);padding-right:0;}
-  #feed .transcript-heading.image-aside-text{box-sizing:border-box;padding-right:calc(8px + var(--image-aside-space));overflow-wrap:anywhere;}
-  #feed .transcript-heading.image-aside-text[data-image-side="left"]{padding-left:calc(74px + var(--image-aside-space));padding-right:8px;}
+  /* 段落用浮动占位块避让图片：只有图片旁边的行变窄，图片下方的行回到全宽 */
+  #feed .seg .tx.image-aside-text{overflow-wrap:anywhere;}
+  /* 一段可能同时碰到左右两张图，所以两侧各有一个占位块；data-image-side 取值 left、right 或 "left right" */
+  #feed .seg .tx.image-aside-text::before{content:"";float:right;width:var(--image-aside-right-space,0px);height:var(--image-aside-right-overlap,0px);}
+  #feed .seg .tx.image-aside-text :is(.tx-focus,[contenteditable])::before{content:"";float:left;width:var(--image-aside-left-space,0px);height:var(--image-aside-left-overlap,0px);}
+  #feed .tn-note-body.image-aside-text{box-sizing:border-box;padding-right:var(--image-aside-right-space,0px);overflow-wrap:anywhere;}
+  #feed .tn-note-body.image-aside-text[data-image-side~="left"]{padding-left:var(--image-aside-left-space,0px);}
+  #feed .transcript-heading.image-aside-text{box-sizing:border-box;padding-right:calc(8px + var(--image-aside-right-space,0px));overflow-wrap:anywhere;}
+  #feed .transcript-heading.image-aside-text[data-image-side~="left"]{padding-left:calc(74px + var(--image-aside-left-space,0px));}
   #feed .seg:not(.sum):not(.note){position:relative;isolation:isolate;}
   #feed .seg:not(.sum):not(.note):hover:not(.cur){background:none;}
   #feed .seg:not(.sum):not(.note)::after{content:"";position:absolute;top:0;bottom:0;left:0;
-    width:calc(100% - var(--image-hover-space,0px));border-radius:inherit;background:linear-gradient(90deg,rgba(var(--g-rgb),.035),rgba(var(--g-rgb),.012));z-index:-1;pointer-events:none;
+    width:100%;border-radius:inherit;background:linear-gradient(90deg,rgba(var(--g-rgb),.035),rgba(var(--g-rgb),.012));z-index:-1;pointer-events:none;
     opacity:0;transition:left 160ms linear,width 160ms linear,opacity 160ms linear;}
   #feed .seg:not(.sum):not(.note):hover:not(.cur)::after{opacity:1;}
   #feed .seg:not(.sum):not(.note)::before{content:"";position:absolute;top:5px;bottom:5px;left:0;
@@ -849,11 +852,8 @@
   #feed .seg:not(.sum):not(.note) .ts,#feed .seg:not(.sum):not(.note) .spkb{transition:color 160ms ease-out;}
   #feed .seg:not(.sum):not(.note):hover:not(.cur):not([data-edit]):not(:has(>.transcript-note-image:hover,>.transcript-image-divider:hover)) .ts,
   #feed .seg:not(.sum):not(.note):hover:not(.cur):not([data-edit]):not(:has(>.transcript-note-image:hover,>.transcript-image-divider:hover)) .spkb{color:var(--g-ink);}
-  #feed .seg[data-image-hover-side="left"]:has(>.tx.image-aside-text)::before{left:calc(74px + var(--image-hover-space,0px));}
   #feed .seg.image-aside-row:has(>.transcript-note-image:hover,>.transcript-image-divider:hover)::before{opacity:0;}
 
-  #feed .seg[data-image-hover-side="left"]:has(>.tx.image-aside-text)::after{
-    left:calc(74px + var(--image-hover-space,0px));width:calc(100% - 74px - var(--image-hover-space,0px));}
   #feed .seg.image-aside-row:has(>.transcript-note-image:hover,>.transcript-image-divider:hover):hover:not(.cur)::after{display:none;}
   #feed .seg.cur:not(.sum):not(.note)::before{opacity:1;background:var(--g);transition:opacity 180ms ease-out;}
   #feed .seg.cur:not(.sum):not(.note)::after{opacity:.8;background:linear-gradient(90deg,rgba(var(--g-rgb),.075),rgba(var(--g-rgb),.016));
@@ -966,10 +966,10 @@
   #feed .seg[data-edit]::before,#feed .seg[data-edit]::after{display:none;}
   #feed .seg[data-edit] .tx{line-height:1.2;}
   #feed .seg[data-edit] [contenteditable]{white-space:pre-wrap;overflow-wrap:anywhere;outline:auto 1px -webkit-focus-ring-color;}
-  #feed .tn-layer.image-aside-text{padding-right:calc(8px + var(--image-aside-space));}
-  #feed .tn-layer.image-aside-text[data-image-side="left"]{padding-left:calc(74px + var(--image-aside-space));padding-right:8px;}
-  #feed .editbar.image-aside-text{width:calc(100% - 82px - var(--image-aside-space));}
-  #feed .editbar.image-aside-text[data-image-side="left"]{margin-left:calc(74px + var(--image-aside-space));}
+  #feed .tn-layer.image-aside-text{padding-right:calc(8px + var(--image-aside-right-space,0px));}
+  #feed .tn-layer.image-aside-text[data-image-side~="left"]{padding-left:calc(74px + var(--image-aside-left-space,0px));}
+  #feed .editbar.image-aside-text{width:calc(100% - 82px - var(--image-aside-right-space,0px) - var(--image-aside-left-space,0px));}
+  #feed .editbar.image-aside-text[data-image-side~="left"]{margin-left:calc(74px + var(--image-aside-left-space,0px));}
   .seg[data-edit] .ts{opacity:.5;}
   /* 被手改过的句子句尾留一枚小绿点, 悬停说明改过几次 */
   .seg .fixdot{display:inline-block; width:5px; height:5px; border-radius:50%;
@@ -998,6 +998,8 @@
   .seg.live-in .w{display:inline; opacity:0; animation:wIn .18s ease-out forwards;}
   @keyframes wIn{from{opacity:0; filter:blur(2px);} to{opacity:1; filter:blur(0);}}
   /* 流式字幕行: 正在识别中, 句尾呼吸光标 */
+  /* 临时预览会被正式句替换，选区只落在已确认的文字上。 */
+  .seg.streaming .streamtext{-webkit-user-select:none;user-select:none;}
   .seg.streaming .streamtext::after{content:'▏'; color:var(--ok);
         animation:blink 1s infinite; margin-left:1px;}
   .empty{height:100%; display:flex; flex-direction:column; align-items:center;
@@ -2482,7 +2484,8 @@
   /* 提示气泡不再用 ::after: 工具条在滚动容器里, 伪元素会被 overflow 裁掉。
      改成挂在 body 上的 fixed 浮层(#tip), 任何位置都不会被切。 */
   #tip{position:fixed; z-index:var(--z-tip); background:var(--txt); color:#fff; font-size:var(--fs-meta);
-       padding:4px 9px; border-radius:var(--radius-1); white-space:nowrap; opacity:0; pointer-events:none;
+       padding:4px 9px; border-radius:var(--radius-1); width:max-content; max-width:min(320px,calc(100vw - 16px));
+       overflow-wrap:anywhere; opacity:0; pointer-events:none;
        transition:opacity var(--hov); transform:translate(-50%,-50%);}
   #tip.show{opacity:1;}
 
@@ -2840,7 +2843,7 @@
   .gpop[data-create="1"] .grow:focus-within .ops2{opacity:1;}
   .gpop[data-create="1"] .ops2 button{width:24px; height:26px; padding:0; display:grid; place-items:center;}
   .gpop[data-create="1"] .ops2 button svg{width:14px; height:14px;}
-  .gpop[data-create="1"] .ops2 button[title="删除该组"]:hover{color:var(--warn);}
+  .gpop[data-create="1"] .ops2 button[aria-label="删除该组"]:hover{color:var(--warn);}
   .gpop[data-create="1"] button:focus-visible{outline:2px solid var(--gd); outline-offset:2px;}
   .gpop[data-create="1"] .grow input{padding:7px 8px; border-radius:var(--radius-1);}
   .gpop[data-create="1"] .grow input:focus{border-color:var(--gd);}
@@ -3116,6 +3119,7 @@
                    cursor:pointer; display:flex; align-items:center; justify-content:center;
                    transition:background var(--hov), color var(--hov);}
   .findbar .fb-opt svg{width:14px; height:14px;}
+  .findbar .fb-opt[hidden]{display:none;}
   .findbar .fb-opt:hover{background:var(--soft); color:var(--txt);}
   .findbar .fb-opt[aria-pressed="true"]{background:var(--g-tint); color:var(--g-ink);}
   .findbar kbd, .findbar .esc{font:inherit; font-size:var(--fs-micro); color:var(--gry-icon); border:1px solid var(--line);
@@ -3135,7 +3139,10 @@
   .findbar .fb-h{font-size:var(--fs-micro); letter-spacing:.4px; color:var(--gry-icon); font-weight:700; padding:6px 8px 4px;}
   .findbar .fb-empty{padding:22px 12px; text-align:center; color:var(--gry-icon); font-size:var(--fs-caption); line-height:1.6;}
   .findbar .fr{display:flex; align-items:flex-start; gap:10px; padding:7px 8px; border-radius:var(--radius-1); cursor:pointer;}
-  .findbar .fr.cur{background:var(--g-tint);}
+  /* 选中行与文稿当前句同一套: 3px 圆头竖条 + 横向渐隐底 */
+  .findbar .fr{position:relative;}
+  .findbar .fr.cur{background:linear-gradient(90deg,rgba(var(--g-rgb),.075),rgba(var(--g-rgb),.016));}
+  .findbar .fr.cur::before{content:""; position:absolute; top:5px; bottom:5px; left:0; width:3px; border-radius:2px; background:var(--g); pointer-events:none;}
   .findbar .fr .fr-ts{flex:none; width:44px; padding-top:1px; font-size:var(--fs-meta); color:var(--gry-icon);
                       font-variant-numeric:tabular-nums;}
   .findbar .fr .fr-body{min-width:0; flex:1;}
@@ -3145,6 +3152,8 @@
   .findbar .fr mark{background:rgba(var(--g-rgb),.22); color:var(--gd); border-radius:var(--radius-1); padding:0 1px;}
   .findbar .fr .fr-ic{flex:none; width:44px; display:flex; justify-content:center; color:var(--gry-icon); padding-top:2px;}
   .findbar .fr .fr-ic svg{width:14px; height:14px;}
+  .findbar .fb-empty.live{color:var(--sub);}
+  .findbar .fb-empty.live b{display:block; margin-bottom:2px; font-weight:600; color:var(--txt);}
   .findbar .fb-more{padding:6px 8px 4px; font-size:var(--fs-micro); color:var(--gry-icon);}
   .findbar .fb-foot{display:flex; gap:14px; padding:7px 14px; border-top:1px solid var(--line);
                     font-size:var(--fs-micro); color:var(--gry-icon);}
@@ -3152,8 +3161,30 @@
   mark.findmark{background:var(--note-hl); color:inherit; border-radius:var(--radius-1); padding:0 1px;}
   mark.findmark.current{background:var(--g-ring); box-shadow:0 0 0 1px var(--g);}
   /* 回车落点：面板收起、高亮清掉后，留一下底色告诉眼睛"在这儿" */
+  :root{--land-tint:rgba(var(--gd-rgb),.11);}
+  html[data-appearance="dark"]{--land-tint:rgba(var(--gd-rgb),.12);}
   .seg.find-land{animation:findLand 1.6s ease-out;}
-  @keyframes findLand{0%,35%{background:var(--g-tint);}100%{background:transparent;}}
+  @keyframes findLand{0%,35%{background:var(--land-tint);}100%{background:transparent;}}
+  #feed .seg.find-land:not(.sum):not(.note)::before{animation:findLandRail 1.6s ease-out;}
+  @keyframes findLandRail{0%,35%{opacity:1;}100%{opacity:0;}}
+  /* 减少动效: 静态显示同样时长, animationend 仍会清理 */
+  @keyframes findLandStill{0%,100%{background:var(--land-tint);}}
+  @keyframes findLandRailStill{0%,100%{opacity:1;}}
+  @media(prefers-reduced-motion:reduce){.seg.find-land{animation:findLandStill 1.6s linear;} #feed .seg.find-land:not(.sum):not(.note)::before{animation:findLandRailStill 1.6s linear;}}
+  /* 录音查找: 入口占回放搜索图标的位置; 返回胶囊放进录音控件组最左侧 */
+  .titlebar:has(#btnRecordingFind:not([hidden])) .tp{display:none;}
+  #btnRecordingFind{margin:0 6px 0 12px;}
+  .namebox input{text-overflow:ellipsis;}
+  #btnReturnLive{flex:none; height:36px; padding:0 12px 0 14px; display:flex; align-items:center; gap:5px; white-space:nowrap;
+    font:inherit; font-size:var(--fs-caption); color:var(--txt); cursor:pointer;
+    border:1px solid var(--material-rest-border); border-radius:var(--radius-4);
+    background:var(--material-rest-background); backdrop-filter:var(--material-rest-backdrop-filter); -webkit-backdrop-filter:var(--material-rest-backdrop-filter);
+    box-shadow:var(--material-shadow-level-3); transition:background var(--hov); animation:returnLiveIn .16s ease-out;}
+  #btnReturnLive:hover{background:var(--material-expanded-background);}
+  #btnReturnLive:focus-visible{outline:2px solid var(--g); outline-offset:2px;}
+  #btnReturnLive svg{width:13px; height:13px;}
+  @keyframes returnLiveIn{from{opacity:0; transform:translateY(4px);}to{opacity:1; transform:none;}}
+  @media(prefers-reduced-motion:reduce){#btnReturnLive{animation:none;}}
 
   /* ============ 笔记弹窗 ============ */
   .notepop{display:none; position:fixed; bottom:96px; left:50%; transform:translateX(-50%);
@@ -3572,10 +3603,6 @@
   html[data-appearance="dark"] .titlebar {
     background:linear-gradient(to bottom, var(--bg) 68%, transparent);
   }
-  html[data-appearance="dark"] .hang .rope {
-    background:linear-gradient(to bottom, rgba(181,183,189,.42), rgba(181,183,189,.24));
-  }
-  html[data-appearance="dark"] .statepill,
   html[data-appearance="dark"] .setclose,
   html[data-appearance="dark"] .hp-empty .hp-ebox,
   html[data-appearance="dark"] .tplpop .tpl.editing input,
@@ -4179,8 +4206,9 @@ html:not([data-material="mimetic"]) #setBody #materialAdvanced{display:none;}
   #reviewPanel[hidden]{display:none;}
   #reviewPanel kbd{font:inherit;font-size:11px;line-height:15px;min-width:16px;padding:0 4px;border-radius:var(--radius-1);border:1px solid color-mix(in srgb,currentColor 35%,transparent);display:inline-block;text-align:center;color:var(--heading-ink);}
   #reviewPanel button{font:inherit;color:inherit;}
-  .rv-views{position:relative;flex:1;min-height:0;}
-  .rv-view{position:absolute;inset:0;display:flex;flex-direction:column;background:var(--bg);transition:transform .34s var(--rv-ease),opacity .25s;}
+  /* WebKit 滚轮滚动时会把视图层单独合成，外层 overflow 圆角裁不到它；视图层自己带圆角，背景就不会露出直角 */
+  .rv-views{position:relative;flex:1;min-height:0;border-radius:inherit;}
+  .rv-view{position:absolute;inset:0;display:flex;flex-direction:column;background:var(--bg);border-radius:inherit;transition:transform .34s var(--rv-ease),opacity .25s;}
   .rv-view.rv-side{transform:translateX(100%);opacity:0;pointer-events:none;}
   #reviewPanel[data-view="all"] .rv-deck-v,#reviewPanel[data-view="add"] .rv-deck-v{transform:translateX(-24%);opacity:0;pointer-events:none;}
   #reviewPanel[data-view="all"] .rv-all-v{transform:none;opacity:1;pointer-events:auto;}
@@ -4761,7 +4789,7 @@ html[data-appearance="dark"] :is(.gr-shell .gr-primary,.rv-primary,.rv-confirm,.
     </button>
   </div>
   <!-- 状态吊牌: 绳子 + 小牌(独立于顶栏, 录音态顶栏渐隐时保留); 牌内右侧热词入口, 录音中随时切词库 -->
-  <div class="hang" id="pillwrap"><i class="rope"></i><span class="statepill idle" id="statepill"><span class="sdot"></span><span id="stateTxt">未开始</span><button class="phw" id="pillHw" title="热词库"><svg class="ui-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button></span></div>
+  <div class="hang" id="pillwrap"><span class="statepill idle" id="statepill"><span class="sdot"></span><span id="stateTxt">未开始</span><button class="phw" id="pillHw" title="热词库"><svg class="ui-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button></span></div>
 
   <!-- 热词库弹层: 吊牌图标唤出, 玻璃与来源菜单同款; 模板条/编辑器与设置面板同一套样式 -->
   <div class="hwpop" id="hwpop">
@@ -5423,6 +5451,9 @@ html[data-appearance="dark"] :is(.gr-shell .gr-primary,.rv-primary,.rv-confirm,.
       <input type="text" id="nameInput" spellcheck="false">
       <span class="nameconfirm" id="nameConfirm">再次按 Enter 修改</span>
     </div>
+    <button type="button" class="tpb" id="btnRecordingFind" aria-label="查找本次录音" aria-expanded="false" aria-controls="findbar" hidden>
+      <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
+    </button>
     <div class="tp fold" id="toolpanel">
       <button class="tpb arrow" id="fold" data-tip="展开 / 收起工具条">
         <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
@@ -5651,6 +5682,9 @@ html[data-appearance="dark"] :is(.gr-shell .gr-primary,.rv-primary,.rv-confirm,.
 </div>
 <div id="recordingImageDropHint" class="recording-image-drop-hint"><svg class="ui-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg><span>松开以记下图片</span></div>
 <div class="dockgrp" id="dockgrp">
+  <button type="button" id="btnReturnLive" aria-label="正在看前文，回到实时" hidden>
+    回到实时<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M6 13l6 6 6-6"/></svg>
+  </button>
   <button class="rcbtn" id="btnNoteTool" title="记笔记">
     <svg class="ui-icon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20h4l10-10-4-4L4 16v4zM13.5 6.5l4 4"/></svg>
   </button>
@@ -5659,7 +5693,7 @@ html[data-appearance="dark"] :is(.gr-shell .gr-primary,.rv-primary,.rv-confirm,.
     <svg class="ui-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3.5 8.5A1.5 1.5 0 0 1 5 7h2.5l1.6-2.2h5.8L16.5 7H19a1.5 1.5 0 0 1 1.5 1.5v9A1.5 1.5 0 0 1 19 19H5a1.5 1.5 0 0 1-1.5-1.5z"/><circle class="cam-lens" cx="12" cy="12.8" r="3.4"/></svg>
   </button>
   <div class="srcwrap">
-    <div class="srcfan" id="srcfan" role="menu" aria-label="录音来源"><button class="srcopt" role="menuitemradio" aria-checked="false" data-src="mic" style="--i:0"><span class="srclab">仅麦克</span><span class="srccirc"><i class="srcico"></i><svg class="src-spin" width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2.5" opacity=".2"/><path d="M12 3a9 9 0 0 1 9 9" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></span></button><button class="srcopt" role="menuitemradio" aria-checked="false" data-src="mix" style="--i:1"><span class="srclab">系统+麦</span><span class="srccirc"><i class="srcico"></i><svg class="src-spin" width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2.5" opacity=".2"/><path d="M12 3a9 9 0 0 1 9 9" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></span></button><button class="srcopt" role="menuitemradio" aria-checked="false" data-src="system" style="--i:2"><span class="srclab">仅系统</span><span class="srccirc"><i class="srcico"></i><svg class="src-spin" width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2.5" opacity=".2"/><path d="M12 3a9 9 0 0 1 9 9" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></span></button></div>
+    <div class="srcfan" id="srcfan" role="menu" inert aria-label="录音来源"><button class="srcopt" role="menuitemradio" aria-checked="false" data-src="mic" style="--i:0"><span class="srclab">仅麦克</span><span class="srccirc"><i class="srcico"></i><svg class="src-spin" width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2.5" opacity=".2"/><path d="M12 3a9 9 0 0 1 9 9" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></span></button><button class="srcopt" role="menuitemradio" aria-checked="false" data-src="mix" style="--i:1"><span class="srclab">系统+麦</span><span class="srccirc"><i class="srcico"></i><svg class="src-spin" width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2.5" opacity=".2"/><path d="M12 3a9 9 0 0 1 9 9" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></span></button><button class="srcopt" role="menuitemradio" aria-checked="false" data-src="system" style="--i:2"><span class="srclab">仅系统</span><span class="srccirc"><i class="srcico"></i><svg class="src-spin" width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2.5" opacity=".2"/><path d="M12 3a9 9 0 0 1 9 9" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></span></button></div>
     <button class="rcbtn" id="btnSrc" aria-haspopup="menu" aria-expanded="false" title="录音来源"></button>
   </div>
   <button class="rcbtn" id="btnVol" title="输出音量"><span class="volpct" id="volPct">—</span></button>
@@ -6021,6 +6055,8 @@ html[data-appearance="dark"] :is(.gr-shell .gr-primary,.rv-primary,.rv-confirm,.
       <div class="k"><span>临时 2 倍速（松开恢复）</span><kbd>按住 →</kbd></div>
       <div class="k"><span>上一句 / 下一句</span><kbd>↑ / ↓</kbd></div>
       <div class="k"><span>就地改这一句</span><kbd>双击</kbd></div>
+      <div class="k"><span>撤销上一处改动（文字、格式、图片）</span><kbd data-mac-shortcut="⌘ Z" data-windows-shortcut="Ctrl+Z">⌘ Z</kbd></div>
+      <div class="k"><span>重做</span><kbd data-mac-shortcut="⌘ ⇧ Z" data-windows-shortcut="Ctrl+Shift+Z">⌘ ⇧ Z</kbd></div>
       <h4>记录</h4>
       <div class="k"><span>开始录音（空闲时）</span><kbd id="recordShortcutKey" data-mac-shortcut="⌘ ⇧ R" data-windows-shortcut="Ctrl+Shift+R">⌘ ⇧ R</kbd></div>
       <div class="k"><span>记一条时间线笔记</span><kbd data-mac-shortcut="⌘ N" data-windows-shortcut="Ctrl+N">⌘ N</kbd></div>
@@ -6093,6 +6129,135 @@ html[data-appearance="dark"] :is(.gr-shell .gr-primary,.rv-primary,.rv-confirm,.
   <div class="rv-toast" id="reviewToast" role="status"><span id="reviewToastText"></span><button id="reviewToastBtn" type="button">撤销</button></div>
 </section>
 
+<script>
+/* @dnd-kit/dom 0.5.3 + dependencies (preact/signals-core 1.14.5, tslib 2.9.1)
+   Bundled for offline use from https://github.com/clauderic/dnd-kit
+
+MIT License
+
+Copyright (c) 2021, Claudéric Demers
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+The MIT License (MIT)
+
+Copyright (c) 2022-present Preact Team
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+Copyright (c) Microsoft Corporation.
+
+Permission to use, copy, modify, and/or distribute this software for any
+purpose with or without fee is hereby granted.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
+AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
+OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+PERFORMANCE OF THIS SOFTWARE.
+*/
+var sidebarDndKit=(()=>{var yi=Object.defineProperty;var ml=Object.getOwnPropertyDescriptor;var yl=Object.getOwnPropertyNames;var _l=Object.prototype.hasOwnProperty;var wl=(t,e)=>{for(var n in e)yi(t,n,{get:e[n],enumerable:!0})},bl=(t,e,n,i)=>{if(e&&typeof e=="object"||typeof e=="function")for(let r of yl(e))!_l.call(t,r)&&r!==n&&yi(t,r,{get:()=>e[r],enumerable:!(i=ml(e,r))||i.enumerable});return t};var xl=t=>bl(yi({},"__esModule",{value:!0}),t);var Yu={};wl(Yu,{AutoScroller:()=>ci,DragDropManager:()=>Ka,Draggable:()=>fn});var Sl=Symbol.for("preact-signals");function wn(){if(yt>1)yt--;else{var t,e=!1;for((function(){var r=yn;for(yn=void 0;r!==void 0;){var s=r.S;if(s.v===r.v)for(var a=s.t;a!==void 0;a=a.x)a.i===r.i&&(a.i=s.i);r=r.o}})();Ie!==void 0;){var n=Ie;for(Ie=void 0,mn++;n!==void 0;){var i=n.u;if(n.u=void 0,n.f&=-3,!(8&n.f)&&Es(n))try{n.c()}catch(r){e||(t=r,e=!0)}n=i}}if(mn=0,yt--,e)throw t}}function et(t){if(yt>0)return t();_i=++El,yt++;try{return t()}finally{wn()}}var Re,T=void 0;function O(t){var e=T,n=Re;T=void 0,Re=void 0;try{return t()}finally{T=e,Re=n}}var Ie=void 0,yt=0,mn=0,El=0,_i=0,yn=void 0,_n=0;function Ss(t){if(T!==void 0){var e=t.n;if(e===void 0||e.t!==T)return e={i:0,S:t,p:T.s,n:void 0,t:T,e:void 0,x:void 0,r:e},T.s!==void 0&&(T.s.n=e),T.s=e,t.n=e,32&T.f&&t.S(e),e;if(e.i===-1)return e.i=0,e.n!==void 0&&(e.n.p=e.p,e.p!==void 0&&(e.p.n=e.n),e.p=T.s,e.n=void 0,T.s.n=e,T.s=e),e}}function Y(t,e){this.v=t,this.i=0,this.n=void 0,this.t=void 0,this.l=0,this.W=e==null?void 0:e.watched,this.Z=e==null?void 0:e.unwatched,this.name=e==null?void 0:e.name}Y.prototype.brand=Sl;Y.prototype.h=function(){return!0};Y.prototype.S=function(t){var e=this,n=this.t;n!==t&&t.e===void 0&&(t.x=n,this.t=t,n!==void 0?n.e=t:O(function(){var i;(i=e.W)==null||i.call(e)}))};Y.prototype.U=function(t){var e=this;if(this.t!==void 0){var n=t.e,i=t.x;n!==void 0&&(n.x=i,t.e=void 0),i!==void 0&&(i.e=n,t.x=void 0),t===this.t&&(this.t=i,i===void 0&&O(function(){var r;(r=e.Z)==null||r.call(e)}))}};Y.prototype.subscribe=function(t){var e=this;return Z(function(){var n=e.value;O(function(){return t(n)})},{name:"sub"})};Y.prototype.valueOf=function(){return this.value};Y.prototype.toString=function(){return this.value+""};Y.prototype.toJSON=function(){return this.value};Y.prototype.peek=function(){var t=this;return O(function(){return t.value})};Object.defineProperty(Y.prototype,"value",{get:function(){var t=Ss(this);return t!==void 0&&(t.i=this.i),this.v},set:function(t){if(t!==this.v){if(mn>100)throw new Error("Cycle detected");(function(n){yt!==0&&mn===0&&n.l!==_i&&(n.l=_i,yn={S:n,v:n.v,i:n.i,o:yn})})(this),this.v=t,this.i++,_n++,yt++;try{for(var e=this.t;e!==void 0;e=e.x)e.t.N()}finally{wn()}}}});function pt(t,e){return new Y(t,e)}function Es(t){for(var e=t.s;e!==void 0;e=e.n)if(e.S.i!==e.i||!e.S.h()||e.S.i!==e.i)return!0;return!1}function Os(t){for(var e=t.s;e!==void 0;e=e.n){var n=e.S.n;if(n!==void 0&&(e.r=n),e.S.n=e,e.i=-1,e.n===void 0){t.s=e;break}}}function ks(t){for(var e=t.s,n=void 0;e!==void 0;){var i=e.p;e.i===-1?(e.S.U(e),i!==void 0&&(i.n=e.n),e.n!==void 0&&(e.n.p=i)):n=e,e.S.n=e.r,e.r!==void 0&&(e.r=void 0),e=i}t.s=n}function $t(t,e){Y.call(this,void 0,e),this.x=t,this.s=void 0,this.g=_n-1,this.f=4}$t.prototype=new Y;$t.prototype.h=function(){if(this.f&=-3,1&this.f)return!1;if((36&this.f)==32||(this.f&=-5,this.g===_n))return!0;if(this.g=_n,this.f|=1,this.i>0&&!Es(this))return this.f&=-2,!0;var t=T;try{Os(this),T=this;var e=this.x();(16&this.f||this.v!==e||this.i===0)&&(this.v=e,this.f&=-17,this.i++)}catch(n){this.v=n,this.f|=16,this.i++}return T=t,ks(this),this.f&=-2,!0};$t.prototype.S=function(t){if(this.t===void 0){this.f|=36;for(var e=this.s;e!==void 0;e=e.n)e.S.S(e)}Y.prototype.S.call(this,t)};$t.prototype.U=function(t){if(this.t!==void 0&&(Y.prototype.U.call(this,t),this.t===void 0)){this.f&=-33;for(var e=this.s;e!==void 0;e=e.n)e.S.U(e)}};$t.prototype.N=function(){if(!(2&this.f)){this.f|=6;for(var t=this.t;t!==void 0;t=t.x)t.t.N()}};Object.defineProperty($t.prototype,"value",{get:function(){if(1&this.f)throw new Error("Cycle detected");var t=Ss(this);if(this.h(),t!==void 0&&(t.i=this.i),16&this.f)throw this.v;return this.v}});function wi(t,e){return new $t(t,e)}function Ps(t){var e=t.j;if(t.j=void 0,typeof e=="function"){yt++;var n=T;T=void 0;try{e()}catch(i){throw t.f&=-2,t.f|=8,bi(t),i}finally{T=n,wn()}}}function bi(t){for(var e=t.s;e!==void 0;e=e.n)e.S.U(e);t.x=void 0,t.s=void 0,Ps(t)}function Ol(t){if(T!==this)throw new Error("Out-of-order effect");ks(this),T=t,this.f&=-2;try{8&this.f&&bi(this)}finally{wn()}}function oe(t,e){this.x=t,this.j=void 0,this.s=void 0,this.u=void 0,this.f=32,this.name=e==null?void 0:e.name,Re&&Re.push(this)}oe.prototype.c=function(){var t=this.S();try{if(8&this.f||this.x===void 0)return;var e=this.x();typeof e=="function"&&(this.j=e)}finally{t()}};oe.prototype.S=function(){if(1&this.f)throw new Error("Cycle detected");this.f|=1,this.f&=-9,Ps(this),Os(this),yt++;var t=T;return T=this,Ol.bind(this,t)};oe.prototype.N=function(){2&this.f||(this.f|=2,this.u=Ie,Ie=this)};oe.prototype.d=function(){this.f|=8,1&this.f||bi(this)};oe.prototype.dispose=function(){this.d()};function Z(t,e){var n=new oe(t,e);try{n.c()}catch(r){throw n.d(),r}var i=n.d.bind(n);return i[Symbol.dispose]=i,i}var kl=Object.create,Ti=Object.defineProperty,Pl=Object.defineProperties,Ml=Object.getOwnPropertyDescriptor,Cl=Object.getOwnPropertyDescriptors,Ms=Object.getOwnPropertySymbols,Al=Object.prototype.hasOwnProperty,Dl=Object.prototype.propertyIsEnumerable,As=(t,e)=>(e=Symbol[t])?e:Symbol.for("Symbol."+t),ae=t=>{throw TypeError(t)},ki=(t,e,n)=>e in t?Ti(t,e,{enumerable:!0,configurable:!0,writable:!0,value:n}):t[e]=n,Tl=(t,e)=>{for(var n in e||(e={}))Al.call(e,n)&&ki(t,n,e[n]);if(Ms)for(var n of Ms(e))Dl.call(e,n)&&ki(t,n,e[n]);return t},Rl=(t,e)=>Pl(t,Cl(e)),Cs=(t,e)=>Ti(t,"name",{value:e,configurable:!0}),Il=t=>{var e;return[,,,kl((e=t==null?void 0:t[As("metadata")])!=null?e:null)]},Ds=["class","method","getter","setter","accessor","field","value","get","set"],We=t=>t!==void 0&&typeof t!="function"?ae("Function expected"):t,Wl=(t,e,n,i,r)=>({kind:Ds[t],name:e,metadata:i,addInitializer:s=>n._?ae("Already initialized"):r.push(We(s||null))}),Ts=(t,e)=>ki(e,As("metadata"),t[3]),Ft=(t,e,n,i)=>{for(var r=0,s=t[e>>1],a=s&&s.length;r<a;r++)e&1?s[r].call(n):i=s[r].call(n,i);return i},le=(t,e,n,i,r,s)=>{var a,o,c,u,d,l=e&7,p=!!(e&8),f=!!(e&16),m=l>3?t.length+1:l?p?1:2:0,y=Ds[l+5],w=l>3&&(t[m-1]=[]),b=t[m]||(t[m]=[]),h=l&&(!f&&!p&&(r=r.prototype),l<5&&(l>3||!f)&&Ml(l<4?r:{get[n](){return Nt(this,s)},set[n](g){return Et(this,s,g)}},n));l?f&&l<4&&Cs(s,(l>2?"set ":l>1?"get ":"")+n):Cs(r,n);for(var v=i.length-1;v>=0;v--)u=Wl(l,n,c={},t[3],b),l&&(u.static=p,u.private=f,d=u.access={has:f?g=>Ll(r,g):g=>n in g},l^3&&(d.get=f?g=>(l^1?Nt:zl)(g,r,l^4?s:h.get):g=>g[n]),l>2&&(d.set=f?(g,_)=>Et(g,r,_,l^4?s:h.set):(g,_)=>g[n]=_)),o=(0,i[v])(l?l<4?f?s:h[y]:l>4?void 0:{get:h.get,set:h.set}:r,u),c._=1,l^4||o===void 0?We(o)&&(l>4?w.unshift(o):l?f?s=o:h[y]=o:r=o):typeof o!="object"||o===null?ae("Object expected"):(We(a=o.get)&&(h.get=a),We(a=o.set)&&(h.set=a),We(a=o.init)&&w.unshift(a));return l||Ts(t,r),h&&Ti(r,n,h),f?l^4?s:h:r},Ri=(t,e,n)=>e.has(t)||ae("Cannot "+n),Ll=(t,e)=>Object(e)!==e?ae('Cannot use the "in" operator on this value'):t.has(e),Nt=(t,e,n)=>(Ri(t,e,"read from private field"),n?n.call(t):e.get(t)),bn=(t,e,n)=>e.has(t)?ae("Cannot add the same private member more than once"):e instanceof WeakSet?e.add(t):e.set(t,n),Et=(t,e,n,i)=>(Ri(t,e,"write to private field"),i?i.call(t,n):e.set(t,n),n),zl=(t,e,n)=>(Ri(t,e,"access private method"),n);function Sn(t,e){if(e){let n;return wi(()=>{let i=t();return i&&n&&e(n,i)?n:(n=i,i)})}return wi(t)}function xn(t,e){if(Object.is(t,e))return!0;if(t===null||e===null)return!1;if(typeof t=="function"&&typeof e=="function")return t===e;if(t instanceof Set&&e instanceof Set){if(t.size!==e.size)return!1;for(let n of t)if(!e.has(n))return!1;return!0}if(Array.isArray(t))return!Array.isArray(e)||t.length!==e.length?!1:!t.some((i,r)=>!xn(i,e[r]));if(typeof t=="object"&&typeof e=="object"){let n=Object.keys(t),i=Object.keys(e);return n.length!==i.length?!1:!n.some(s=>!xn(t[s],e[s]))}return!1}function k({get:t},e){return{init(n){return pt(n)},get(){return t.call(this).value},set(n){let i=t.call(this);i.peek()!==n&&(i.value=n)}}}function R(t,e){let n=new WeakMap;return function(){let i=n.get(this);return i||(i=Sn(t.bind(this)),n.set(this,i)),i.value}}function xi(t=!0){return function(e,n){n.addInitializer(function(){let i=n.kind==="field"?this:n.static?this:Object.getPrototypeOf(this),r=Object.getOwnPropertyDescriptor(i,n.name);r&&Object.defineProperty(i,n.name,Rl(Tl({},r),{enumerable:t}))})}}function jt(...t){let e=t.map(n=>Z(n));return()=>e.forEach(n=>n())}var Rs,Is,Ws,Ls,zs,$s,U,Ii,Si,Pi,Mi,H,Wi,Ei,Fs,Ci,Li,Oi,Ai,Di;$s=[k],zs=[k],Ls=[k],Ws=[xi()],Is=[xi()],Rs=[xi()];var Ot=class{constructor(t,e=Object.is){this.defaultValue=t,this.equals=e,Ft(U,5,this),bn(this,H),bn(this,Ii,Ft(U,8,this)),Ft(U,11,this),bn(this,Wi,Ft(U,12,this)),Ft(U,15,this),bn(this,Li,Ft(U,16,this)),Ft(U,19,this),this.reset=this.reset.bind(this),this.reset()}get current(){return Nt(this,H,Ai)}get initial(){return Nt(this,H,Pi)}get previous(){return Nt(this,H,Fs)}set current(t){let e=O(()=>Nt(this,H,Ai));t&&e&&this.equals(e,t)||et(()=>{Nt(this,H,Pi)||Et(this,H,t,Mi),Et(this,H,e,Ci),Et(this,H,t,Di)})}reset(t=this.defaultValue){et(()=>{Et(this,H,void 0,Ci),Et(this,H,t,Mi),Et(this,H,t,Di)})}};U=Il(null);Ii=new WeakMap;H=new WeakSet;Wi=new WeakMap;Li=new WeakMap;Si=le(U,20,"#initial",$s,H,Ii),Pi=Si.get,Mi=Si.set;Ei=le(U,20,"#previous",zs,H,Wi),Fs=Ei.get,Ci=Ei.set;Oi=le(U,20,"#current",Ls,H,Li),Ai=Oi.get,Di=Oi.set;le(U,2,"current",Ws,Ot);le(U,2,"initial",Is,Ot);le(U,2,"previous",Rs,Ot);Ts(U,Ot);function En(t){return O(()=>{let e={};for(let n in t)Object.defineProperty(e,n,{value:t[n],enumerable:!0,configurable:!0,writable:!0});return e})}var $l;$l=new WeakMap;var Fl=Object.create,Vi=Object.defineProperty,Nl=Object.getOwnPropertyDescriptor,Ns=Object.getOwnPropertySymbols,jl=Object.prototype.hasOwnProperty,Vl=Object.prototype.propertyIsEnumerable,Xs=(t,e)=>(e=Symbol[t])?e:Symbol.for("Symbol."+t),ce=t=>{throw TypeError(t)},js=Math.pow,zi=(t,e,n)=>e in t?Vi(t,e,{enumerable:!0,configurable:!0,writable:!0,value:n}):t[e]=n,Xl=(t,e)=>{for(var n in e||(e={}))jl.call(e,n)&&zi(t,n,e[n]);if(Ns)for(var n of Ns(e))Vl.call(e,n)&&zi(t,n,e[n]);return t},Vs=(t,e)=>Vi(t,"name",{value:e,configurable:!0}),Yl=t=>{var e;return[,,,Fl((e=t==null?void 0:t[Xs("metadata")])!=null?e:null)]},Ys=["class","method","getter","setter","accessor","field","value","get","set"],Le=t=>t!==void 0&&typeof t!="function"?ce("Function expected"):t,Hl=(t,e,n,i,r)=>({kind:Ys[t],name:e,metadata:i,addInitializer:s=>n._?ce("Already initialized"):r.push(Le(s||null))}),Hs=(t,e)=>zi(e,Xs("metadata"),t[3]),Kl=(t,e,n,i)=>{for(var r=0,s=t[e>>1],a=s&&s.length;r<a;r++)e&1?s[r].call(n):i=s[r].call(n,i);return i},Ks=(t,e,n,i,r,s)=>{var a,o,c,u,d,l=e&7,p=!!(e&8),f=!!(e&16),m=l>3?t.length+1:l?p?1:2:0,y=Ys[l+5],w=l>3&&(t[m-1]=[]),b=t[m]||(t[m]=[]),h=l&&(!f&&!p&&(r=r.prototype),l<5&&(l>3||!f)&&Nl(l<4?r:{get[n](){return $i(this,s)},set[n](g){return Fi(this,s,g)}},n));l?f&&l<4&&Vs(s,(l>2?"set ":l>1?"get ":"")+n):Vs(r,n);for(var v=i.length-1;v>=0;v--)u=Hl(l,n,c={},t[3],b),l&&(u.static=p,u.private=f,d=u.access={has:f?g=>Ul(r,g):g=>n in g},l^3&&(d.get=f?g=>(l^1?$i:ql)(g,r,l^4?s:h.get):g=>g[n]),l>2&&(d.set=f?(g,_)=>Fi(g,r,_,l^4?s:h.set):(g,_)=>g[n]=_)),o=(0,i[v])(l?l<4?f?s:h[y]:l>4?void 0:{get:h.get,set:h.set}:r,u),c._=1,l^4||o===void 0?Le(o)&&(l>4?w.unshift(o):l?f?s=o:h[y]=o:r=o):typeof o!="object"||o===null?ce("Object expected"):(Le(a=o.get)&&(h.get=a),Le(a=o.set)&&(h.set=a),Le(a=o.init)&&w.unshift(a));return l||Hs(t,r),h&&Vi(r,n,h),f?l^4?s:h:r},Xi=(t,e,n)=>e.has(t)||ce("Cannot "+n),Ul=(t,e)=>Object(e)!==e?ce('Cannot use the "in" operator on this value'):t.has(e),$i=(t,e,n)=>(Xi(t,e,"read from private field"),n?n.call(t):e.get(t)),Bl=(t,e,n)=>e.has(t)?ce("Cannot add the same private member more than once"):e instanceof WeakSet?e.add(t):e.set(t,n),Fi=(t,e,n,i)=>(Xi(t,e,"write to private field"),i?i.call(t,n):e.set(t,n),n),ql=(t,e,n)=>(Xi(t,e,"access private method"),n),nt=class Ni{constructor(e,n){this.x=e,this.y=n}static delta(e,n){return new Ni(e.x-n.x,e.y-n.y)}static distance(e,n){return Math.hypot(e.x-n.x,e.y-n.y)}static equals(e,n){return e.x===n.x&&e.y===n.y}static from({x:e,y:n}){return new Ni(e,n)}},kt=class Vt{constructor(e,n,i,r){this.left=e,this.top=n,this.width=i,this.height=r,this.scale={x:1,y:1}}get inverseScale(){return{x:1/this.scale.x,y:1/this.scale.y}}translate(e,n){let{top:i,left:r,width:s,height:a,scale:o}=this,c=new Vt(r+e,i+n,s,a);return c.scale=Xl({},o),c}get boundingRectangle(){let{width:e,height:n,left:i,top:r,right:s,bottom:a}=this;return{width:e,height:n,left:i,top:r,right:s,bottom:a}}get center(){let{left:e,top:n,right:i,bottom:r}=this;return new nt((e+i)/2,(n+r)/2)}get area(){let{width:e,height:n}=this;return e*n}equals(e){if(!(e instanceof Vt))return!1;let{left:n,top:i,width:r,height:s}=this;return n===e.left&&i===e.top&&r===e.width&&s===e.height}containsPoint(e){let{top:n,left:i,bottom:r,right:s}=this;return n<=e.y&&e.y<=r&&i<=e.x&&e.x<=s}intersectionArea(e){return e instanceof Vt?Gl(this,e):0}intersectionRatio(e){let{area:n}=this,i=this.intersectionArea(e);return i/(e.area+n-i)}get bottom(){let{top:e,height:n}=this;return e+n}get right(){let{left:e,width:n}=this;return e+n}get aspectRatio(){let{width:e,height:n}=this;return e/n}get corners(){return[{x:this.left,y:this.top},{x:this.right,y:this.top},{x:this.left,y:this.bottom},{x:this.right,y:this.bottom}]}static from({top:e,left:n,width:i,height:r}){return new Vt(n,e,i,r)}static delta(e,n,i={x:"center",y:"center"}){let r=(s,a)=>{let o=i[a],c=a==="x"?s.left:s.top,u=a==="x"?s.width:s.height;return o=="start"?c:o=="end"?c+u:c+u/2};return nt.delta({x:r(e,"x"),y:r(e,"y")},{x:r(n,"x"),y:r(n,"y")})}static intersectionRatio(e,n){return Vt.from(e).intersectionRatio(Vt.from(n))}};function Gl(t,e){let n=Math.max(e.top,t.top),i=Math.max(e.left,t.left),r=Math.min(e.left+e.width,t.left+t.width),s=Math.min(e.top+e.height,t.top+t.height),a=r-i,o=s-n;return i<r&&n<s?a*o:0}var Us,Bs,ji,On,ze,$e=class extends(ji=Ot,Bs=[R],Us=[R],ji){constructor(t){let e=nt.from(t);super(e,(n,i)=>nt.equals(n,i)),Kl(ze,5,this),Bl(this,On,0),this.velocity={x:0,y:0}}get delta(){return nt.delta(this.current,this.initial)}get direction(){let{current:t,previous:e}=this;if(!e)return null;let n={x:t.x-e.x,y:t.y-e.y};return!n.x&&!n.y?null:Math.abs(n.x)>Math.abs(n.y)?n.x>0?"right":"left":n.y>0?"down":"up"}get current(){return super.current}set current(t){let{current:e}=this,n=nt.from(t),i={x:n.x-e.x,y:n.y-e.y},r=Date.now(),s=r-$i(this,On),a=o=>Math.round(o/s*100);et(()=>{Fi(this,On,r),this.velocity={x:a(i.x),y:a(i.y)},super.current=n})}reset(t=this.defaultValue){super.reset(nt.from(t)),this.velocity={x:0,y:0}}};ze=Yl(ji);On=new WeakMap;Ks(ze,2,"delta",Bs,$e);Ks(ze,2,"direction",Us,$e);Hs(ze,$e);function kn({x:t,y:e},n){let i=Math.abs(t),r=Math.abs(e);return typeof n=="number"?Math.sqrt(js(i,2)+js(r,2))>n:"x"in n&&"y"in n?i>n.x&&r>n.y:"x"in n?i>n.x:"y"in n?r>n.y:!1}var qs=(t=>(t.Horizontal="x",t.Vertical="y",t))(qs||{}),Yi=Object.values(qs);var Zl=Object.create,qi=Object.defineProperty,Jl=Object.defineProperties,Ql=Object.getOwnPropertyDescriptor,tc=Object.getOwnPropertyDescriptors,Rn=Object.getOwnPropertySymbols,Qs=Object.prototype.hasOwnProperty,to=Object.prototype.propertyIsEnumerable,eo=(t,e)=>(e=Symbol[t])?e:Symbol.for("Symbol."+t),ve=t=>{throw TypeError(t)},Ki=(t,e,n)=>e in t?qi(t,e,{enumerable:!0,configurable:!0,writable:!0,value:n}):t[e]=n,Gi=(t,e)=>{for(var n in e||(e={}))Qs.call(e,n)&&Ki(t,n,e[n]);if(Rn)for(var n of Rn(e))to.call(e,n)&&Ki(t,n,e[n]);return t},Zi=(t,e)=>Jl(t,tc(e)),Gs=(t,e)=>qi(t,"name",{value:e,configurable:!0}),no=(t,e)=>{var n={};for(var i in t)Qs.call(t,i)&&e.indexOf(i)<0&&(n[i]=t[i]);if(t!=null&&Rn)for(var i of Rn(t))e.indexOf(i)<0&&to.call(t,i)&&(n[i]=t[i]);return n},ge=t=>{var e;return[,,,Zl((e=t==null?void 0:t[eo("metadata")])!=null?e:null)]},io=["class","method","getter","setter","accessor","field","value","get","set"],Fe=t=>t!==void 0&&typeof t!="function"?ve("Function expected"):t,ec=(t,e,n,i,r)=>({kind:io[t],name:e,metadata:i,addInitializer:s=>n._?ve("Already initialized"):r.push(Fe(s||null))}),Kt=(t,e)=>Ki(e,eo("metadata"),t[3]),x=(t,e,n,i)=>{for(var r=0,s=t[e>>1],a=s&&s.length;r<a;r++)e&1?s[r].call(n):i=s[r].call(n,i);return i},P=(t,e,n,i,r,s)=>{var a,o,c,u,d,l=e&7,p=!!(e&8),f=!!(e&16),m=l>3?t.length+1:l?p?1:2:0,y=io[l+5],w=l>3&&(t[m-1]=[]),b=t[m]||(t[m]=[]),h=l&&(!f&&!p&&(r=r.prototype),l<5&&(l>3||!f)&&Ql(l<4?r:{get[n](){return L(this,s)},set[n](g){return it(this,s,g)}},n));l?f&&l<4&&Gs(s,(l>2?"set ":l>1?"get ":"")+n):Gs(r,n);for(var v=i.length-1;v>=0;v--)u=ec(l,n,c={},t[3],b),l&&(u.static=p,u.private=f,d=u.access={has:f?g=>nc(r,g):g=>n in g},l^3&&(d.get=f?g=>(l^1?L:ro)(g,r,l^4?s:h.get):g=>g[n]),l>2&&(d.set=f?(g,_)=>it(g,r,_,l^4?s:h.set):(g,_)=>g[n]=_)),o=(0,i[v])(l?l<4?f?s:h[y]:l>4?void 0:{get:h.get,set:h.set}:r,u),c._=1,l^4||o===void 0?Fe(o)&&(l>4?w.unshift(o):l?f?s=o:h[y]=o:r=o):typeof o!="object"||o===null?ve("Object expected"):(Fe(a=o.get)&&(h.get=a),Fe(a=o.set)&&(h.set=a),Fe(a=o.init)&&w.unshift(a));return l||Kt(t,r),h&&qi(r,n,h),f?l^4?s:h:r},Ji=(t,e,n)=>e.has(t)||ve("Cannot "+n),nc=(t,e)=>Object(e)!==e?ve('Cannot use the "in" operator on this value'):t.has(e),L=(t,e,n)=>(Ji(t,e,"read from private field"),n?n.call(t):e.get(t)),C=(t,e,n)=>e.has(t)?ve("Cannot add the same private member more than once"):e instanceof WeakSet?e.add(t):e.set(t,n),it=(t,e,n,i)=>(Ji(t,e,"write to private field"),i?i.call(t,n):e.set(t,n),n),ro=(t,e,n)=>(Ji(t,e,"access private method"),n);function so(t,e){return{plugin:t,options:e}}function me(t){return e=>so(t,e)}function pe(t){return typeof t=="function"?{plugin:t,options:void 0}:t}var oo,Ve,Qi,Mn;oo=[k];var q=class{constructor(t,e){this.manager=t,this.options=e,C(this,Qi,x(Ve,8,this,!1)),x(Ve,11,this),C(this,Mn,new Set)}enable(){this.disabled=!1}disable(){this.disabled=!0}isDisabled(){return O(()=>this.disabled)}configure(t){this.options=t}registerEffect(t){let e=Z(t.bind(this));return L(this,Mn).add(e),e}destroy(){L(this,Mn).forEach(t=>t())}static configure(t){return so(this,t)}};Ve=ge(null);Qi=new WeakMap;Mn=new WeakMap;P(Ve,4,"disabled",oo,q,Qi);Kt(Ve,q);var ye=class extends q{},Cn,Hi=class{constructor(t){this.manager=t,this.instances=new Map,C(this,Cn,[])}get values(){return Array.from(this.instances.values())}set values(t){let e=t.map(pe).reduce((i,r)=>{let s=i.find(({plugin:a})=>a===r.plugin);return s?(s.options=r.options,i):[...i,r]},[]),n=e.map(({plugin:i})=>i);for(let i of L(this,Cn))if(!n.includes(i)){if(i.prototype instanceof ye)continue;this.unregister(i)}for(let{plugin:i,options:r}of e)this.register(i,r);it(this,Cn,n)}get(t){return this.instances.get(t)}register(t,e){let n=this.instances.get(t);if(n)return n.options!==e&&(n.options=e),n;let i=new t(this.manager,e);return this.instances.set(t,i),i}unregister(t){let e=this.instances.get(t);e&&(e.destroy(),this.instances.delete(t))}destroy(){for(let t of this.instances.values())t.destroy();this.instances.clear()}};Cn=new WeakMap;function ic(t,e){return t.priority===e.priority?t.type===e.type?e.value-t.value:e.type-t.type:e.priority-t.priority}var Pn=[],ue,de,rc=class extends q{constructor(t){super(t),C(this,ue),C(this,de),this.computeCollisions=this.computeCollisions.bind(this),it(this,de,pt(Pn)),this.destroy=jt(()=>{let e=this.computeCollisions(),n=O(()=>this.manager.dragOperation.position.current);if(e!==Pn){let i=L(this,ue);if(it(this,ue,n),i&&n.x==i.x&&n.y==i.y)return}else it(this,ue,void 0);L(this,de).value=e},()=>{let{dragOperation:e}=this.manager;e.status.initialized&&this.forceUpdate()})}forceUpdate(t=!0){O(()=>{t?L(this,de).value=this.computeCollisions():it(this,ue,void 0)})}computeCollisions(t,e){let{registry:n,dragOperation:i}=this.manager,{source:r,shape:s,status:a}=i;if(!a.initialized||!s)return Pn;let o=[],c=[];for(let u of t??n.droppables){if(u.disabled||r&&!u.accepts(r))continue;let d=e??u.collisionDetector;if(!d)continue;c.push(u),u.shape;let l=O(()=>d({droppable:u,dragOperation:i}));l&&(u.collisionPriority!=null&&(l.priority=u.collisionPriority),o.push(l))}return c.length===0?Pn:(o.sort(ic),o)}get collisions(){return L(this,de).value}};ue=new WeakMap;de=new WeakMap;var ao,lo,co,tr,uo,ut,er,he,nr,ir;co=[k],lo=[k],ao=[k];var _t=class Xt{constructor(e,n){C(this,er,x(ut,8,this)),x(ut,11,this),C(this,he),C(this,nr,x(ut,12,this)),x(ut,15,this),C(this,ir,x(ut,16,this)),x(ut,19,this);let{effects:i,id:r,data:s={},disabled:a=!1,register:o=!0}=e,c=r;it(this,he,pt(r)),this.manager=n,this.data=s,this.disabled=a,this.effects=()=>{var u;return[()=>{let{id:d,manager:l}=this;if(d!==c)return c=d,l==null||l.registry.register(this),()=>l==null?void 0:l.registry.unregister(this)},...(u=i==null?void 0:i())!=null?u:[]]},this.register=this.register.bind(this),this.unregister=this.unregister.bind(this),this.destroy=this.destroy.bind(this),n&&o&&queueMicrotask(this.register)}get id(){var e,n;let i=L(this,he).value;return(n=(e=Xt.pendingIdChanges)==null?void 0:e.get(this))!=null?n:i}set id(e){var n,i;let r=(i=(n=Xt.pendingIdChanges)==null?void 0:n.get(this))!=null?i:L(this,he).peek();e!==r&&(Xt.pendingIdChanges||(Xt.pendingIdChanges=new Map,queueMicrotask(()=>{var s;return ro(s=Xt,tr,uo).call(s)})),Xt.pendingIdChanges.set(this,e))}register(){var e;return(e=this.manager)==null?void 0:e.registry.register(this)}unregister(){var e;(e=this.manager)==null||e.registry.unregister(this)}destroy(){var e;(e=this.manager)==null||e.registry.unregister(this)}};ut=ge(null);tr=new WeakSet;uo=function(){let t=_t.pendingIdChanges;_t.pendingIdChanges=null,t&&et(()=>{for(let[e,n]of t)L(e,he).value=n})};er=new WeakMap;he=new WeakMap;nr=new WeakMap;ir=new WeakMap;P(ut,4,"manager",co,_t,er);P(ut,4,"data",lo,_t,nr);P(ut,4,"disabled",ao,_t,ir);C(_t,tr);Kt(ut,_t);_t.pendingIdChanges=null;var In=_t,Zs=class{constructor(){this.map=pt(new Map),this.cleanupFunctions=new WeakMap,this.register=(t,e)=>{let n=this.map.peek(),i=n.get(t),r=()=>this.unregister(t,e);if(i===e)return r;if(i&&i.id===t){let o=this.cleanupFunctions.get(i);o==null||o(),this.cleanupFunctions.delete(i)}let s=new Map(n);for(let[o,c]of n)if(c===e&&o!==t){s.delete(o);break}s.set(t,e),this.map.value=s;let a=jt(...e.effects());return this.cleanupFunctions.set(e,a),r},this.unregister=(t,e)=>{let n=this.map.peek();if(n.get(t)!==e)return;let i=this.cleanupFunctions.get(e);i==null||i(),this.cleanupFunctions.delete(e);let r=new Map(n);r.delete(t),this.map.value=r}}[Symbol.iterator](){return this.map.peek().values()}get value(){return this.map.value.values()}has(t){return this.map.value.has(t)}get(t){return this.map.value.get(t)}destroy(){for(let t of this){let e=this.cleanupFunctions.get(t);e==null||e(),t.destroy()}this.map.value=new Map}},fo,ho,po,vo,go,mo,Ui,B,rr,sr,or,dt=class extends(Ui=In,mo=[k],go=[k],vo=[k],po=[R],ho=[R],fo=[R],Ui){constructor(t,e){var n=t,{modifiers:i,type:r,sensors:s,plugins:a,effects:o}=n,c=no(n,["modifiers","type","sensors","plugins","effects"]);super(Zi(Gi({},c),{effects:()=>{var u;return[...(u=o==null?void 0:o())!=null?u:[],()=>{let{manager:d,plugins:l}=this;if(!(!d||!l))for(let p of l){let{plugin:f}=pe(p);d.registry.plugins.register(f)}}]}}),e),x(B,5,this),C(this,rr,x(B,8,this)),x(B,11,this),C(this,sr,x(B,12,this)),x(B,15,this),C(this,or,x(B,16,this,this.isDragSource?"dragging":"idle")),x(B,19,this),this.type=r,this.sensors=s,this.modifiers=i,this.alignment=c.alignment,this.plugins=a}pluginConfig(t){if(this.plugins)for(let e of this.plugins){let n=pe(e);if(n.plugin===t)return n.options}}get isDropping(){return this.status==="dropping"&&this.isDragSource}get isDragging(){return this.status==="dragging"&&this.isDragSource}get isDragSource(){var t,e;return((e=(t=this.manager)==null?void 0:t.dragOperation.source)==null?void 0:e.id)===this.id}};B=ge(Ui);rr=new WeakMap;sr=new WeakMap;or=new WeakMap;P(B,4,"type",mo,dt,rr);P(B,4,"modifiers",go,dt,sr);P(B,4,"status",vo,dt,or);P(B,2,"isDropping",po,dt);P(B,2,"isDragging",ho,dt);P(B,2,"isDragSource",fo,dt);Kt(B,dt);var yo,_o,wo,bo,xo,So,Bi,F,ar,lr,cr,ur,dr,ft=class extends(Bi=In,So=[k],xo=[k],bo=[k],wo=[k],_o=[k],yo=[R],Bi){constructor(t,e){var n=t,{accept:i,collisionDetector:r,collisionPriority:s,type:a}=n,o=no(n,["accept","collisionDetector","collisionPriority","type"]);super(o,e),x(F,5,this),C(this,ar,x(F,8,this)),x(F,11,this),C(this,lr,x(F,12,this)),x(F,15,this),C(this,cr,x(F,16,this)),x(F,19,this),C(this,ur,x(F,20,this)),x(F,23,this),C(this,dr,x(F,24,this)),x(F,27,this),this.accept=i,this.collisionDetector=r,this.collisionPriority=s,this.type=a}accepts(t){let{accept:e}=this;return e?typeof e=="function"?e(t):t.type?Array.isArray(e)?e.includes(t.type):t.type===e:!1:!0}get isDropTarget(){var t,e;return((e=(t=this.manager)==null?void 0:t.dragOperation.target)==null?void 0:e.id)===this.id}};F=ge(Bi);ar=new WeakMap;lr=new WeakMap;cr=new WeakMap;ur=new WeakMap;dr=new WeakMap;P(F,4,"accept",So,ft,ar);P(F,4,"type",xo,ft,lr);P(F,4,"collisionDetector",bo,ft,cr);P(F,4,"collisionPriority",wo,ft,ur);P(F,4,"shape",_o,ft,dr);P(F,2,"isDropTarget",yo,ft);Kt(F,ft);var sc=class{constructor(){this.registry=new Map}addEventListener(t,e){let{registry:n}=this,i=new Set(n.get(t));return i.add(e),n.set(t,i),()=>this.removeEventListener(t,e)}removeEventListener(t,e){let{registry:n}=this,i=new Set(n.get(t));i.delete(e),n.set(t,i)}dispatch(t,...e){let{registry:n}=this,i=n.get(t);if(i)for(let r of i)r(...e)}},oc=class extends sc{constructor(t){super(),this.manager=t}dispatch(t,e){let n=[e,this.manager];super.dispatch(t,...n)}};function An(t,e=!0){let n=!1;return Zi(Gi({},t),{cancelable:e,get defaultPrevented(){return n},preventDefault(){e&&(n=!0)}})}var ac=class extends ye{constructor(t){super(t);let e=(i,r)=>i.map(({id:s})=>s).join("")===r.map(({id:s})=>s).join(""),n=[];this.destroy=jt(()=>{let{dragOperation:i,collisionObserver:r}=t;i.status.initializing&&(n=[],r.enable())},()=>{let{collisionObserver:i,monitor:r}=t,{collisions:s}=i;if(i.isDisabled()||In.pendingIdChanges)return;let a=An({collisions:s});if(r.dispatch("collision",a),a.defaultPrevented||e(s,n))return;n=s;let[o]=s;O(()=>{var c;(o==null?void 0:o.id)!==((c=t.dragOperation.target)==null?void 0:c.id)&&(i.disable(),t.actions.setDropTarget(o==null?void 0:o.id).then(()=>{i.enable()}))})})}},Xe=(t=>(t[t.Lowest=0]="Lowest",t[t.Low=1]="Low",t[t.Normal=2]="Normal",t[t.High=3]="High",t[t.Highest=4]="Highest",t))(Xe||{}),Ye=(t=>(t[t.Collision=0]="Collision",t[t.ShapeIntersection=1]="ShapeIntersection",t[t.PointerIntersection=2]="PointerIntersection",t))(Ye||{}),Eo,Oo,ko,Po,Mo,Co,Ao,Do,rt,fr;Do=[k],Ao=[R],Co=[R],Mo=[R],Po=[R],ko=[R],Oo=[R],Eo=[R];var vt=class{constructor(){x(rt,5,this),C(this,fr,x(rt,8,this,"idle")),x(rt,11,this)}get current(){return this.value}get idle(){return this.value==="idle"}get initializationPending(){return this.value==="initialization-pending"}get initializing(){return this.value==="initializing"}get initialized(){let{value:t}=this;return t!=="idle"&&t!=="initialization-pending"}get dragging(){return this.value==="dragging"}get dropped(){return this.value==="dropped"}set(t){this.value=t}};rt=ge(null);fr=new WeakMap;P(rt,4,"value",Do,vt,fr);P(rt,2,"current",Ao,vt);P(rt,2,"idle",Co,vt);P(rt,2,"initializationPending",Mo,vt);P(rt,2,"initializing",Po,vt);P(rt,2,"initialized",ko,vt);P(rt,2,"dragging",Oo,vt);P(rt,2,"dropped",Eo,vt);Kt(rt,vt);var lc=class{constructor(t){this.manager=t}setDragSource(t){let{dragOperation:e}=this.manager;e.sourceIdentifier=typeof t=="string"||typeof t=="number"?t:t.id}setDropTarget(t){return O(()=>{let{dragOperation:e}=this.manager,n=t??null;if(e.targetIdentifier===n)return Promise.resolve(!1);e.targetIdentifier=n;let i=An({operation:e.snapshot()});return e.status.dragging&&this.manager.monitor.dispatch("dragover",i),this.manager.renderer.rendering.then(()=>i.defaultPrevented)})}start(t){return O(()=>{let{dragOperation:e}=this.manager;if(t.source!=null&&this.setDragSource(t.source),!e.source)throw new Error("Cannot start a drag operation without a drag source");if(!e.status.idle)throw new Error("Cannot start a drag operation while another is active");let i=new AbortController,{event:r,coordinates:s}=t;et(()=>{e.status.set("initialization-pending"),e.shape=null,e.canceled=!1,e.activatorEvent=r??null,e.position.reset(s)});let a=An({operation:e.snapshot()});return this.manager.monitor.dispatch("beforedragstart",a),a.defaultPrevented?(e.reset(),i.abort(),i):(e.status.set("initializing"),e.controller=i,this.manager.renderer.rendering.then(()=>{if(i.signal.aborted)return;let{status:o}=e;o.current==="initializing"&&et(()=>{e.status.set("dragging"),this.manager.monitor.dispatch("dragstart",{nativeEvent:r,operation:e.snapshot(),cancelable:!1})})}),i)})}move(t){return O(()=>{var e,n;let{dragOperation:i}=this.manager,{status:r,controller:s}=i;if(!r.dragging||!s||s.signal.aborted)return;let a=An({nativeEvent:t.event,operation:i.snapshot(),by:t.by,to:t.to},(e=t.cancelable)!=null?e:!0);((n=t.propagate)==null||n)&&this.manager.monitor.dispatch("dragmove",a),queueMicrotask(()=>{var o,c,u,d,l;if(a.defaultPrevented)return;let p=(l=t.to)!=null?l:{x:i.position.current.x+((c=(o=t.by)==null?void 0:o.x)!=null?c:0),y:i.position.current.y+((d=(u=t.by)==null?void 0:u.y)!=null?d:0)};i.position.current=p})})}stop(t={}){return O(()=>{var e,n;let{dragOperation:i}=this.manager,{controller:r}=i;if(!r||r.signal.aborted)return;let s,a=()=>{let c={resume:()=>{},abort:()=>{}};return s=new Promise((u,d)=>{c.resume=u,c.abort=d}),c};r.abort();let o=()=>{this.manager.renderer.rendering.then(()=>{i.status.set("dropped");let c=O(()=>{var d;return((d=i.source)==null?void 0:d.status)==="dropping"}),u=()=>{i.controller===r&&(i.controller=void 0),i.reset()};if(c){let{source:d}=i,l=Z(()=>{(d==null?void 0:d.status)==="idle"&&(l(),u())})}else this.manager.renderer.rendering.then(u)})};i.canceled=(e=t.canceled)!=null?e:!1,this.manager.monitor.dispatch("dragend",{nativeEvent:t.event,operation:i.snapshot(),canceled:(n=t.canceled)!=null?n:!1,suspend:a}),s?s.then(o).catch(()=>i.reset()):o()})}},Ht=class extends q{constructor(t,e){super(t,e),this.manager=t,this.options=e}},To=class extends AbortController{constructor(t,e){super(),this.constraints=t,this.onActivate=e,this.activated=!1;for(let n of t??[])n.controller=this}onEvent(t){var e;if(!this.activated)if((e=this.constraints)!=null&&e.length)for(let n of this.constraints)n.onEvent(t);else this.activate(t)}activate(t){this.activated||(this.activated=!0,this.onActivate(t))}abort(t){this.activated=!1,super.abort(t)}},Dn,hr=class{constructor(t){this.options=t,C(this,Dn)}set controller(t){it(this,Dn,t),t.signal.addEventListener("abort",()=>this.abort())}activate(t){var e;(e=L(this,Dn))==null||e.activate(t)}};Dn=new WeakMap;var Js=class extends q{constructor(t,e){super(t,e),this.manager=t,this.options=e}apply(t){return t.transform}},cc=class{constructor(t){this.draggables=new Zs,this.droppables=new Zs,this.plugins=new Hi(t),this.sensors=new Hi(t),this.modifiers=new Hi(t)}register(t,e){if(t instanceof dt)return this.draggables.register(t.id,t);if(t instanceof ft)return this.droppables.register(t.id,t);if(t.prototype instanceof Js)return this.modifiers.register(t,e);if(t.prototype instanceof Ht)return this.sensors.register(t,e);if(t.prototype instanceof q)return this.plugins.register(t,e);throw new Error("Invalid instance type")}unregister(t){if(t instanceof In)return t instanceof dt?this.draggables.unregister(t.id,t):t instanceof ft?this.droppables.unregister(t.id,t):()=>{};if(t.prototype instanceof Js)return this.modifiers.unregister(t);if(t.prototype instanceof Ht)return this.sensors.unregister(t);if(t.prototype instanceof q)return this.plugins.unregister(t);throw new Error("Invalid instance type")}destroy(){this.draggables.destroy(),this.droppables.destroy(),this.plugins.destroy(),this.sensors.destroy(),this.modifiers.destroy()}},Ro,Io,Wo,Lo,zo,$o,Fo,No,jo,Ne,Tn,fe,W,pr,vr,gr,mr,yr,je;jo=[R],No=[k],Fo=[k],$o=[k],zo=[k],Lo=[k],Wo=[R],Io=[R],Ro=[R];var ht=class{constructor(t){x(W,5,this),C(this,Ne),C(this,Tn),C(this,fe,new Ot(void 0,(e,n)=>e&&n?e.equals(n):e===n)),this.status=new vt,C(this,pr,x(W,8,this,!1)),x(W,11,this),C(this,vr,x(W,12,this,null)),x(W,15,this),C(this,gr,x(W,16,this,null)),x(W,19,this),C(this,mr,x(W,20,this,null)),x(W,23,this),C(this,yr,x(W,24,this,[])),x(W,27,this),this.position=new $e({x:0,y:0}),C(this,je,{x:0,y:0}),it(this,Ne,t)}get shape(){let{current:t,initial:e,previous:n}=L(this,fe);return!t||!e?null:{current:t,initial:e,previous:n}}set shape(t){t?L(this,fe).current=t:L(this,fe).reset()}get source(){var t;let e=this.sourceIdentifier;if(e==null)return null;let n=L(this,Ne).registry.draggables.get(e);return n&&it(this,Tn,n),(t=n??L(this,Tn))!=null?t:null}get target(){var t;let e=this.targetIdentifier;return e!=null&&(t=L(this,Ne).registry.droppables.get(e))!=null?t:null}get transform(){let{x:t,y:e}=this.position.delta,n={x:t,y:e};for(let i of this.modifiers)n=i.apply(Zi(Gi({},this.snapshot()),{transform:n}));return it(this,je,n),n}snapshot(){return O(()=>({source:this.source,target:this.target,activatorEvent:this.activatorEvent,transform:L(this,je),shape:this.shape?En(this.shape):null,position:En(this.position),status:En(this.status),canceled:this.canceled}))}reset(){et(()=>{this.status.set("idle"),this.sourceIdentifier=null,this.targetIdentifier=null,L(this,fe).reset(),this.position.reset({x:0,y:0}),it(this,je,{x:0,y:0}),this.modifiers=[]})}};W=ge(null);Ne=new WeakMap;Tn=new WeakMap;fe=new WeakMap;pr=new WeakMap;vr=new WeakMap;gr=new WeakMap;mr=new WeakMap;yr=new WeakMap;je=new WeakMap;P(W,2,"shape",jo,ht);P(W,4,"canceled",No,ht,pr);P(W,4,"activatorEvent",Fo,ht,vr);P(W,4,"sourceIdentifier",$o,ht,gr);P(W,4,"targetIdentifier",zo,ht,mr);P(W,4,"modifiers",Lo,ht,yr);P(W,2,"source",Wo,ht);P(W,2,"target",Io,ht);P(W,2,"transform",Ro,ht);Kt(W,ht);var uc={get rendering(){return Promise.resolve()}};function Yt(t,e){return typeof t=="function"?t(e):t??e}var Vo=class{constructor(t){this.destroy=()=>{this.dragOperation.status.idle||this.actions.stop({canceled:!0}),this.dragOperation.modifiers.forEach(l=>l.destroy()),this.registry.destroy(),this.collisionObserver.destroy()};var e;let n=t??{},i=Yt(n.plugins,[]),r=Yt(n.sensors,[]),s=Yt(n.modifiers,[]),a=(e=n.renderer)!=null?e:uc,o=new oc(this),c=new cc(this);this.registry=c,this.monitor=o,this.renderer=a,this.actions=new lc(this),this.dragOperation=new ht(this),this.collisionObserver=new rc(this),this.plugins=[ac,...i],this.modifiers=s,this.sensors=r;let{destroy:u}=this,d=jt(()=>{var l,p,f;let m=O(()=>this.dragOperation.modifiers),y=this.modifiers;for(let w of m)y.includes(w)||w.destroy();this.dragOperation.modifiers=(f=(p=(l=this.dragOperation.source)==null?void 0:l.modifiers)==null?void 0:p.map(w=>{let{plugin:b,options:h}=pe(w);return new b(this,h)}))!=null?f:y});this.destroy=()=>{d(),u()}}get plugins(){return this.registry.plugins.values}set plugins(t){this.registry.plugins.values=t}get modifiers(){return this.registry.modifiers.values}set modifiers(t){this.registry.modifiers.values=t}get sensors(){return this.registry.sensors.values}set sensors(t){this.registry.sensors.values=t}};var Bo=t=>{throw TypeError(t)},br=(t,e,n)=>e.has(t)||Bo("Cannot "+n),S=(t,e,n)=>(br(t,e,"read from private field"),e.get(t)),J=(t,e,n)=>e.has(t)?Bo("Cannot add the same private member more than once"):e instanceof WeakSet?e.add(t):e.set(t,n),st=(t,e,n,i)=>(br(t,e,"write to private field"),e.set(t,n),n),qo=(t,e,n)=>(br(t,e,"access private method"),n);function Yn(t){return t?t instanceof KeyframeEffect?!0:"getKeyframes"in t&&typeof t.getKeyframes=="function":!1}function Go(t,e){let n=t.getAnimations(),i=null;for(let r of n){if(r.playState!=="running")continue;let{effect:s}=r,o=(Yn(s)?s.getKeyframes():[]).filter(e);o.length>0&&(i=[o[o.length-1],r])}return i}function Hn(t){let{width:e,height:n,top:i,left:r,bottom:s,right:a}=t.getBoundingClientRect();return{width:e,height:n,top:i,left:r,bottom:s,right:a}}function xr(t){let e=Object.prototype.toString.call(t);return e==="[object Window]"||e==="[object global]"}function Ze(t){return"nodeType"in t}function ot(t){var e,n,i;return t?xr(t)?t:Ze(t)?"defaultView"in t?(e=t.defaultView)!=null?e:window:(i=(n=t.ownerDocument)==null?void 0:n.defaultView)!=null?i:window:window:window}function Kn(t){let{Document:e}=ot(t);return t instanceof e||"nodeType"in t&&t.nodeType===Node.DOCUMENT_NODE}function wt(t){return!t||xr(t)?!1:t instanceof ot(t).HTMLElement||"namespaceURI"in t&&typeof t.namespaceURI=="string"&&t.namespaceURI.endsWith("html")}function Zo(t){return t instanceof ot(t).SVGElement||"namespaceURI"in t&&typeof t.namespaceURI=="string"&&t.namespaceURI.endsWith("svg")}function Mt(t){return t?xr(t)?t.document:Ze(t)?Kn(t)?t:wt(t)||Zo(t)?t.ownerDocument:document:document:document}function dc(t){var e,n,i,r;let{documentElement:s}=Mt(t),a=ot(t).visualViewport,o=(e=a==null?void 0:a.width)!=null?e:s.clientWidth,c=(n=a==null?void 0:a.height)!=null?n:s.clientHeight,u=(i=a==null?void 0:a.offsetTop)!=null?i:0,d=(r=a==null?void 0:a.offsetLeft)!=null?r:0;return{top:u,left:d,right:d+o,bottom:u+c,width:o,height:c}}function fc(t,e){if(hc(t)&&t.open===!1)return!1;let{overflow:n,overflowX:i,overflowY:r}=getComputedStyle(t);return n==="visible"&&i==="visible"&&r==="visible"}function hc(t){return t.tagName==="DETAILS"}function Fn(t,e=t.getBoundingClientRect(),n=0){var i,r,s,a,o;let c=e,{ownerDocument:u}=t,d=(i=u.defaultView)!=null?i:window,l=t.parentElement;for(;l&&l!==u.documentElement;){if(!fc(l)){let v=l.getBoundingClientRect(),g=n*(v.bottom-v.top),_=n*(v.right-v.left),E=n*(v.bottom-v.top),A=n*(v.right-v.left);c={top:Math.max(c.top,v.top-g),right:Math.min(c.right,v.right+_),bottom:Math.min(c.bottom,v.bottom+E),left:Math.max(c.left,v.left-A),width:0,height:0},c.width=c.right-c.left,c.height=c.bottom-c.top}l=l.parentElement}let p=d.visualViewport,f=(r=p==null?void 0:p.offsetTop)!=null?r:0,m=(s=p==null?void 0:p.offsetLeft)!=null?s:0,y=(a=p==null?void 0:p.width)!=null?a:d.innerWidth,w=(o=p==null?void 0:p.height)!=null?o:d.innerHeight,b=n*w,h=n*y;return c={top:Math.max(c.top,f-b),right:Math.min(c.right,m+y+h),bottom:Math.min(c.bottom,f+w+b),left:Math.max(c.left,m-h),width:0,height:0},c.width=c.right-c.left,c.height=c.bottom-c.top,c.width<0&&(c.width=0),c.height<0&&(c.height=0),c}function Gt(t){return{x:t.clientX,y:t.clientY}}var pc=typeof window<"u"&&typeof window.document<"u"&&typeof window.document.createElement<"u";function Nn(t=document,e=new Set){if(e.has(t))return[];e.add(t);let n=[t];for(let i of Array.from(t.querySelectorAll("iframe, frame")))try{let r=i.contentDocument;r&&!e.has(r)&&n.push(...Nn(r,e))}catch{}try{let i=t.defaultView;if(i&&i!==window.top){let r=i.parent;r&&r.document&&r.document!==t&&n.push(...Nn(r.document,e))}}catch{}return n}function Un(){return/^((?!chrome|android).)*safari/i.test(navigator.userAgent)}function Sr(){var t,e;let n=Un()?window.visualViewport:null;return{x:(t=n==null?void 0:n.offsetLeft)!=null?t:0,y:(e=n==null?void 0:n.offsetTop)!=null?e:0}}function Je(t){return!t||!Ze(t)?!1:t instanceof ot(t).ShadowRoot}function Qe(t){if(t&&Ze(t)){let e=t.getRootNode();if(Je(e))return e;if(e instanceof Document)return e}return Mt(t)}function Er(t){return t.matchMedia("(prefers-reduced-motion: reduce)").matches}function Jo(t){let e="input, textarea, select, canvas, [contenteditable]",n=t.cloneNode(!0),i=Array.from(t.querySelectorAll(e));return Array.from(n.querySelectorAll(e)).forEach((s,a)=>{let o=i[a];if(Xo(s)&&Xo(o)&&(s.type!=="file"&&(s.value=o.value),s.type==="radio"&&s.name&&(s.name=`Cloned__${s.name}`)),Yo(s)&&Yo(o)&&o.width>0&&o.height>0){let c=s.getContext("2d");c==null||c.drawImage(o,0,0)}}),n}function Xo(t){return"value"in t}function Yo(t){return t.tagName==="CANVAS"}function Or(t,{x:e,y:n}){let i=t.elementFromPoint(e,n);if(vc(i)){let{contentDocument:r}=i;if(r){let{left:s,top:a}=i.getBoundingClientRect();return Or(r,{x:e-s,y:n-a})}}return i}function vc(t){return(t==null?void 0:t.tagName)==="IFRAME"}var kr=new WeakMap;function Qo(t){return t.closest(`
+    input:not([disabled]),
+    select:not([disabled]),
+    textarea:not([disabled]),
+    button:not([disabled]),
+    a[href],
+    [contenteditable]:not([contenteditable="false"])
+  `)}var Pr=class{constructor(){this.entries=new Set,this.clear=()=>{for(let t of this.entries){let[e,{type:n,listener:i,options:r}]=t;e.removeEventListener(n,i,r)}this.entries.clear()}}bind(t,e){let n=Array.isArray(t)?t:[t],i=Array.isArray(e)?e:[e],r=[];for(let a of n)for(let o of i){let{type:c,listener:u,options:d}=o,l=[a,o];a.addEventListener(c,u,d),this.entries.add(l),r.push(l)}let s=this.entries;return function(){for(let o of r){let[c,{type:u,listener:d,options:l}]=o;c.removeEventListener(u,d,l),s.delete(o)}}}};function qt(t){let e=t==null?void 0:t.ownerDocument.defaultView;if(e&&e.self!==e.parent)return e.frameElement}function gc(t){let e=new Set,n=qt(t);for(;n;)e.add(n),n=qt(n);return e}function mc(t,e){let n=setTimeout(t,e);return()=>clearTimeout(n)}function ta(t,e){let n=()=>performance.now(),i,r;return function(...s){let a=this;r?(i==null||i(),i=mc(()=>{t.apply(a,s),r=n()},e-(n()-r))):(t.apply(a,s),r=n())}}function yc(t,e){return t===e?!0:!t||!e?!1:t.top==e.top&&t.left==e.left&&t.right==e.right&&t.bottom==e.bottom}function _c(t,e=t.getBoundingClientRect()){let{width:n,height:i}=Fn(t,e);return n>0&&i>0}var wc=typeof ResizeObserver<"u"?ResizeObserver:class{observe(){}unobserve(){}disconnect(){}},zn,bc=class extends wc{constructor(t){super(e=>{if(!S(this,zn)){st(this,zn,!0);return}t(e,this)}),J(this,zn,!1)}};zn=new WeakMap;var Ho=Array.from({length:100},(t,e)=>e/100),ea=75,Ut,jn,Pt,Bt,He,V,qe,Ke,Vn,na,ia,ra=class{constructor(t,e,n={debug:!1,skipInitial:!1}){this.element=t,this.callback=e,J(this,Vn),this.disconnect=()=>{var s,a,o;st(this,qe,!0),(s=S(this,Pt))==null||s.disconnect(),(a=S(this,Bt))==null||a.disconnect(),S(this,He).disconnect(),(o=S(this,V))==null||o.remove()},J(this,Ut,!0),J(this,jn),J(this,Pt),J(this,Bt),J(this,He),J(this,V),J(this,qe,!1),J(this,Ke,ta(()=>{var s,a,o;let{element:c}=this;if((s=S(this,Bt))==null||s.disconnect(),S(this,qe)||!S(this,Ut)||!c.isConnected)return;let u=(a=c.ownerDocument)!=null?a:document,{innerHeight:d,innerWidth:l}=(o=u.defaultView)!=null?o:window,p=c.getBoundingClientRect(),f=Fn(c,p),{top:m,left:y,bottom:w,right:b}=f,h=-Math.floor(m),v=-Math.floor(y),g=-Math.floor(l-b),_=-Math.floor(d-w),E=`${h}px ${g}px ${_}px ${v}px`;this.boundingClientRect=p,st(this,Bt,new IntersectionObserver(A=>{let[K]=A,{intersectionRect:N}=K;(K.intersectionRatio!==1?K.intersectionRatio:kt.intersectionRatio(N,Fn(c)))!==1&&S(this,Ke).call(this)},{threshold:Ho,rootMargin:E,root:u})),S(this,Bt).observe(c),qo(this,Vn,na).call(this)},ea)),this.boundingClientRect=t.getBoundingClientRect(),st(this,Ut,_c(t,this.boundingClientRect));let i=!0;this.callback=s=>{i&&(i=!1,n.skipInitial)||e(s)};let r=t.ownerDocument;n!=null&&n.debug&&(st(this,V,document.createElement("div")),S(this,V).style.background="rgba(0,0,0,0.15)",S(this,V).style.position="fixed",S(this,V).style.pointerEvents="none",r.body.appendChild(S(this,V))),st(this,He,new IntersectionObserver(s=>{var a,o;let c=s[s.length-1],{boundingClientRect:u,isIntersecting:d}=c,{width:l,height:p}=u,f=S(this,Ut);st(this,Ut,d),!(!l&&!p)&&(f&&!d?((a=S(this,Bt))==null||a.disconnect(),this.callback(null),(o=S(this,Pt))==null||o.disconnect(),st(this,Pt,void 0),S(this,V)&&(S(this,V).style.visibility="hidden")):S(this,Ke).call(this),d&&!S(this,Pt)&&(st(this,Pt,new bc(S(this,Ke))),S(this,Pt).observe(t)))},{threshold:Ho,root:r})),S(this,Ut)&&!n.skipInitial&&this.callback(this.boundingClientRect),S(this,He).observe(t)}};Ut=new WeakMap;jn=new WeakMap;Pt=new WeakMap;Bt=new WeakMap;He=new WeakMap;V=new WeakMap;qe=new WeakMap;Ke=new WeakMap;Vn=new WeakSet;na=function(){S(this,qe)||(qo(this,Vn,ia).call(this),!yc(this.boundingClientRect,S(this,jn))&&(this.callback(this.boundingClientRect),st(this,jn,this.boundingClientRect)))};ia=function(){if(S(this,V)){let{top:t,left:e,width:n,height:i}=Fn(this.element);S(this,V).style.overflow="hidden",S(this,V).style.visibility="visible",S(this,V).style.top=`${Math.floor(t)}px`,S(this,V).style.left=`${Math.floor(e)}px`,S(this,V).style.width=`${Math.floor(n)}px`,S(this,V).style.height=`${Math.floor(i)}px`}};var Wn=new WeakMap,Ln=new WeakMap;function xc(t,e){let n=Wn.get(t);return n||(n={disconnect:new ra(t,r=>{let s=Wn.get(t);s&&s.callbacks.forEach(a=>a(r))},{skipInitial:!0}).disconnect,callbacks:new Set}),n.callbacks.add(e),Wn.set(t,n),()=>{n.callbacks.delete(e),n.callbacks.size===0&&(Wn.delete(t),n.disconnect())}}function Sc(t,e){let n=new Set;for(let i of t){let r=xc(i,e);n.add(r)}return()=>n.forEach(i=>i())}function Ec(t,e){var n;let i=t.ownerDocument;if(!Ln.has(i)){let a=new AbortController,o=new Set;document.addEventListener("scroll",c=>o.forEach(u=>u(c)),{capture:!0,passive:!0,signal:a.signal}),Ln.set(i,{disconnect:()=>a.abort(),listeners:o})}let{listeners:r,disconnect:s}=(n=Ln.get(i))!=null?n:{};return!r||!s?()=>{}:(r.add(e),()=>{r.delete(e),r.size===0&&(s(),Ln.delete(i))})}var Ue,Be,$n,wr,sa=class{constructor(t,e,n){this.callback=e,J(this,Ue),J(this,Be,!1),J(this,$n),J(this,wr,ta(a=>{if(!S(this,Be)&&a.target&&"contains"in a.target&&typeof a.target.contains=="function"){for(let o of S(this,$n))if(a.target.contains(o)){this.callback(S(this,Ue).boundingClientRect);break}}},ea));let i=gc(t),r=Sc(i,e),s=Ec(t,S(this,wr));st(this,$n,i),st(this,Ue,new ra(t,e,n)),this.disconnect=()=>{S(this,Be)||(st(this,Be,!0),r(),s(),S(this,Ue).disconnect())}}};Ue=new WeakMap;Be=new WeakMap;$n=new WeakMap;wr=new WeakMap;function Bn(t){return"showPopover"in t&&"hidePopover"in t&&typeof t.showPopover=="function"&&typeof t.hidePopover=="function"}function Zt(t){try{Bn(t)&&t.isConnected&&t.hasAttribute("popover")&&!t.matches(":popover-open")&&t.showPopover()}catch{}}var Mr=class{constructor(t){this.scheduler=t,this.pending=!1,this.tasks=new Set,this.resolvers=new Set,this.flush=()=>{let{tasks:e,resolvers:n}=this;this.pending=!1,this.tasks=new Set,this.resolvers=new Set;for(let i of e)i();for(let i of n)i()}}schedule(t){return this.tasks.add(t),this.pending||(this.pending=!0,this.scheduler(this.flush)),new Promise(e=>this.resolvers.add(e))}},we=new Mr(t=>{typeof requestAnimationFrame=="function"?requestAnimationFrame(t):t()}),Oc=new Mr(t=>setTimeout(t,50)),Xn=new Map,kc=Xn.clear.bind(Xn);function gt(t,e=!1){if(!e)return Ko(t);let n=Xn.get(t);return n||(n=Ko(t),Xn.set(t,n),Oc.schedule(kc),n)}function Ko(t){return ot(t).getComputedStyle(t)}function Pc(t){return!pc||!t?!1:t===Mt(t).scrollingElement}function qn(t){var e,n;let i=ot(t),r=Pc(t),s=r?dc(t):Hn(t),a=i.visualViewport,o=r?{height:(e=a==null?void 0:a.height)!=null?e:i.innerHeight,width:(n=a==null?void 0:a.width)!=null?n:i.innerWidth}:{height:t.clientHeight,width:t.clientWidth},c=t.scrollWidth-o.width,u=gt(t,!0),d=r?u.direction==="rtl":Mc(u),l={current:{x:t.scrollLeft,y:t.scrollTop},min:{x:d?-c:0,y:0},max:{x:d?0:c,y:t.scrollHeight-o.height}},p=l.current.y<=l.min.y,f=l.current.x<=l.min.x,m=l.current.y>=l.max.y,y=l.current.x>=l.max.x;return{rect:s,position:l,isTop:p,isLeft:f,isBottom:m,isRight:y}}function Mc(t){let{direction:e,display:n,writingMode:i}=t,r=i==="vertical-lr"||i==="vertical-rl"||i==="sideways-lr"||i==="sideways-rl",s=r?i==="vertical-rl"||i==="sideways-rl":e==="rtl";if(n!=="flex"&&n!=="inline-flex")return s;let{flexDirection:a,flexWrap:o}=t,c=a==="row"||a==="row-reverse";return s!==((r?!c:c)?a==="row-reverse"||a==="column-reverse":o==="wrap-reverse")}function oa(t,e,n=qn(t)){let{isTop:i,isBottom:r,isLeft:s,isRight:a,position:o}=n,{x:c,y:u}=e??{x:0,y:0},d=!i&&o.current.y+u>o.min.y,l=!r&&o.current.y+u<o.max.y,p=!s&&o.current.x+c>o.min.x,f=!a&&o.current.x+c<o.max.x;return{top:d,bottom:l,left:p,right:f,x:p||f,y:d||l}}function Cc(t,e=gt(t,!0)){return e.position==="fixed"||e.position==="sticky"}function Ac(t,e=gt(t,!0)){let n=/(auto|scroll|overlay)/;return["overflow","overflowX","overflowY"].some(r=>{let s=e[r];return typeof s=="string"?n.test(s):!1})}var Dc={excludeElement:!0,escapeShadowDOM:!0};function Gn(t,e=Dc){let{limit:n,excludeElement:i,escapeShadowDOM:r}=e,s=new Set;function a(o){if(n!=null&&s.size>=n||!o)return s;if(Kn(o)&&o.scrollingElement!=null&&!s.has(o.scrollingElement))return s.add(o.scrollingElement),s;if(r&&Je(o))return a(o.host);if(!wt(o))return Zo(o)?a(o.parentElement):s;if(s.has(o))return s;let c=gt(o,!0);if(i&&o===t||Ac(o,c)&&s.add(o),Cc(o,c)){let{scrollingElement:u}=o.ownerDocument;return u&&s.add(u),s}return a(o.parentNode)}return t?a(t):s}function Jt(t,e=window.frameElement){let n={x:0,y:0,scaleX:1,scaleY:1};if(!t)return n;let i=qt(t);for(;i;){if(i===e)return n;let r=Hn(i),{x:s,y:a}=Tc(i,r);n.x=n.x+r.left,n.y=n.y+r.top,n.scaleX=n.scaleX*s,n.scaleY=n.scaleY*a,i=qt(i)}return n}function Tc(t,e=Hn(t)){let n=Math.round(e.width),i=Math.round(e.height);if(wt(t))return{x:n/t.offsetWidth,y:i/t.offsetHeight};let r=gt(t,!0);return{x:(parseFloat(r.width)||n)/n,y:(parseFloat(r.height)||i)/i}}function Rc(t){if(!t||t==="none")return null;let e=t.split(" "),n=parseFloat(e[0]),i=parseFloat(e[1]);return isNaN(n)&&isNaN(i)?null:{x:isNaN(n)?i:n,y:isNaN(i)?n:i}}function Zn(t){if(!t||t==="none")return null;let[e,n,i="0"]=t.split(" "),r={x:parseFloat(e),y:parseFloat(n),z:parseInt(i,10)};return isNaN(r.x)&&isNaN(r.y)?null:{x:isNaN(r.x)?0:r.x,y:isNaN(r.y)?0:r.y,z:isNaN(r.z)?0:r.z}}function tn(t){var e,n,i,r,s,a,o,c,u;let{scale:d,transform:l,translate:p}=t,f=Rc(d),m=Zn(p),y=Ic(l);if(!y&&!f&&!m)return null;let w={x:(e=f==null?void 0:f.x)!=null?e:1,y:(n=f==null?void 0:f.y)!=null?n:1},b={x:(i=m==null?void 0:m.x)!=null?i:0,y:(r=m==null?void 0:m.y)!=null?r:0},h={x:(s=y==null?void 0:y.x)!=null?s:0,y:(a=y==null?void 0:y.y)!=null?a:0,scaleX:(o=y==null?void 0:y.scaleX)!=null?o:1,scaleY:(c=y==null?void 0:y.scaleY)!=null?c:1};return{x:b.x+h.x,y:b.y+h.y,z:(u=m==null?void 0:m.z)!=null?u:0,scaleX:w.x*h.scaleX,scaleY:w.y*h.scaleY}}function Ic(t){if(t.startsWith("matrix3d(")){let e=t.slice(9,-1).split(/, /);return{x:+e[12],y:+e[13],scaleX:+e[0],scaleY:+e[5]}}else if(t.startsWith("matrix(")){let e=t.slice(7,-1).split(/, /);return{x:+e[4],y:+e[5],scaleX:+e[0],scaleY:+e[3]}}return null}var at=(t=>(t[t.Idle=0]="Idle",t[t.Forward=1]="Forward",t[t.Reverse=-1]="Reverse",t))(at||{}),Wc={x:.2,y:.2},Lc={x:10,y:10};function aa(t,e,n,i=25,r=Wc,s=Lc,a=qn(t)){let{x:o,y:c}=e,{rect:u,isTop:d,isBottom:l,isLeft:p,isRight:f}=a,m=Jt(t),y=gt(t,!0),w=tn(y),b=w!==null?(w==null?void 0:w.scaleX)<0:!1,h=w!==null?(w==null?void 0:w.scaleY)<0:!1,v=new kt(u.left*m.scaleX+m.x,u.top*m.scaleY+m.y,u.width*m.scaleX,u.height*m.scaleY),g={x:0,y:0},_={x:0,y:0},E={height:v.height*r.y,width:v.width*r.x};return E.height>0&&(!d||h&&!l)&&c<=v.top+E.height&&(n==null?void 0:n.y)!==1&&o>=v.left-s.x&&o<=v.right+s.x?(g.y=h?1:-1,_.y=i*Math.abs((v.top+E.height-c)/E.height)):E.height>0&&(!l||h&&!d)&&c>=v.bottom-E.height&&(n==null?void 0:n.y)!==-1&&o>=v.left-s.x&&o<=v.right+s.x&&(g.y=h?-1:1,_.y=i*Math.abs((v.bottom-E.height-c)/E.height)),E.width>0&&(!f||b&&!p)&&o>=v.right-E.width&&(n==null?void 0:n.x)!==-1&&c>=v.top-s.y&&c<=v.bottom+s.y?(g.x=b?-1:1,_.x=i*Math.abs((v.right-E.width-o)/E.width)):E.width>0&&(!p||b&&!f)&&o<=v.left+E.width&&(n==null?void 0:n.x)!==1&&c>=v.top-s.y&&c<=v.bottom+s.y&&(g.x=b?1:-1,_.x=i*Math.abs((v.left+E.width-o)/E.width)),{direction:g,speed:_}}function la(t,{block:e="nearest",inline:n="nearest"}={}){if(!wt(t))return;let i=Gn(t),r=[];for(let s of i){if(!wt(s))continue;let{top:a,left:o}=zc(t,s),c=a,u=o;for(let d of r)c-=d.scrollTop,u-=d.scrollLeft;if(e!=="none"){let d=c<s.scrollTop,l=c+t.offsetHeight>s.scrollTop+s.clientHeight;d!==l&&(e==="center"?s.scrollTop=c-s.clientHeight/2+t.offsetHeight/2:d?s.scrollTop=c:s.scrollTop=c+t.offsetHeight-s.clientHeight)}if(n!=="none"){let d=u<s.scrollLeft,l=u+t.offsetWidth>s.scrollLeft+s.clientWidth;d!==l&&(n==="center"?s.scrollLeft=u-s.clientWidth/2+t.offsetWidth/2:d?s.scrollLeft=u:s.scrollLeft=u+t.offsetWidth-s.clientWidth)}r.push(s)}}function Uo(t){let e=0,n=0,i=t;for(;i;){e+=i.offsetTop,n+=i.offsetLeft;let r=i.offsetParent;if(!wt(r))break;e+=r.clientTop,n+=r.clientLeft,i=r}return{top:e,left:n}}function zc(t,e){let n=Uo(t),i=Uo(e);return{top:n.top-i.top-e.clientTop,left:n.left-i.left-e.clientLeft}}function $c(t,e,n){let{scaleX:i,scaleY:r,x:s,y:a}=e,o=t.left+s+(1-i)*parseFloat(n),c=t.top+a+(1-r)*parseFloat(n.slice(n.indexOf(" ")+1)),u=i?t.width*i:t.width,d=r?t.height*r:t.height;return{width:u,height:d,top:c,right:o+u,bottom:c+d,left:o}}function Fc(t,e,n){let{scaleX:i,scaleY:r,x:s,y:a}=e,o=t.left-s-(1-i)*parseFloat(n),c=t.top-a-(1-r)*parseFloat(n.slice(n.indexOf(" ")+1)),u=i?t.width/i:t.width,d=r?t.height/r:t.height;return{width:u,height:d,top:c,right:o+u,bottom:c+d,left:o}}function ca({element:t,keyframes:e,options:n}){return t.animate(e,n).finished}var Nc=new Mr(t=>setTimeout(t,0)),Ge=new Map,jc=Ge.clear.bind(Ge);function Vc(t){let e=t.ownerDocument,n=Ge.get(e);if(n)return n;n=e.getAnimations(),Ge.set(e,n),Nc.schedule(jc);let i=n.filter(r=>Yn(r.effect)&&r.effect.target===t);return Ge.set(t,i),n}function Xc(t,e){let n=Vc(t).filter(i=>{var r,s;if(Yn(i.effect)){let{target:a}=i.effect;if((s=a&&((r=e.isValidTarget)==null?void 0:r.call(e,a)))!=null?s:!0)return i.effect.getKeyframes().some(c=>{for(let u of e.properties)if(c[u])return!0})}}).map(i=>{let{effect:r,currentTime:s}=i,a=r==null?void 0:r.getComputedTiming().duration;if(!(i.pending||i.playState==="finished")&&typeof a=="number"&&typeof s=="number"&&s<a)return i.currentTime=a,()=>{i.currentTime=s}});if(n.length>0)return()=>n.forEach(i=>i==null?void 0:i())}var bt=class extends kt{constructor(t,e={}){var n,i,r,s;let{frameTransform:a=Jt(t),ignoreTransforms:o,getBoundingClientRect:c=Hn}=e,u=Xc(t,{properties:["transform","translate","scale","width","height"],isValidTarget:_=>(_!==t||Un())&&_.contains(t)}),d=c(t),{top:l,left:p,width:f,height:m}=d,y,w=gt(t),b=tn(w),h={x:(n=b==null?void 0:b.scaleX)!=null?n:1,y:(i=b==null?void 0:b.scaleY)!=null?i:1},v=Yc(t,w);u==null||u(),b&&(y=Fc(d,b,w.transformOrigin),(o||v)&&(l=y.top,p=y.left,f=y.width,m=y.height));let g={width:(r=y==null?void 0:y.width)!=null?r:f,height:(s=y==null?void 0:y.height)!=null?s:m};if(v&&!o&&y){let _=$c(y,v,w.transformOrigin);l=_.top,p=_.left,f=_.width,m=_.height,h.x=v.scaleX,h.y=v.scaleY}a&&(o||(p*=a.scaleX,f*=a.scaleX,l*=a.scaleY,m*=a.scaleY),p+=a.x,l+=a.y),super(p,l,f,m),this.scale=h,this.intrinsicWidth=g.width,this.intrinsicHeight=g.height}};function Yc(t,e){let n=t.getAnimations();if(!n.length)return null;let i,r,s,a=!1;for(let o of n){if(o.playState!=="running")continue;let c=Yn(o.effect)?o.effect.getKeyframes():[],u=c[c.length-1];if(!u)continue;let{transform:d,translate:l,scale:p}=u;typeof d=="string"&&d&&(i=d,a=!0),typeof l=="string"&&l&&(r=l,a=!0),typeof p=="string"&&p&&(s=p,a=!0)}return a?tn({transform:i??e.transform,translate:r??e.translate,scale:s??e.scale}):null}function _e(t){return"style"in t&&typeof t.style=="object"&&t.style!==null&&"setProperty"in t.style&&"removeProperty"in t.style&&typeof t.style.setProperty=="function"&&typeof t.style.removeProperty=="function"}var ua=class{constructor(t){this.element=t,this.initial=new Map}set(t,e=""){let{element:n}=this;if(_e(n))for(let[i,r]of Object.entries(t)){let s=`${e}${i}`;this.initial.has(s)||this.initial.set(s,n.style.getPropertyValue(s)),n.style.setProperty(s,typeof r=="string"?r:`${r}px`)}}remove(t,e=""){let{element:n}=this;if(_e(n))for(let i of t){let r=`${e}${i}`;n.style.removeProperty(r)}}reset(){let{element:t}=this;if(_e(t)){for(let[e,n]of this.initial)t.style.setProperty(e,n);t.getAttribute("style")===""&&t.removeAttribute("style")}}};function Ct(t){return t?t instanceof ot(t).Element||Ze(t)&&t.nodeType===Node.ELEMENT_NODE:!1}function Jn(t){if(!t)return!1;let{KeyboardEvent:e}=ot(t.target);return t instanceof e}function da(t){if(!t)return!1;let{PointerEvent:e}=ot(t.target);return t instanceof e}function fa(t){if(!Ct(t))return!1;let{tagName:e}=t;return e==="INPUT"||e==="TEXTAREA"||Hc(t)}function Hc(t){return t.hasAttribute("contenteditable")&&t.getAttribute("contenteditable")!=="false"}var _r={};function Qn(t){let e=_r[t]==null?0:_r[t]+1;return _r[t]=e,`${t}-${e}`}var Kc=({dragOperation:t,droppable:e})=>{let n=t.position.current;if(!n)return null;let{id:i}=e;if(!e.shape)return null;if(e.shape.containsPoint(n)){let r=nt.distance(e.shape.center,n);return{id:i,value:1/r,type:Ye.PointerIntersection,priority:Xe.High}}return null},Uc=({dragOperation:t,droppable:e})=>{let{shape:n}=t;if(!e.shape||!(n!=null&&n.current))return null;let i=n.current.intersectionArea(e.shape);if(i){let{position:r}=t,s=nt.distance(e.shape.center,r.current),o=i/(n.current.area+e.shape.area-i)/s;return{id:e.id,value:o,type:Ye.ShapeIntersection,priority:Xe.Normal}}return null},ha=t=>{var e;return(e=Kc(t))!=null?e:Uc(t)};var Bc=Object.create,Xr=Object.defineProperty,qc=Object.defineProperties,Gc=Object.getOwnPropertyDescriptor,Zc=Object.getOwnPropertyDescriptors,ni=Object.getOwnPropertySymbols,Sa=Object.prototype.hasOwnProperty,Ea=Object.prototype.propertyIsEnumerable,Oa=(t,e)=>(e=Symbol[t])?e:Symbol.for("Symbol."+t),Me=t=>{throw TypeError(t)},Tr=(t,e,n)=>e in t?Xr(t,e,{enumerable:!0,configurable:!0,writable:!0,value:n}):t[e]=n,an=(t,e)=>{for(var n in e||(e={}))Sa.call(e,n)&&Tr(t,n,e[n]);if(ni)for(var n of ni(e))Ea.call(e,n)&&Tr(t,n,e[n]);return t},Yr=(t,e)=>qc(t,Zc(e)),pa=(t,e)=>Xr(t,"name",{value:e,configurable:!0}),ka=(t,e)=>{var n={};for(var i in t)Sa.call(t,i)&&e.indexOf(i)<0&&(n[i]=t[i]);if(t!=null&&ni)for(var i of ni(t))e.indexOf(i)<0&&Ea.call(t,i)&&(n[i]=t[i]);return n},Ce=t=>{var e;return[,,,Bc((e=t==null?void 0:t[Oa("metadata")])!=null?e:null)]},Pa=["class","method","getter","setter","accessor","field","value","get","set"],nn=t=>t!==void 0&&typeof t!="function"?Me("Function expected"):t,Jc=(t,e,n,i,r)=>({kind:Pa[t],name:e,metadata:i,addInitializer:s=>n._?Me("Already initialized"):r.push(nn(s||null))}),ie=(t,e)=>Tr(e,Oa("metadata"),t[3]),z=(t,e,n,i)=>{for(var r=0,s=t[e>>1],a=s&&s.length;r<a;r++)e&1?s[r].call(n):i=s[r].call(n,i);return i},lt=(t,e,n,i,r,s)=>{var a,o,c,u,d,l=e&7,p=!!(e&8),f=!!(e&16),m=l>3?t.length+1:l?p?1:2:0,y=Pa[l+5],w=l>3&&(t[m-1]=[]),b=t[m]||(t[m]=[]),h=l&&(!f&&!p&&(r=r.prototype),l<5&&(l>3||!f)&&Gc(l<4?r:{get[n](){return M(this,s)},set[n](g){return G(this,s,g)}},n));l?f&&l<4&&pa(s,(l>2?"set ":l>1?"get ":"")+n):pa(r,n);for(var v=i.length-1;v>=0;v--)u=Jc(l,n,c={},t[3],b),l&&(u.static=p,u.private=f,d=u.access={has:f?g=>Qc(r,g):g=>n in g},l^3&&(d.get=f?g=>(l^1?M:ne)(g,r,l^4?s:h.get):g=>g[n]),l>2&&(d.set=f?(g,_)=>G(g,r,_,l^4?s:h.set):(g,_)=>g[n]=_)),o=(0,i[v])(l?l<4?f?s:h[y]:l>4?void 0:{get:h.get,set:h.set}:r,u),c._=1,l^4||o===void 0?nn(o)&&(l>4?w.unshift(o):l?f?s=o:h[y]=o:r=o):typeof o!="object"||o===null?Me("Object expected"):(nn(a=o.get)&&(h.get=a),nn(a=o.set)&&(h.set=a),nn(a=o.init)&&w.unshift(a));return l||ie(t,r),h&&Xr(r,n,h),f?l^4?s:h:r},Hr=(t,e,n)=>e.has(t)||Me("Cannot "+n),Qc=(t,e)=>Object(e)!==e?Me('Cannot use the "in" operator on this value'):t.has(e),M=(t,e,n)=>(Hr(t,e,"read from private field"),n?n.call(t):e.get(t)),I=(t,e,n)=>e.has(t)?Me("Cannot add the same private member more than once"):e instanceof WeakSet?e.add(t):e.set(t,n),G=(t,e,n,i)=>(Hr(t,e,"write to private field"),i?i.call(t,n):e.set(t,n),n),ne=(t,e,n)=>(Hr(t,e,"access private method"),n),va={role:"button",roleDescription:"draggable"},tu="dnd-kit-description",eu="dnd-kit-announcement",nu={draggable:"To pick up a draggable item, press the space bar. While dragging, use the arrow keys to move the item in a given direction. Press space again to drop the item in its new position, or press escape to cancel."},iu={dragstart({operation:{source:t}}){if(t)return`Picked up draggable item ${t.id}.`},dragover({operation:{source:t,target:e}}){if(!(!t||t.id===(e==null?void 0:e.id)))return e?`Draggable item ${t.id} was moved over droppable target ${e.id}.`:`Draggable item ${t.id} is no longer over a droppable target.`},dragend({operation:{source:t,target:e},canceled:n}){if(t)return n?`Dragging was cancelled. Draggable item ${t.id} was dropped.`:e?`Draggable item ${t.id} was dropped over droppable target ${e.id}`:`Draggable item ${t.id} was dropped.`}};function ru(t){let e=t.tagName.toLowerCase();return["input","select","textarea","a","button"].includes(e)}function su(t){var e;return((e=t.getAttribute("role"))!=null?e:"button")==="button"}function ou(t,e){let n=document.createElement("div");return n.id=t,n.style.setProperty("display","none"),n.textContent=e,n}function au(t){let e=document.createElement("div");return e.id=t,e.setAttribute("role","status"),e.setAttribute("aria-live","polite"),e.setAttribute("aria-atomic","true"),e.style.setProperty("position","fixed"),e.style.setProperty("width","1px"),e.style.setProperty("height","1px"),e.style.setProperty("margin","-1px"),e.style.setProperty("border","0"),e.style.setProperty("padding","0"),e.style.setProperty("overflow","hidden"),e.style.setProperty("clip","rect(0 0 0 0)"),e.style.setProperty("clip-path","inset(100%)"),e.style.setProperty("white-space","nowrap"),e}var lu=["dragover","dragmove"],cu=class extends q{constructor(t,e){super(t);let{id:n,idPrefix:{description:i=tu,announcement:r=eu}={},announcements:s=iu,screenReaderInstructions:a=nu,debounce:o=500}=e??{},c=n?`${i}-${n}`:Qn(i),u=n?`${r}-${n}`:Qn(r),d,l,p,f,m=(_=f)=>{!p||!_||(p==null?void 0:p.nodeValue)!==_&&(p.nodeValue=_)},y=()=>we.schedule(m),w=uu(y,o),b=Object.entries(s).map(([_,E])=>this.manager.monitor.addEventListener(_,(A,K)=>{let N=p;if(!N)return;let j=E==null?void 0:E(A,K);j&&N.nodeValue!==j&&(f=j,lu.includes(_)?w():(y(),w.cancel()))})),h=()=>{let _=[];d!=null&&d.isConnected||(d=ou(c,a.draggable),_.push(d)),l!=null&&l.isConnected||(l=au(u),p=document.createTextNode(""),l.appendChild(p),_.push(l)),_.length>0&&document.body.append(..._)},v=new Set;function g(){for(let _ of v)_()}this.registerEffect(()=>{var _;v.clear();for(let E of this.manager.registry.draggables.value){let A=(_=E.handle)!=null?_:E.element;if(A){(!d||!l)&&v.add(h),(!ru(A)||Un())&&!A.hasAttribute("tabindex")&&v.add(()=>A.setAttribute("tabindex","0")),!A.hasAttribute("role")&&A.tagName.toLowerCase()!=="button"&&v.add(()=>A.setAttribute("role",va.role)),A.hasAttribute("aria-roledescription")||v.add(()=>A.setAttribute("aria-roledescription",va.roleDescription)),A.hasAttribute("aria-describedby")||v.add(()=>A.setAttribute("aria-describedby",c));let K=su(A)?["aria-pressed","aria-grabbed"]:["aria-grabbed"];for(let j of K){let Wt=String(E.isDragging);A.getAttribute(j)!==Wt&&v.add(()=>A.setAttribute(j,Wt))}let N=String(E.disabled);A.getAttribute("aria-disabled")!==N&&v.add(()=>A.setAttribute("aria-disabled",N))}}v.size>0&&we.schedule(g)}),this.destroy=()=>{super.destroy(),d==null||d.remove(),l==null||l.remove(),b.forEach(_=>_())}}};function uu(t,e){let n,i=()=>{clearTimeout(n),n=setTimeout(t,e)};return i.cancel=()=>clearTimeout(n),i}var ii=new Map;function du(t){return Je(t)?t.host.isConnected:t.defaultView!=null}var Ma,Ca,Aa,Da,Ta,Rr,ct,Kr,Ur,Oe,Dt,ke,Ra,Ia,Wa,La,xt=class extends(Rr=ye,Ta=[k],Da=[k],Aa=[R],Ca=[R],Ma=[R],Rr){constructor(e,n){super(e,n),z(ct,5,this),I(this,ke),I(this,Kr,z(ct,8,this,new Map)),z(ct,11,this),I(this,Ur,z(ct,12,this,new Set)),z(ct,15,this),I(this,Oe,new Set),I(this,Dt,new Map),this.registerEffect(ne(this,ke,Ra))}register(e,n){return O(()=>{var i;let r=new Map(this.registeredRules);r.set(e,(i=n==null?void 0:n.retain)!=null?i:!1),this.registeredRules=r}),()=>{O(()=>{let i=new Map(this.registeredRules);i.delete(e),this.registeredRules=i})}}addRoot(e){return O(()=>{let n=new Set(this.additionalRoots);n.add(e),this.additionalRoots=n}),()=>{O(()=>{let n=new Set(this.additionalRoots);n.delete(e),this.additionalRoots=n})}}get sourceRoot(){var e;let{source:n}=this.manager.dragOperation;return Qe((e=n==null?void 0:n.element)!=null?e:null)}get targetRoot(){var e;let{target:n}=this.manager.dragOperation;return Qe((e=n==null?void 0:n.element)!=null?e:null)}get roots(){let{status:e}=this.manager.dragOperation;if(e.initializing||e.initialized){let n=[this.sourceRoot,this.targetRoot].filter(i=>i!=null);return new Set([...n,...this.additionalRoots])}return new Set}destroy(){for(let e of M(this,Dt).values())for(let n of e.values())n();M(this,Dt).clear(),M(this,Oe).clear(),super.destroy()}};ct=Ce(Rr);Kr=new WeakMap;Ur=new WeakMap;Oe=new WeakMap;Dt=new WeakMap;ke=new WeakSet;Ra=function(){let{roots:t,registeredRules:e}=this;for(let i of t)M(this,Oe).add(i);let n=new Map;for(let i of M(this,Oe)){let r=t.has(i);if(!r&&!du(i)){M(this,Oe).delete(i);continue}for(let[s,a]of e){if(!r&&!a)continue;let o=n.get(i);o||(o=new Set,n.set(i,o)),o.add(s)}}for(let[i,r]of M(this,Dt)){let s=n.get(i);for(let[a,o]of r)s!=null&&s.has(a)||(o(),r.delete(a));r.size===0&&M(this,Dt).delete(i)}for(let[i,r]of n){let s=M(this,Dt).get(i);s||(s=new Map,M(this,Dt).set(i,s));for(let a of r)s.has(a)||s.set(a,ne(this,ke,Ia).call(this,i,a))}};Ia=function(t,e){let n=ii.get(t);n||(n=new Map,ii.set(t,n));let i=n.get(e);if(!i){let s=Kn(t)?ne(this,ke,Wa).call(this,t,n,e):ne(this,ke,La).call(this,t,n,e);if(!s)return()=>{};i=s,n.set(e,i)}i.refCount++;let r=!1;return()=>{r||(r=!0,i.refCount--,i.refCount===0&&i.cleanup())}};Wa=function(t,e,n){var i;let r=t.createElement("style"),{nonce:s}=(i=this.options)!=null?i:{};s&&r.setAttribute("nonce",s),r.textContent=n,t.head.prepend(r);let a=new MutationObserver(o=>{for(let c of o)for(let u of Array.from(c.removedNodes))if(u===r){t.head.prepend(r);return}});return a.observe(t.head,{childList:!0}),{refCount:0,cleanup:()=>{a.disconnect(),r.remove(),e.delete(n),e.size===0&&ii.delete(t)}}};La=function(t,e,n){"adoptedStyleSheets"in t&&Array.isArray(t.adoptedStyleSheets);let i=t.ownerDocument.defaultView,{CSSStyleSheet:r}=i??{};if(!r)return null;let s=new r;return s.replaceSync(n),t.adoptedStyleSheets.push(s),{refCount:0,cleanup:()=>{var a;if(Je(t)&&((a=t.host)!=null&&a.isConnected)){let o=t.adoptedStyleSheets.indexOf(s);o!==-1&&t.adoptedStyleSheets.splice(o,1)}e.delete(n),e.size===0&&ii.delete(t)}}};lt(ct,4,"registeredRules",Ta,xt,Kr);lt(ct,4,"additionalRoots",Da,xt,Ur);lt(ct,2,"sourceRoot",Aa,xt);lt(ct,2,"targetRoot",Ca,xt);lt(ct,2,"roots",Ma,xt);ie(ct,xt);xt.configure=me(xt);var ai=xt,fu=class extends q{constructor(t,e){super(t,e),this.manager=t;let{cursor:n="grabbing"}=e??{},i=t.registry.plugins.get(ai),r=i==null?void 0:i.register(`* { cursor: ${n} !important; }`);if(r){let s=this.destroy.bind(this);this.destroy=()=>{r(),s()}}}},dn="data-dnd-",Ir=`${dn}dropping`,X="--dnd-",mt=`${dn}dragging`,ri=`${dn}placeholder`,hu=[mt,ri,"popover","aria-pressed","aria-grabbing"],pu=["view-transition-name"],vu=`
+  :is(:root,:host) [${mt}] {
+    position: fixed !important;
+    pointer-events: none !important;
+    touch-action: none;
+    z-index: calc(infinity);
+    will-change: translate;
+    top: var(${X}top, 0px) !important;
+    left: var(${X}left, 0px) !important;
+    right: unset !important;
+    bottom: unset !important;
+    width: var(${X}width, auto);
+    max-width: var(${X}width, auto);
+    height: var(${X}height, auto);
+    max-height: var(${X}height, auto);
+    transform: var(${X}transform, none) !important;
+    transition: var(${X}transition) !important;
+  }
+
+  :is(:root,:host) [${ri}] {
+    transition: none;
+  }
+
+  :is(:root,:host) [${ri}='hidden'] {
+    visibility: hidden;
+  }
+
+  [${mt}] * {
+    pointer-events: none !important;
+  }
+
+  [${mt}]:not([${Ir}]) {
+    translate: var(${X}translate) !important;
+  }
+
+  [${mt}][style*='${X}scale'] {
+    scale: var(${X}scale) !important;
+    transform-origin: var(${X}transform-origin) !important;
+  }
+
+  @layer dnd-kit {
+    :where([${mt}][popover]) {
+      overflow: visible;
+      background: unset;
+      border: unset;
+      margin: unset;
+      padding: unset;
+      color: inherit;
+
+      &:is(input, button) {
+        border: revert;
+        background: revert;
+      }
+    }
+  }
+  [${mt}]::backdrop, [${dn}overlay]:not([${mt}]) {
+    display: none;
+    visibility: hidden;
+  }
+`.replace(/\n+/g," ").replace(/\s+/g," ").trim();function gu(t,e="hidden"){return O(()=>{let{element:n,manager:i}=t;if(!n||!i)return;let r=mu(n,i.registry.droppables),s=[],a=Jo(n),{remove:o}=a;return yu(r,a,s),_u(a,e),a.remove=()=>{s.forEach(c=>c()),o.call(a)},a})}function mu(t,e){let n=new Map;for(let i of e)if(i.element&&(t===i.element||t.contains(i.element))){let r=`${dn}${Qn("dom-id")}`;i.element.setAttribute(r,""),n.set(i,r)}return n}function yu(t,e,n){for(let[i,r]of t){if(!i.element)continue;let s=`[${r}]`,a=e.matches(s)?e:e.querySelector(s);if(i.element.removeAttribute(r),!a)continue;let o=i.element;i.proxy=a,a.removeAttribute(r),kr.set(o,a),n.push(()=>{kr.delete(o),i.proxy=void 0})}}function _u(t,e="hidden"){t.setAttribute("inert","true"),t.setAttribute("tab-index","-1"),t.setAttribute("aria-hidden","true"),t.setAttribute(ri,e)}function za(t,e){return t===e?!0:qt(t)===qt(e)}function ga(t){let{target:e}=t;"newState"in t&&t.newState==="closed"&&Ct(e)&&e.hasAttribute("popover")&&requestAnimationFrame(()=>Zt(e))}function Wr(t){return t.tagName==="TR"}function wu(t,e,n){let i=new MutationObserver(r=>{let s=!1;for(let a of r){if(a.target!==t){s=!0;continue}if(a.type!=="attributes")continue;let o=a.attributeName;if(o.startsWith("aria-")||hu.includes(o))continue;let c=t.getAttribute(o);if(o==="style"){if(_e(t)&&_e(e)){let u=t.style;for(let d of Array.from(e.style))u.getPropertyValue(d)===""&&e.style.removeProperty(d);for(let d of Array.from(u)){if(pu.includes(d)||d.startsWith(X))continue;let l=u.getPropertyValue(d);e.style.setProperty(d,l)}}}else c!==null?e.setAttribute(o,c):e.removeAttribute(o)}s&&n&&e.replaceChildren(...t.cloneNode(!0).childNodes)});return i.observe(t,{attributes:!0,subtree:!0,childList:!0}),i}function bu(t,e,n){let i=new MutationObserver(r=>{for(let s of r)if(s.addedNodes.length!==0)for(let a of Array.from(s.addedNodes)){if(a.contains(t)&&t.nextElementSibling!==e){t.insertAdjacentElement("afterend",e),Zt(n);return}if(a.contains(e)&&e.previousElementSibling!==t){e.insertAdjacentElement("beforebegin",t),Zt(n);return}}t.isConnected&&e.isConnected&&t.nextElementSibling!==e&&(t.insertAdjacentElement("afterend",e),Zt(n))});return i.observe(t.ownerDocument.body,{childList:!0,subtree:!0}),i}function xu(t){return new ResizeObserver(()=>{var e,n,i;let r=new bt(t.placeholder,{frameTransform:t.frameTransform,ignoreTransforms:!0}),s=(e=t.transformOrigin)!=null?e:{x:1,y:1},a=(t.width-r.width)*s.x+t.delta.x,o=(t.height-r.height)*s.y+t.delta.y,c=Sr();if(t.styles.set({width:r.width-t.widthOffset,height:r.height-t.heightOffset,top:t.top+o+c.y,left:t.left+a+c.x},X),(n=t.getElementMutationObserver())==null||n.takeRecords(),Wr(t.element)&&Wr(t.placeholder)){let y=Array.from(t.element.cells),w=Array.from(t.placeholder.cells);t.getSavedCellWidths()||t.setSavedCellWidths(y.map(b=>b.style.width));for(let[b,h]of y.entries()){let v=w[b];h.style.width=`${v.getBoundingClientRect().width}px`}}let u=(i=t.getTranslate())!=null?i:{x:0,y:0},d=t.left+a+c.x+u.x,l=t.top+o+c.y+u.y,p=r.width-t.widthOffset,f=r.height-t.heightOffset,m=t.frameTransform;t.dragOperation.shape=new kt(d*m.scaleX+m.x,l*m.scaleY+m.y,p*m.scaleX,f*m.scaleY)})}var Su=250,Eu="ease";function Ou(t){var e,n,i,r;let{animation:s}=t;if(typeof s=="function"){let h=s({source:t.source,element:t.element,feedbackElement:t.feedbackElement,placeholder:t.placeholder,translate:t.translate,moved:t.moved});Promise.resolve(h).then(()=>{t.cleanup(),requestAnimationFrame(t.restoreFocus)});return}let{duration:a=Su,easing:o=Eu}=s??{};Zt(t.feedbackElement);let[,c]=(e=Go(t.feedbackElement,h=>"translate"in h))!=null?e:[];c==null||c.pause();let u=(n=t.placeholder)!=null?n:t.element,d={frameTransform:za(t.feedbackElement,u)?null:void 0},l=new bt(t.feedbackElement,d),p=(i=Zn(gt(t.feedbackElement).translate))!=null?i:t.translate,f=new bt(u,d),m=kt.delta(l,f,t.alignment),y={x:p.x-m.x,y:p.y-m.y},w=Math.round(l.intrinsicHeight)!==Math.round(f.intrinsicHeight)?{minHeight:[`${l.intrinsicHeight}px`,`${f.intrinsicHeight}px`],maxHeight:[`${l.intrinsicHeight}px`,`${f.intrinsicHeight}px`]}:{},b=Math.round(l.intrinsicWidth)!==Math.round(f.intrinsicWidth)?{minWidth:[`${l.intrinsicWidth}px`,`${f.intrinsicWidth}px`],maxWidth:[`${l.intrinsicWidth}px`,`${f.intrinsicWidth}px`]}:{};t.styles.set({transition:t.transition},X),t.feedbackElement.setAttribute(Ir,""),(r=t.getElementMutationObserver())==null||r.takeRecords(),ca({element:t.feedbackElement,keyframes:Yr(an(an({},w),b),{translate:[`${p.x}px ${p.y}px 0`,`${y.x}px ${y.y}px 0`]}),options:{duration:Er(ot(t.feedbackElement))?0:t.moved||t.feedbackElement!==t.element?a:0,easing:o}}).then(()=>{t.feedbackElement.removeAttribute(Ir),c==null||c.finish(),t.cleanup(),requestAnimationFrame(t.restoreFocus)})}var $a,Lr,ln,Br,ei,Fa,Na,Pe=class extends(Lr=q,$a=[k],Lr){constructor(e,n){super(e,n),I(this,ei),I(this,Br,z(ln,8,this)),z(ln,11,this),this.state={initial:{},current:{}};let i=e.registry.plugins.get(ai),r=i==null?void 0:i.register(vu,{retain:!0});if(r){let s=this.destroy.bind(this);this.destroy=()=>{r(),s()}}this.registerEffect(ne(this,ei,Fa).bind(this,i)),this.registerEffect(ne(this,ei,Na))}};ln=Ce(Lr);Br=new WeakMap;ei=new WeakSet;Fa=function(t){let{overlay:e}=this;if(!e||!t)return;let n=Qe(e);if(n)return t.addRoot(n)};Na=function(){var t,e,n,i,r,s,a;let{state:o,manager:c,options:u}=this,{dragOperation:d}=c,{position:l,source:p,status:f}=d;if(f.idle){o.current={},o.initial={};return}if(!p)return;let{element:m}=p,y=p.pluginConfig(Pe),w=(e=(t=y==null?void 0:y.feedback)!=null?t:u==null?void 0:u.feedback)!=null?e:"default",b=typeof w=="function"?w(p,c):w;if(!m||b==="none"||!f.initialized||f.initializing)return;let{initial:h}=o,v=(n=this.overlay)!=null?n:m,g=Jt(v),_=Jt(m),E=!za(m,v),A=new bt(m,{frameTransform:E?_:null,ignoreTransforms:!E}),K={x:_.scaleX/g.scaleX,y:_.scaleY/g.scaleY},{width:N,height:j,top:Wt,left:hn}=A;E&&(N=N/K.x,j=j/K.y);let Ae=new ua(v),ui=gt(m),{transition:ns,translate:is,boxSizing:tl,paddingBlockStart:el,paddingBlockEnd:nl,paddingInlineStart:il,paddingInlineEnd:rl,borderInlineStartWidth:sl,borderInlineEndWidth:ol,borderBlockStartWidth:al,borderBlockEndWidth:ll}=ui,pn=ns.split(",").filter(D=>!/^\s*(transform|translate|scale)\b/.test(D)).join(","),Lt=tn(ui),cl=ui.transform,rs=b==="clone",ss=tl==="content-box",os=ss?parseInt(il)+parseInt(rl)+parseInt(sl)+parseInt(ol):0,as=ss?parseInt(el)+parseInt(nl)+parseInt(al)+parseInt(ll):0,Q=b!=="move"&&!this.overlay?gu(p,rs?"clone":"hidden"):null,di=O(()=>Jn(c.dragOperation.activatorEvent));if(!h.translate){if(this.overlay&&Lt)h.translate={x:Lt.x,y:Lt.y};else if(is!=="none"){let D=Zn(is);D&&(h.translate=D)}}if(!h.transformOrigin){let D=O(()=>l.current),$=hn+((i=Lt==null?void 0:Lt.x)!=null?i:0),tt=Wt+((r=Lt==null?void 0:Lt.y)!=null?r:0);h.transformOrigin={x:(D.x-$*g.scaleX-g.x)/(N*g.scaleX),y:(D.y-tt*g.scaleY-g.y)/(j*g.scaleY)}}let{transformOrigin:re}=h,ls=Wt*g.scaleY+g.y,cs=hn*g.scaleX+g.x;if(!h.coordinates&&(h.coordinates={x:cs,y:ls},K.x!==1||K.y!==1)){let{scaleX:D,scaleY:$}=_,{x:tt,y:St}=re;h.coordinates.x+=(N*D-N)*tt,h.coordinates.y+=(j*$-j)*St}h.dimensions||(h.dimensions={width:N,height:j}),h.frameTransform||(h.frameTransform=g);let us={x:h.coordinates.x-cs,y:h.coordinates.y-ls},ds={width:(h.dimensions.width*h.frameTransform.scaleX-N*g.scaleX)*re.x,height:(h.dimensions.height*h.frameTransform.scaleY-j*g.scaleY)*re.y},fi={x:us.x/g.scaleX+ds.width,y:us.y/g.scaleY+ds.height},fs={left:hn+fi.x,top:Wt+fi.y};v.setAttribute(mt,"true");let hs=O(()=>d.transform),ps=(s=h.translate)!=null?s:{x:0,y:0},ul=hs.x*g.scaleX+ps.x,dl=hs.y*g.scaleY+ps.y,vs=Sr();Ae.set({width:N-os,height:j-as,top:fs.top+vs.y,left:fs.left+vs.x,translate:`${ul}px ${dl}px 0`,transform:this.overlay?"none":cl,transition:pn?`${pn}, translate 0ms linear`:"translate 0ms linear",scale:E?`${K.x} ${K.y}`:"","transform-origin":`${re.x*100}% ${re.y*100}%`},X),Q&&(m.insertAdjacentElement("afterend",Q),u!=null&&u.rootElement&&(typeof u.rootElement=="function"?u.rootElement(p):u.rootElement).appendChild(m)),Bn(v)&&(v.hasAttribute("popover")||v.setAttribute("popover","manual"),Zt(v),v.addEventListener("beforetoggle",ga));let zt,hi,vn,gs=xu({placeholder:Q,element:m,feedbackElement:v,frameTransform:g,transformOrigin:re,width:N,height:j,top:Wt,left:hn,widthOffset:os,heightOffset:as,delta:fi,styles:Ae,dragOperation:d,getTranslate:()=>o.current.translate,getElementMutationObserver:()=>zt,getSavedCellWidths:()=>vn,setSavedCellWidths:D=>{vn=D}}),ms=new bt(v);O(()=>d.shape=ms);let pi=ot(v),ys=D=>{this.manager.actions.stop({event:D})},fl=Er(pi);di&&pi.addEventListener("resize",ys),O(()=>p.status)==="idle"&&requestAnimationFrame(()=>p.status="dragging"),Q&&(gs.observe(Q),zt=wu(m,Q,rs),hi=bu(m,Q,v));let _s=(a=c.dragOperation.source)==null?void 0:a.id,hl=()=>{var D;if(!di||_s==null)return;let $=c.registry.draggables.get(_s),tt=(D=$==null?void 0:$.handle)!=null?D:$==null?void 0:$.element;wt(tt)&&tt.focus()},vi=()=>{zt==null||zt.disconnect(),hi==null||hi.disconnect(),gs.disconnect(),pi.removeEventListener("resize",ys),Bn(v)&&(v.removeEventListener("beforetoggle",ga),v.removeAttribute("popover")),v.removeAttribute(mt),Ae.reset();let D=()=>{var $;if(vn&&Wr(m)){let gi=Array.from(m.cells);for(let[gn,se]of gi.entries())se.style.width=($=vn[gn])!=null?$:""}p.status="idle";let tt=o.current.translate!=null,St=d.status.dragging;Q&&(!St&&tt||Q.parentElement!==v.parentElement)&&v.isConnected&&Q.replaceWith(v),Q==null||Q.remove()};v===this.overlay?setTimeout(D,0):D()},pl=u==null?void 0:u.dropAnimation,ws=this,vl=jt(()=>{var D,$,tt;let{transform:St,status:gi}=d;if(!(!St.x&&!St.y&&!o.current.translate)&&gi.dragging){let gn=(D=h.translate)!=null?D:{x:0,y:0},se={x:St.x/g.scaleX+gn.x,y:St.y/g.scaleY+gn.y},bs=o.current.translate,gl=O(()=>d.modifiers),mi=O(()=>{var Te;return(Te=d.shape)==null?void 0:Te.current}),De=u==null?void 0:u.keyboardTransition,xs=di&&!fl&&De!==null?`${($=De==null?void 0:De.duration)!=null?$:250}ms ${(tt=De==null?void 0:De.easing)!=null?tt:"cubic-bezier(0.25, 1, 0.5, 1)"}`:"0ms linear";if(Ae.set({transition:pn?`${pn}, translate ${xs}`:`translate ${xs}`,translate:`${se.x}px ${se.y}px 0`},X),zt==null||zt.takeRecords(),mi&&mi!==ms&&bs&&!gl.length){let Te=nt.delta(se,bs);d.shape=kt.from(mi.boundingRectangle).translate(Te.x*g.scaleX,Te.y*g.scaleY)}else d.shape=new bt(v);o.current.translate=se}},function(){if(d.status.dropped){this.dispose(),p.status="dropping";let D=(y==null?void 0:y.dropAnimation)!==void 0?y.dropAnimation:ws.dropAnimation!==void 0?ws.dropAnimation:pl,$=o.current.translate,tt=$!=null;if(!$&&m!==v&&($={x:0,y:0}),!$||D===null){vi();return}c.renderer.rendering.then(()=>{Ou({source:p,element:m,feedbackElement:v,placeholder:Q,translate:$,moved:tt,transition:ns,alignment:p.alignment,styles:Ae,animation:D??void 0,getElementMutationObserver:()=>zt,cleanup:vi,restoreFocus:hl})})}});return()=>{vi(),vl()}};lt(ln,4,"overlay",$a,Pe,Br);ie(ln,Pe);Pe.configure=me(Pe);var ku=Pe,en=!0,Pu=!1,ja,Va,Xa,Ya,Tt,qr,Gr;Ya=(Xa=[k],at.Forward),Va=(ja=[k],at.Reverse);var cn=class{constructor(){I(this,qr,z(Tt,8,this,en)),z(Tt,11,this),I(this,Gr,z(Tt,12,this,en)),z(Tt,15,this)}isLocked(t){return t===at.Idle?!1:t==null?this[at.Forward]===en&&this[at.Reverse]===en:this[t]===en}unlock(t){t!==at.Idle&&(this[t]=Pu)}};Tt=Ce(null);qr=new WeakMap;Gr=new WeakMap;lt(Tt,4,Ya,Xa,cn,qr);lt(Tt,4,Va,ja,cn,Gr);ie(Tt,cn);var Mu=[at.Forward,at.Reverse],ma=class{constructor(){this.x=new cn,this.y=new cn}isLocked(){return this.x.isLocked()&&this.y.isLocked()}},Cu=class extends q{constructor(t){super(t);let e=pt(new ma),n=null;this.signal=e,Z(()=>{let{status:i}=t.dragOperation;if(!i.initialized){n=null,e.value=new ma;return}let{delta:r}=t.dragOperation.position;if(n){let s={x:ya(r.x,n.x),y:ya(r.y,n.y)},a=e.peek();et(()=>{for(let o of Yi)for(let c of Mu)s[o]===c&&a[o].unlock(c);e.value=a})}n=r})}get current(){return this.signal.peek()}};function ya(t,e){return Math.sign(t-e)}var Ha,zr,un,Zr,At,$r,li=class extends(zr=ye,Ha=[k],zr){constructor(t){super(t),I(this,Zr,z(un,8,this,!1)),z(un,11,this),I(this,At),I(this,$r,()=>{if(!M(this,At))return;let{element:s,by:a}=M(this,At);a.y&&(s.scrollTop+=a.y),a.x&&(s.scrollLeft+=a.x)}),this.scroll=(s,a)=>{var o;if(this.disabled)return!1;let c=this.getScrollableElements();if(!c)return G(this,At,void 0),!1;let{position:u}=this.manager.dragOperation,d=u==null?void 0:u.current;if(d){let{by:l}=s??{},p=l?{x:_a(l.x),y:_a(l.y)}:void 0,f=p?void 0:this.scrollIntentTracker.current;if(f!=null&&f.isLocked())return!1;for(let m of c){let y=qn(m),w=oa(m,l,y);if(w.x||w.y){let{speed:b,direction:h}=aa(m,d,p,a==null?void 0:a.acceleration,a==null?void 0:a.threshold,void 0,y);if(f)for(let v of Yi)f[v].isLocked(h[v])&&(b[v]=0,h[v]=0);if(h.x||h.y){let{x:v,y:g}=l??h,_=v*b.x,E=g*b.y;if(_||E){let A=(o=M(this,At))==null?void 0:o.by;if(this.autoScrolling&&A&&(A.x&&!_||A.y&&!E))continue;return G(this,At,{element:m,by:{x:_,y:E}}),we.schedule(M(this,$r)),!0}}}}}return G(this,At,void 0),!1};let e=null,n=null,i=Sn(()=>{let{position:s,source:a}=t.dragOperation;if(!s)return null;let o=Or(Qe(a==null?void 0:a.element),s.current);return o&&(e=o),o??e}),r=Sn(()=>{let s=i.value,{documentElement:a}=Mt(s);if(!s||s===a){let{target:o}=t.dragOperation,c=o==null?void 0:o.element;if(c){let u=Gn(c,{excludeElement:!1});return n=u,u}}if(s){let o=Gn(s,{excludeElement:!1});return this.autoScrolling&&n&&o.size<(n==null?void 0:n.size)?n:(n=o,o)}return n=null,null},xn);this.getScrollableElements=()=>r.value,this.scrollIntentTracker=new Cu(t),this.destroy=t.monitor.addEventListener("dragmove",s=>{this.disabled||s.defaultPrevented||!Jn(t.dragOperation.activatorEvent)||!s.by||this.scroll({by:s.by})&&s.preventDefault()})}};un=Ce(zr);Zr=new WeakMap;At=new WeakMap;$r=new WeakMap;lt(un,4,"autoScrolling",Ha,li,Zr);ie(un,li);function _a(t){return t>0?at.Forward:t<0?at.Reverse:at.Idle}var Au=class{constructor(t){this.scheduler=t,this.pending=!1,this.tasks=new Set,this.resolvers=new Set,this.flush=()=>{let{tasks:e,resolvers:n}=this;this.pending=!1,this.tasks=new Set,this.resolvers=new Set;for(let i of e)i();for(let i of n)i()}}schedule(t){return this.tasks.add(t),this.pending||(this.pending=!0,this.scheduler(this.flush)),new Promise(e=>this.resolvers.add(e))}},Du=new Au(t=>{typeof requestAnimationFrame=="function"?requestAnimationFrame(t):t()}),Tu=10,Fr=class extends q{constructor(e,n){super(e,n);let i=e.registry.plugins.get(li);if(!i)throw new Error("AutoScroller plugin depends on Scroller plugin");this.destroy=Z(()=>{var r,s,a;if(this.disabled)return;let{position:o,status:c}=e.dragOperation;if(c.dragging){let u={acceleration:(r=this.options)==null?void 0:r.acceleration,threshold:typeof((s=this.options)==null?void 0:s.threshold)=="number"?{x:this.options.threshold,y:this.options.threshold}:(a=this.options)==null?void 0:a.threshold};if(i.scroll(void 0,u)){i.autoScrolling=!0;let l=setInterval(()=>Du.schedule(()=>i.scroll(void 0,u)),Tu);return()=>{clearInterval(l)}}else i.autoScrolling=!1}})}};Fr.configure=me(Fr);var ci=Fr,wa={capture:!0,passive:!0},rn,Ru=class extends ye{constructor(t){super(t),I(this,rn),this.handleScroll=()=>{M(this,rn)==null&&G(this,rn,setTimeout(()=>{this.manager.collisionObserver.forceUpdate(!1),G(this,rn,void 0)},50))};let{dragOperation:e}=this.manager;this.destroy=Z(()=>{var n,i,r;if(e.status.dragging){let a=(r=(i=(n=e.source)==null?void 0:n.element)==null?void 0:i.ownerDocument)!=null?r:document;return a.addEventListener("scroll",this.handleScroll,wa),()=>{a.removeEventListener("scroll",this.handleScroll,wa)}}})}};rn=new WeakMap;var Iu="* { user-select: none !important; -webkit-user-select: none !important; }",Wu=class extends q{constructor(t){super(t),this.manager=t;let e=t.registry.plugins.get(ai),n=e==null?void 0:e.register(Iu);if(this.destroy=Z(()=>{let{dragOperation:i}=this.manager;if(i.status.initialized)return Cr(),document.addEventListener("selectionchange",Cr,{capture:!0}),()=>{document.removeEventListener("selectionchange",Cr,{capture:!0})}}),n){let i=this.destroy.bind(this);this.destroy=()=>{n(),i()}}}};function Cr(){var t;(t=document.getSelection())==null||t.removeAllRanges()}function Qt(t,e){let n=ba(t.key);return e.some(i=>ba(i)===n)}var Lu=new Set(["alt","altgraph","backspace","capslock","control","delete","end","enter","escape","home","insert","meta","pagedown","pageup","pause","printscreen","shift","space","tab","arrowdown","arrowleft","arrowright","arrowup","f1","f2","f3","f4","f5","f6","f7","f8","f9","f10","f11","f12"]);function ba(t){if(t===" "||t==="Spacebar")return"space";if(/^Key[A-Z]$/.test(t))return t.slice(3).toLowerCase();if(/^Digit[0-9]$/.test(t))return t.slice(5);if(t.length===1)return t.toLowerCase();let e=t.toLowerCase();return Lu.has(e)?e:t}var sn=Object.freeze({offset:10,keyboardCodes:{start:["Space","Enter"],cancel:["Escape"],end:["Space","Enter","Tab"],up:["ArrowUp"],down:["ArrowDown"],left:["ArrowLeft"],right:["ArrowRight"]},preventActivation(t,e){var n;let i=(n=e.handle)!=null?n:e.element;return t.target!==i}}),be,si=class extends Ht{constructor(e,n){super(e),this.manager=e,this.options=n,I(this,be,[]),this.listeners=new Pr,this.handleSourceKeyDown=(i,r,s)=>{if(this.disabled||i.defaultPrevented||!Ct(i.target)||r.disabled)return;let{keyboardCodes:a=sn.keyboardCodes,preventActivation:o=sn.preventActivation}=s??{};Qt(i,a.start)&&this.manager.dragOperation.status.idle&&(o!=null&&o(i,r)||this.handleStart(i,r,s))}}bind(e,n=this.options){return Z(()=>{var r;let s=(r=e.handle)!=null?r:e.element,a=o=>{Jn(o)&&this.handleSourceKeyDown(o,e,n)};if(s)return s.addEventListener("keydown",a),()=>{s.removeEventListener("keydown",a)}})}handleStart(e,n,i){let{element:r}=n;if(!r)throw new Error("Source draggable does not have an associated element");e.preventDefault(),e.stopImmediatePropagation(),la(r);let{center:s}=new bt(r);if(this.manager.actions.start({event:e,coordinates:{x:s.x,y:s.y},source:n}).signal.aborted)return this.cleanup();this.sideEffects();let o=Mt(r),c=[this.listeners.bind(o,[{type:"keydown",listener:u=>this.handleKeyDown(u,n,i),options:{capture:!0}}])];M(this,be).push(...c)}handleKeyDown(e,n,i){let{keyboardCodes:r=sn.keyboardCodes}=i??{};if(Qt(e,[...r.end,...r.cancel])){e.preventDefault();let s=Qt(e,r.cancel);this.handleEnd(e,s);return}Qt(e,r.up)?this.handleMove("up",e):Qt(e,r.down)&&this.handleMove("down",e),Qt(e,r.left)?this.handleMove("left",e):Qt(e,r.right)&&this.handleMove("right",e)}handleEnd(e,n){this.manager.actions.stop({event:e,canceled:n}),this.cleanup()}handleMove(e,n){var i,r;let{shape:s}=this.manager.dragOperation,a=n.shiftKey?5:1,o={x:0,y:0},c=(r=(i=this.options)==null?void 0:i.offset)!=null?r:sn.offset;if(typeof c=="number"&&(c={x:c,y:c}),!!s){switch(e){case"up":o={x:0,y:-c.y*a};break;case"down":o={x:0,y:c.y*a};break;case"left":o={x:-c.x*a,y:0};break;case"right":o={x:c.x*a,y:0};break}(o.x||o.y)&&(n.preventDefault(),this.manager.actions.move({event:n,by:o}))}}sideEffects(){let e=this.manager.registry.plugins.get(ci);(e==null?void 0:e.disabled)===!1&&(e.disable(),M(this,be).push(()=>{e.enable()}))}cleanup(){M(this,be).forEach(e=>e()),G(this,be,[])}destroy(){this.cleanup(),this.listeners.clear()}};be=new WeakMap;si.configure=me(si);si.defaults=sn;var zu=si,te,$u=class extends hr{constructor(){super(...arguments),I(this,te)}onEvent(t){switch(t.type){case"pointerdown":G(this,te,Gt(t));break;case"pointermove":if(!M(this,te))return;let{x:e,y:n}=Gt(t),i={x:e-M(this,te).x,y:n-M(this,te).y},{tolerance:r}=this.options;if(r&&kn(i,r)){this.abort();return}kn(i,this.options.value)&&this.activate(t);break;case"pointerup":this.abort();break}}abort(){G(this,te,void 0)}};te=new WeakMap;var xe,ee,Fu=class extends hr{constructor(){super(...arguments),I(this,xe),I(this,ee)}onEvent(t){switch(t.type){case"pointerdown":G(this,ee,Gt(t)),G(this,xe,setTimeout(()=>this.activate(t),this.options.value));break;case"pointermove":if(!M(this,ee))return;let{x:e,y:n}=Gt(t),i={x:e-M(this,ee).x,y:n-M(this,ee).y};kn(i,this.options.tolerance)&&this.abort();break;case"pointerup":this.abort();break}}abort(){M(this,xe)&&(clearTimeout(M(this,xe)),G(this,ee,void 0),G(this,xe,void 0))}};xe=new WeakMap;ee=new WeakMap;var Ee=class{};Ee.Delay=Fu;Ee.Distance=$u;var Nr=Object.freeze({activationConstraints(t,e){var n;let{pointerType:i,target:r}=t;if(!(i==="mouse"&&Ct(r)&&(e.handle===r||(n=e.handle)!=null&&n.contains(r))))return i==="touch"?[new Ee.Delay({value:250,tolerance:5})]:fa(r)&&!t.defaultPrevented?[new Ee.Delay({value:200,tolerance:0})]:[new Ee.Delay({value:200,tolerance:10}),new Ee.Distance({value:5})]},preventActivation(t,e){var n;let{target:i}=t;if(i===e.element||i===e.handle||!Ct(i)||(n=e.handle)!=null&&n.contains(i))return!1;let r=Qo(i);return r===e.element?!1:!!r}}),Se,oi=class extends Ht{constructor(e,n){super(e),this.manager=e,this.options=n,I(this,Se,new Set),this.listeners=new Pr,this.latest={event:void 0,coordinates:void 0},this.handleMove=()=>{let{event:i,coordinates:r}=this.latest;!i||!r||this.manager.actions.move({event:i,to:r})},this.handleCancel=this.handleCancel.bind(this),this.handlePointerUp=this.handlePointerUp.bind(this),this.handleKeyDown=this.handleKeyDown.bind(this)}activationConstraints(e,n,i=this.options){let{activationConstraints:r=Nr.activationConstraints}=i??{};return typeof r=="function"?r(e,n):r}bind(e,n=this.options){return Z(()=>{var r;let s=new AbortController,{signal:a}=s,o=u=>{da(u)&&this.handlePointerDown(u,e,n)},c=[(r=e.handle)!=null?r:e.element];n!=null&&n.activatorElements&&(Array.isArray(n.activatorElements)?c=n.activatorElements:c=n.activatorElements(e));for(let u of c)u&&(Xu(u.ownerDocument.defaultView),u.addEventListener("pointerdown",o,{signal:a}));return()=>s.abort()})}handlePointerDown(e,n,i){if(this.disabled||!e.isPrimary||e.button!==0||!Ct(e.target)||n.disabled||ju(e)||!this.manager.dragOperation.status.idle)return;let{preventActivation:r=Nr.preventActivation}=i??{};if(r!=null&&r(e,n))return;let{target:s}=e,a=wt(s)&&s.draggable&&s.getAttribute("draggable")==="true",o=Jt(n.element),{x:c,y:u}=Gt(e);this.initialCoordinates={x:c*o.scaleX+o.x,y:u*o.scaleY+o.y};let d=this.activationConstraints(e,n,i);e.sensor=this;let l=new To(d,b=>this.handleStart(n,b));l.signal.onabort=()=>this.handleCancel(e),l.onEvent(e),this.controller=l;let{pointerId:p}=e,f=b=>h=>{h.pointerId===p&&b(h)},m=Nn(),y=this.listeners.bind(m,[{type:"pointermove",listener:f(b=>this.handlePointerMove(b,n))},{type:"pointerup",listener:f(this.handlePointerUp),options:{capture:!0}},{type:"pointercancel",listener:f(this.handleCancel)},{type:"dragstart",listener:a?this.handleCancel:ti,options:{capture:!0}}]),w=()=>{y(),this.initialCoordinates=void 0};M(this,Se).add(w)}handlePointerMove(e,n){var i,r;((i=this.controller)==null?void 0:i.activated)===!1&&((r=this.controller)==null||r.onEvent(e));let{status:s}=this.manager.dragOperation;if(s.initializing||s.dragging){let a=Gt(e),o=Jt(n.element);a.x=a.x*o.scaleX+o.x,a.y=a.y*o.scaleY+o.y,e.preventDefault(),e.stopPropagation(),this.latest.event=e,this.latest.coordinates=a,s.dragging&&we.schedule(this.handleMove)}}handlePointerUp(e){let{status:n}=this.manager.dragOperation;if(!n.idle){e.preventDefault(),e.stopPropagation();let i=!n.initialized,r=Mt(e.target),s=r.defaultView;if(!i&&s){let a=o=>{o.target===r.body&&o.detail>0&&(o.preventDefault(),o.stopImmediatePropagation())};s.addEventListener("click",a,!0),s.setTimeout(()=>{s.removeEventListener("click",a,!0)},0)}this.manager.actions.stop({event:e,canceled:i})}this.cleanup()}handleKeyDown(e){e.key==="Escape"&&(e.preventDefault(),this.handleCancel(e))}handleStart(e,n){let{manager:i,initialCoordinates:r}=this;if(!r||!i.dragOperation.status.idle||n.defaultPrevented)return;let s=i.actions.start({coordinates:r,event:n,source:e});if(s.signal.aborted)return this.cleanup();n.preventDefault();let o=Mt(n.target).body;try{o.setPointerCapture(n.pointerId)}catch{this.handleCancel(n);return}let c=Ct(n.target)?[n.target,o]:o,u=this.listeners.bind(c,[{type:"touchmove",listener:ti,options:{passive:!1}},{type:"click",listener:ti},{type:"contextmenu",listener:ti},{type:"keydown",listener:this.handleKeyDown}]);M(this,Se).add(u),i.renderer.rendering.then(()=>{!s.signal.aborted&&i.dragOperation.status.dragging&&we.schedule(this.handleMove)})}handleCancel(e){let{dragOperation:n}=this.manager;n.status.initialized&&this.manager.actions.stop({event:e,canceled:!0}),this.cleanup()}cleanup(){let{controller:e}=this;this.controller=void 0,e&&!e.signal.aborted&&e.abort(),this.latest={event:void 0,coordinates:void 0},M(this,Se).forEach(n=>n()),M(this,Se).clear()}destroy(){this.cleanup(),this.listeners.clear()}};Se=new WeakMap;oi.configure=me(oi);oi.defaults=Nr;var Nu=oi;function ju(t){return"sensor"in t}function ti(t){t.preventDefault()}function Vu(){}var xa=new WeakSet;function Xu(t){!t||xa.has(t)||(t.addEventListener("touchmove",Vu,{capture:!1,passive:!1}),xa.add(t))}var Ar={modifiers:[],plugins:[cu,ci,fu,ku,Wu],sensors:[Nu,zu]},Ka=class extends Vo{constructor(t={}){let e=Yt(t.plugins,Ar.plugins),n=Yt(t.sensors,Ar.sensors),i=Yt(t.modifiers,Ar.modifiers);super(Yr(an({},t),{plugins:[Ru,li,ai,...e],sensors:n,modifiers:i}))}},Ua,Ba,jr,Rt,Jr,Qr,fn=class extends(jr=dt,Ba=[k],Ua=[k],jr){constructor(t,e){var n=t,{element:i,effects:r=()=>[],handle:s}=n,a=ka(n,["element","effects","handle"]);super(an({effects:()=>[...r(),()=>{var o,c;let{manager:u}=this;if(!u)return;let l=((c=(o=this.sensors)==null?void 0:o.map(pe))!=null?c:[...u.sensors]).map(p=>{let f=p instanceof Ht?p:u.registry.register(p.plugin),m=p instanceof Ht?void 0:p.options;return f.bind(this,m)});return function(){l.forEach(f=>f())}}]},a),e),I(this,Jr,z(Rt,8,this)),z(Rt,11,this),I(this,Qr,z(Rt,12,this)),z(Rt,15,this),this.element=i,this.handle=s}};Rt=Ce(jr);Jr=new WeakMap;Qr=new WeakMap;lt(Rt,4,"handle",Ba,fn,Jr);lt(Rt,4,"element",Ua,fn,Qr);ie(Rt,fn);var qa,Ga,Vr,It,ts,Dr,Za,Ja,on,es,Qa=class extends(Vr=ft,Ga=[k],qa=[k],Vr){constructor(t,e){var n=t,{element:i,effects:r=()=>[]}=n,s=ka(n,["element","effects"]);let{collisionDetector:a=ha}=s,o=u=>{let{manager:d,element:l}=this;if(!l||u===null){this.shape=void 0;return}if(!d)return;let p=new bt(l),f=O(()=>this.shape);return p&&(f!=null&&f.equals(p))?f:(this.shape=p,p)},c=pt(!1);super(Yr(an({},s),{collisionDetector:a,effects:()=>[...r(),()=>{let{element:u,manager:d}=this;if(!d)return;let{dragOperation:l}=d,{source:p}=l;c.value=!!(p&&l.status.initialized&&u&&!this.disabled&&this.accepts(p))},()=>{let{element:u}=this;if(c.value&&u){let d=new sa(u,o);return()=>{d.disconnect(),this.shape=void 0}}},()=>{var u;if((u=this.manager)!=null&&u.dragOperation.status.initialized)return()=>{this.shape=void 0}}]}),e),I(this,on),I(this,ts,z(It,8,this)),z(It,11,this),I(this,es,z(It,12,this)),z(It,15,this),this.element=i,this.refreshShape=()=>o()}set element(t){G(this,on,t,Ja)}get element(){var t;return(t=this.proxy)!=null?t:M(this,on,Za)}};It=Ce(Vr);ts=new WeakMap;on=new WeakSet;es=new WeakMap;Dr=lt(It,20,"#element",Ga,on,ts),Za=Dr.get,Ja=Dr.set;lt(It,4,"proxy",qa,Qa,es);ie(It,Qa);return xl(Yu);})();
+</script>
 <script>
 /* ts-fsrs 5.4.2 —— 复习打卡的间隔重复排期（https://github.com/open-spaced-repetition/ts-fsrs）
  * MIT License
@@ -8161,7 +8326,7 @@ function overlayScrollbarOrigin(host){
   return {x:0,y:0};
 }
 function installAutoHideScrollbars(){
-  const states=new WeakMap(),active=new Set();
+  const states=new WeakMap(),active=new Set(),pending=new Set();
   let frame=0;
   function paint(state){
     if(!active.has(state))return;
@@ -8190,7 +8355,7 @@ function installAutoHideScrollbars(){
   }
   function dispose(state){
     if(!active.has(state))return;
-    active.delete(state);
+    active.delete(state);pending.delete(state);
     clearTimeout(state.timer);clearTimeout(state.cleanup);
     state.observer.disconnect();state.bars.forEach(b=>b.track.remove());
     states.delete(state.el);
@@ -8238,24 +8403,35 @@ function installAutoHideScrollbars(){
         // Wheel events over the overlay must still reach its scroll container.
         track.addEventListener('wheel',e=>{e.preventDefault();el.scrollBy({left:e.deltaX,top:e.deltaY});},{passive:false});
       }
-      state.observer=new ResizeObserver(()=>paint(state));state.observer.observe(el);
+      state.observer=new ResizeObserver(()=>queuePaint(state));state.observer.observe(el);
     }
-    clearTimeout(state.cleanup);paint(state);
-    if(!active.has(state))return;
-    requestAnimationFrame(()=>{if(active.has(state))state.bars.forEach(b=>b.track.classList.add('visible'));});
-    hideLater(state);return state;
+    clearTimeout(state.cleanup);
+    state.reveal=true;
+    queuePaint(state);
   }
-  function update(){
+  function queuePaint(state){
+    pending.add(state);
     if(frame)return;
-    frame=requestAnimationFrame(()=>{frame=0;active.forEach(paint);});
+    frame=requestAnimationFrame(()=>{
+      frame=0;
+      const batch=[...pending];pending.clear();
+      for(const state of batch){
+        paint(state);
+        if(state.reveal&&active.has(state)){
+          state.reveal=false;
+          state.bars.forEach(b=>b.track.classList.add('visible'));
+          hideLater(state);
+        }
+      }
+    });
   }
+  function update(){active.forEach(queuePaint);}
   document.addEventListener('scroll',e=>{
     const el=e.target===document?document.scrollingElement:e.target;
     if(el?.nodeType===1)reveal(el);
-    update();
   },{capture:true,passive:true});
   document.addEventListener('pointermove',e=>{
-    if(e.pointerType==='touch'||e.target.closest?.('.td-scrollbar'))return;
+    if(e.buttons||e.pointerType==='touch'||e.target.closest?.('.td-scrollbar'))return;
     for(let el=e.target;el?.nodeType===1;el=el.parentElement){
       const rect=el.getBoundingClientRect();
       const vertical=el.scrollHeight>el.clientHeight&&e.clientX>=rect.left+el.clientLeft+el.clientWidth-10&&e.clientX<=rect.right;
@@ -8272,7 +8448,7 @@ function installAutoHideScrollbars(){
   },{capture:true,passive:true});
   // Page switches can hide a scroller without changing its dimensions or firing scroll.
   new MutationObserver(records=>{
-    if(active.size&&records.some(record=>!record.target.closest?.('.td-scrollbar')&&
+    if(active.size&&records.some(record=>!record.target.closest?.('.td-scrollbar,#sbGhost')&&
       (record.type!=='childList'||[...record.addedNodes,...record.removedNodes].some(node=>node.nodeType!==1||!node.matches('.td-scrollbar')))))update();
   }).observe(document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['class','style','hidden','open','data-profile-required','data-onboarding']});
   window.addEventListener('resize',update,{passive:true});
@@ -8938,8 +9114,13 @@ function updateChrome(){
   document.querySelector('.sidebar').classList.toggle('recording', rec);
   // 录音中: 文稿右缘锚点跟随正文一起退到下层, 避免误触跳转
   syncTranscriptAnchorRecording(rec);
+  syncRecordingFind();
   // 录音周期: 顶栏那一排操作钮整排渐隐(状态吊牌是独立层, 不受影响)
   document.querySelector('.topbar').classList.toggle('hide', rec);
+  // 录音周期: 看不见的区域也不能被键盘选中(批量选择条里还有删除)
+  document.querySelector('.sidebar').inert = rec;
+  $('drawer').inert = rec;
+  $('selbar').inert = rec;
   syncRecordDock();
   // 阅读工具条: 只在"正在查看项目 + 无多选"时吸顶(有选中就让位给选择条)
   $('toolpanel').classList.toggle('show', inView && !rec && selected.size === 0);
@@ -9049,7 +9230,7 @@ function settleLiveRow(){
 function updateRefineUI(){
   const job = view && jobs[view.id];
   const queued = !!(job && (job.state === 'run' || job.state === 'wait'));
-  const refineBusy = queued && ['refine','import','cloud'].includes(job.kind);
+  const refineBusy = projectLockedByJob();
   const summaryBusy = queued && job.kind === 'summary';
   const canSummarize = !!(view && !view.summary && view.refinished &&
     (view.segments || []).some(s=>s && String(s.text||'').trim()));
@@ -9090,6 +9271,11 @@ function updateRefineUI(){
   $('audiobar').classList.toggle('locked', refineBusy);
   paintRefineLive();
   paintTodo();
+}
+/* 转录/精修排队或进行中: 当前项目锁定, 页面操作和播放都不开放 */
+function projectLockedByJob(){
+  const job = view && jobs[view.id];
+  return !!job && ['run','wait'].includes(job.state) && ['refine','import','cloud'].includes(job.kind);
 }
 
 /* 摘要生成中: 副标题跟着阶段走(第几段/合并中)，右侧数字跟着已生成 token 滚动。
@@ -9393,7 +9579,8 @@ function handleEvent(e){
   }
   if(e.type === 'line' && view === null){
     settleLiveRow();           // VAD 断句: 流式行让位给权威整句
-    addSeg(e, true); ensureFeed();
+    const row = addSeg(e, true); ensureFeed();
+    appendRecordingFindResult(row);
   }
   if(e.type === 'mode_switch' && view === null){
     $('feed').appendChild(createSourceMark(e.t, e.mode)); ensureFeed(); anchorLive();
@@ -9560,10 +9747,11 @@ function anchorLive(){
   const wrap = $('feedwrap'), feed = $('feed');
   const active = (state==='recording'||state==='paused'||state==='stopping');
   if(!active || view !== null){ wrap.style.removeProperty('--live-tail-space'); return; }  // 暂停/收尾也保住锚定, 不跳底
-  const anchorY = wrap.clientHeight * 0.62;         // 锚定线(中间偏下)
+  if($('btnReturnLive').hidden === false || userScrolling || transcriptSelectionInProgress()) return;
+  const viewport = wrap.clientHeight, anchorY = viewport * 0.62;
   // 底部留出 38% 视口的空白, 最新一行才能真正滚到锚定线上
-  wrap.style.setProperty('--live-tail-space', `${Math.round(wrap.clientHeight - anchorY)}px`);
-  if(userScrolling) return;
+  const tail = `${Math.round(viewport - anchorY)}px`;
+  if(wrap.style.getPropertyValue('--live-tail-space')!==tail)wrap.style.setProperty('--live-tail-space',tail);
   const target = Math.max(0, feed.offsetTop + feed.offsetHeight - anchorY);
   if(Math.abs(wrap.scrollTop - target) < 1) return;
   wrap.scrollTo({top: target, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'});
@@ -9706,7 +9894,6 @@ function createTranscriptNoteImage(t,node,noteIndex=null,contentIndex=null,sid=v
   figure.dataset.t=t;
   figure.dataset.imageSessionId=sid||'';
   figure.dataset.imageFile=String(node&&node.file||'');
-  figure.title='双击用系统默认图片查看器打开';
   if(Number.isInteger(noteIndex))figure.dataset.noteIndex=noteIndex;
   if(Number.isInteger(contentIndex))figure.dataset.noteContentIndex=contentIndex;
   figure.dataset.noteLayout=node&&node.layout||'inline';
@@ -9729,6 +9916,8 @@ function createTranscriptNoteImage(t,node,noteIndex=null,contentIndex=null,sid=v
 }
 async function renderTimelineNotes(isCurrent=null){
   if(isCurrent&&!isCurrent())return;
+  // 保存图片或笔记后的重建（不是首次打开文稿）：阅读位置不能动
+  const readingAnchor=isCurrent?null:transcriptReadingAnchor();
   clearImageDropPreview();
   $('feed').querySelectorAll('.seg.note,.transcript-note-card,.transcript-note-image,.transcript-image-divider').forEach(row=>row.remove());
   resetImageAsideFlow();
@@ -9768,6 +9957,7 @@ async function renderTimelineNotes(isCurrent=null){
   const hasTimeline=$('feed').querySelector('.seg:not(.sum),.transcript-note-image');
   $('empty').style.display=hasTimeline?'none':'flex';$('feed').style.display=hasTimeline?'block':'none';
   if(!hasTimeline)$('emptyText').textContent='（该项目无语音内容）';
+  restoreTranscriptReadingPosition(readingAnchor);
   if(!$('allNotesPop').hidden)renderAllNotes();
   if(typeof reviewAfterTimelineRender==='function')reviewAfterTimelineRender();
 }
@@ -9796,6 +9986,7 @@ function applyStatus(d){
   const pill = $('statepill');
   pill.className = 'statepill ' + (state==='recording'?'rec':state==='paused'?'paused':'idle');
   $('stateTxt').textContent = state==='recording'?'录制中':state==='paused'?'已暂停':state==='stopping'?'正在收尾…':'未开始';
+  syncRecordingFind();
   $('timer').textContent = fmt(d.elapsed);
   if($('stopmodal').classList.contains('show')) syncStopCard();
   if(RECORD_MODES.includes(d.mode)) recMode = d.mode;
@@ -9950,6 +10141,7 @@ function syncSourceButton(){
 function sourceClose(){
   if(sourcePending) return;
   $('srcfan').classList.remove('show');
+  $('srcfan').inert = true;
   $('btnSrc').classList.remove('on');
   $('btnSrc').setAttribute('aria-expanded', 'false');
 }
@@ -9963,7 +10155,7 @@ $('btnSrc').onclick = e=>{
   e.stopPropagation();
   if($('srcfan').classList.contains('show')){ sourceClose(); return; }
   volClose();
-  $('srcfan').classList.add('show');
+  $('srcfan').inert = false; $('srcfan').classList.add('show');
   $('btnSrc').classList.add('on');
   $('btnSrc').setAttribute('aria-expanded', 'true');
 };
@@ -10059,6 +10251,17 @@ function hideRecordLoading(){
 }
 window.addEventListener('keydown',event=>{
   if(!recordLoadingBusy)return;
+  event.preventDefault();event.stopImmediatePropagation();
+},true);
+
+// 录音周期只放行和录音有关的快捷键(查找、记笔记、拍照); 编辑类(复制粘贴等)不受影响。
+window.addEventListener('keydown',event=>{
+  if(!['recording','paused','stopping'].includes(state))return;
+  const key=String(event.key).toLowerCase();
+  const blocked=event.metaKey||event.ctrlKey
+    ?!event.altKey&&['k','b','u','e',',','/'].includes(key)
+    :event.code==='Space'&&!typingHere(event)&&!event.target.closest?.('button,[role="button"],a,summary,select');
+  if(!blocked)return;
   event.preventDefault();event.stopImmediatePropagation();
 },true);
 
@@ -11063,26 +11266,79 @@ $('cloudKey').addEventListener('blur', async ()=>{
 });
 $('cloudTest').onclick = ()=> cloudTest(false);
 
-/* ---- 工具条提示气泡: 挂在 body 上的 fixed 层, 不会被滚动容器裁切 ---- */
+/* ---- 悬浮提示气泡: 全软件唯一的悬浮提示, 挂在 body 上的 fixed 层, 不会被滚动容器裁切。
+   代码里照常写 title / data-tip: title 一律收进 data-tip, 原生提示就不会再弹。
+   收走后 el.title 读回来是空的, 判断按钮身份请用 aria-label 或 dataset。 ---- */
 (function(){
+  const TIP_DELAY_MS = 500;                     // 所有提示统一的显示延迟
+  const TIP_GAP = 14;                           // 气泡中心到控件边缘的距离
+  const EDGE = 8;                               // 气泡离视口边缘的最小距离
   const tip = $('tip');
-  document.addEventListener('mouseover', e=>{
-    const b = e.target.closest('[data-tip]');
-    if(!b){ tip.classList.remove('show'); return; }
-    const r = b.getBoundingClientRect();
-    tip.textContent = b.dataset.tip;
-    tip.style.left = (r.left + r.width/2) + 'px';
-    tip.style.top  = (r.bottom + 14) + 'px';
+  let anchor = null, timer = 0;
+
+  function adoptTitle(el){
+    const text = el.getAttribute('title');
+    if(text === null) return;                   // 我们自己移除 title 也会触发观察器, 这里跳过
+    el.removeAttribute('title');
+    if(text) el.dataset.tip = text; else delete el.dataset.tip;
+    // title 曾是纯图标按钮的无障碍名称, 收走时要补上
+    const iconOnly = el.matches('button,a,[role="button"]') && !el.textContent.trim() && !el.hasAttribute('aria-label');
+    if(text && (iconOnly || el.hasAttribute('data-tip-label'))){
+      el.setAttribute('aria-label', text);
+      el.setAttribute('data-tip-label', '');
+    }
+  }
+  function place(){
+    const r = anchor.getBoundingClientRect();
+    tip.textContent = anchor.dataset.tip;
+    const halfW = tip.offsetWidth/2, halfH = tip.offsetHeight/2;
+    let x = r.left + r.width/2;
+    if(x + halfW > innerWidth - EDGE) x = innerWidth - EDGE - halfW;   // 贴边时收回视口内
+    if(x - halfW < EDGE) x = EDGE + halfW;
+    let y = r.bottom + TIP_GAP;
+    if(y + halfH > innerHeight - EDGE) y = r.top - TIP_GAP;            // 底部放不下就翻到上方
+    tip.style.left = x + 'px';
+    tip.style.top = y + 'px';
+  }
+  function show(){
+    if(!anchor || !anchor.isConnected || !anchor.dataset.tip) return;
+    place();
     tip.classList.add('show');
-    requestAnimationFrame(()=>{                 // 贴边时收回视口内
-      const w = tip.offsetWidth, half = w/2;
-      let x = r.left + r.width/2;
-      if(x + half > innerWidth - 8) x = innerWidth - 8 - half;
-      if(x - half < 8) x = 8 + half;
-      tip.style.left = x + 'px';
-    });
+  }
+  // 收起但记住 anchor: 指针离开这个控件之前, 不再重新计时
+  function dismiss(){
+    clearTimeout(timer);
+    tip.classList.remove('show');
+  }
+  function reset(){ dismiss(); anchor = null; }
+
+  document.addEventListener('mouseover', e=>{
+    if(e.buttons){ reset(); return; }           // 拖动途中不弹提示
+    const el = e.target.closest('[data-tip],[title]');
+    if(!el){ reset(); return; }
+    adoptTitle(el);
+    if(el === anchor) return;
+    reset();
+    if(!el.dataset.tip) return;
+    anchor = el;
+    timer = setTimeout(show, TIP_DELAY_MS);
   });
-  document.addEventListener('mouseleave', ()=> tip.classList.remove('show'));
+  document.addEventListener('mouseleave', reset);
+  document.addEventListener('mousedown', dismiss, true);
+  document.addEventListener('keydown', dismiss, true);
+  // 只有控件真的被滚走才收起; 回放跟随滚文稿时, 悬在播放键上的提示不受影响
+  document.addEventListener('scroll', e=>{ if(anchor && e.target.contains(anchor)) dismiss(); }, true);
+  addEventListener('blur', reset);
+
+  // 动态改写的 title(录音键、音量等)也接管, 并同步到正在显示的气泡
+  new MutationObserver(records=>{
+    for(const {target} of records){
+      adoptTitle(target);
+      if(target !== anchor) continue;
+      if(!target.dataset.tip) reset();
+      else if(tip.classList.contains('show')) place();
+    }
+  }).observe(document.documentElement, {subtree:true, attributes:true, attributeFilter:['title']});
 })();
 
 /* ---- 说话人列表: 工具栏向下展开, 跟焦灰块, 改名, 点击跳听 ---- */
@@ -11338,7 +11594,10 @@ $('pillHw').addEventListener('click', ()=>{
   closePops();                                   // 其它弹层收干净(自己不在 closePops 时序里, 随后开)
   const r = $('statepill').getBoundingClientRect();
   pop.style.top = (r.bottom + 8) + 'px';
-  pop.style.right = Math.max(10, window.innerWidth - r.right) + 'px';
+  // 胶囊在左半屏(mac)时向右展开, 否则右对齐(Windows), 都不能顶出窗口
+  const openRight = r.left < window.innerWidth / 2;
+  pop.style.left = openRight ? r.left + 'px' : 'auto';
+  pop.style.right = openRight ? 'auto' : Math.max(10, window.innerWidth - r.right) + 'px';
   pop.classList.add('show');
   $('pillHw').classList.add('open');
   if(!hwData) loadHotwordTemplates();
@@ -12647,58 +12906,64 @@ let imageDropPreviewScrollTop=0;
 let imageDropPreviewStyles=new Map();
 let imageDropMediaVersion=0;
 let imageDropMediaLoading=false;
-function syncImageAsideHover(content){
-  if(content.matches?.('.transcript-heading,.tn-layer,.editbar,.tn-note-body'))return;
-  const row=content.parentElement;if(!row)return;
-  if(content.classList.contains('image-aside-text')){
-    row.style.setProperty('--image-hover-space',content.style.getPropertyValue('--image-aside-space'));
-    row.dataset.imageHoverSide=content.dataset.imageSide;
-  }else{
-    row.style.removeProperty('--image-hover-space');delete row.dataset.imageHoverSide;
-  }
-}
+const IMAGE_ASIDE_VARS=['left','right'].flatMap(side=>['space','reach','overlap'].map(part=>`--image-aside-${side}-${part}`));
 function resetImageAsideFlow(previewOnly=false){
   if(previewOnly){
     for(const [content,saved] of imageDropPreviewStyles){
       content.classList.remove('image-aside-preview');content.classList.toggle('image-aside-text',saved.aside);
       for(const [name,value] of saved.properties){if(value)content.style.setProperty(name,value);else content.style.removeProperty(name);}
       if(saved.side)content.dataset.imageSide=saved.side;else delete content.dataset.imageSide;
-      syncImageAsideHover(content);
     }
     imageDropPreviewStyles.clear();return;
   }
   $('feed').querySelectorAll(previewOnly?'.image-aside-preview':'.image-aside-text').forEach(content=>{
     content.classList.remove('image-aside-text','image-aside-preview');
-    content.style.removeProperty('--image-aside-space');content.style.removeProperty('--image-aside-overlap');
-    delete content.dataset.imageSide;syncImageAsideHover(content);
+    IMAGE_ASIDE_VARS.forEach(name=>content.style.removeProperty(name));
+    delete content.dataset.imageSide;
   });
 }
 function applyImageAsideFlow(anchor,width,height,side,preview=false){
   const top=anchor.querySelector('.tx').getBoundingClientRect().top, bottom=top+height;
+  const pixels=(content,name)=>parseFloat(content.style.getPropertyValue(name))||0;
   const rows=[...$('feed').querySelectorAll('.seg:not(.sum),.transcript-heading,.tn-layer:not([hidden]),.editbar.show')];
   for(const row of rows.slice(rows.indexOf(anchor))){
     const content=row.matches?.('.transcript-heading,.tn-layer,.editbar')?row:row.querySelector('.tx,.tn-note-body');if(!content)continue;
     const rect=content.getBoundingClientRect(), remaining=bottom-rect.top;
     if(remaining<=0)break;
-    if(rect.width-width-16<48)break;
+    // 懒渲染段落的高度是估算值；与图片同高的段落必须真实排版，否则后面的重叠高度会算错。
+    // 这个标记不随每次重排撤销：反复在真实与估算高度间切换会改变文稿高度，把滚动位置和跳转目标带偏。
+    row.classList.add('image-aside-flow');
+    const isText=content.matches?.('.tx');
+    const otherSpace=isText?pixels(content,`--image-aside-${side==='left'?'right':'left'}-space`):0;
+    // 两侧都有图且中间放不下文字时占满余下宽度，文字会自然落到较矮那张图的下方，不会压图也不会挤成一字一行。
+    const squeezed=otherSpace>0&&rect.width-otherSpace-width-16<48;
+    // 只跳过这一行：标题可能已被前一张图的 padding 收窄，后面的段落仍要避让。
+    if(!squeezed&&rect.width-width-16<48)continue;
     if(preview&&!imageDropPreviewStyles.has(content))imageDropPreviewStyles.set(content,{
       aside:content.classList.contains('image-aside-text'),side:content.dataset.imageSide,
-      properties:['--image-aside-space','--image-aside-overlap'].map(name=>[name,content.style.getPropertyValue(name)])});
+      properties:IMAGE_ASIDE_VARS.map(name=>[name,content.style.getPropertyValue(name)])});
     // Saved layout must settle before measuring subsequent rows; animated padding reports old heights.
     const transition=content.style.transition;
     if(!preview)content.style.transition='none';
     content.classList.add('image-aside-text');if(preview)content.classList.add('image-aside-preview');
-    content.dataset.imageSide=side;
-    content.style.setProperty('--image-aside-space',`${width+16}px`);
-    let overlap=Math.min(remaining,rect.height);
-    for(let pass=0;pass<6;pass++){
-      content.style.setProperty('--image-aside-overlap',`${overlap}px`);
-      const next=Math.min(remaining,content.getBoundingClientRect().height);
-      if(Math.abs(next-overlap)<1)break;
-      overlap=next;
+    // 同一段可能先后碰到多张图：两侧各记各的，同侧取较大值，后来的图不能覆盖前面的避让。
+    content.dataset.imageSide=[...new Set([...(content.dataset.imageSide||'').split(' ').filter(Boolean),side])].join(' ');
+    content.style.setProperty(`--image-aside-${side}-space`,`${Math.max(pixels(content,`--image-aside-${side}-space`),squeezed?rect.width-otherSpace:width+16)}px`);
+    if(isText){
+      content.style.setProperty(`--image-aside-${side}-reach`,`${Math.max(pixels(content,`--image-aside-${side}-reach`),remaining+6)}px`);
+      const sides=['left','right'].filter(name=>pixels(content,`--image-aside-${name}-reach`));
+      const text=content.querySelector('.tx-focus,[contenteditable]');
+      const setOverlap=(name,value)=>content.style.setProperty(`--image-aside-${name}-overlap`,`${value}px`);
+      // 占位块先到图片底部，文字比它短再收回到文字底部，否则会把段落撑高。
+      // 测量时不能用超过图片底部的高度：WebKit 会为屏幕上方变高的段落补偿滚动位置，把文稿带到底部。
+      const height=content.style.height;
+      content.style.height=`${rect.height}px`;
+      sides.forEach(name=>setOverlap(name,pixels(content,`--image-aside-${name}-reach`)));
+      const settled=text?text.getBoundingClientRect().height:Infinity;
+      sides.forEach(name=>setOverlap(name,Math.min(pixels(content,`--image-aside-${name}-reach`),settled)));
+      content.style.height=height;
     }
     if(!preview)content.style.transition=transition;
-    syncImageAsideHover(content);
   }
 }
 function scheduleImageDropPreview(key){
@@ -12853,7 +13118,10 @@ async function insertTranscriptImageFiles(files,target,native=false){
       const images=(result.note.content||[]).filter(node=>node.type==='image');
       pending.forEach((item,index)=>{item.file=images[index]?.file;item.card.classList.remove('pending');
         item.card.querySelector('button').disabled=state==='stopping';});
-    }else if(view&&view.id===sid){view.notes=result.notes;renderTimelineNotes();}
+    }else{
+      recordNoteHistory(sid,null,result.note);
+      if(view&&view.id===sid){view.notes=result.notes;renderTimelineNotes();}
+    }
     refreshHistory();
   }catch(error){for(const item of pending)removeRecordingImage(item);toast(error.message||'图片插入失败');}
   finally{if(upload){recordingImageUploads.delete(upload);finishUpload();}}
@@ -13092,7 +13360,7 @@ $('feedwrap').addEventListener('drop',event=>{
 });
 $('feedwrap').addEventListener('scroll',scrollFrameUpdate(()=>{
   if(transcriptImagePointerDrag?.moved)refreshTranscriptImageDragTarget({clientX:transcriptImagePointerDrag.x,clientY:transcriptImagePointerDrag.y});
-  else hideTranscriptImageDropIndicator();
+  else if(currentImageDropTarget)hideTranscriptImageDropIndicator();
 }),{passive:true});
 function registerTranscriptNoteNativeDragBridge(){
   const internals=window.__TAURI_INTERNALS__;
@@ -13260,6 +13528,7 @@ async function persistTranscriptMainImageNode(target,node){
       expected_t:target.note.t,expected_text:target.note.text||'',t:target.note.t,
       text:target.note.text||'',content:transcriptMainImageContent(target,node),assets:[]});
     if(result.error)throw new Error(result.error);
+    recordNoteHistory(sid,target.note,(result.notes||[])[target.noteIndex]);
     if(view&&view.id===sid){view.notes=result.notes||[];renderTimelineNotes();}
     refreshHistory();return true;
   }catch(error){toast(error.message||'图片保存失败');return false;}
@@ -13287,6 +13556,7 @@ async function deleteTranscriptMainImage(target){
         expected_t:target.note.t,expected_text:target.note.text||''});
     }
     if(result.error)throw new Error(result.error);
+    recordNoteHistory(sid,target.note,hasContent?(result.notes||[])[target.noteIndex]:null);
     if(view&&view.id===sid){view.notes=result.notes||[];renderTimelineNotes();}
     refreshHistory();return true;
   }catch(error){toast(error.message||'图片删除失败');return false;}
@@ -13332,6 +13602,9 @@ function createTranscriptImageDivider(anchor,figure){
   anchor.appendChild(divider);
 }
 function refreshTranscriptImageAsideFlow(){
+  keepTranscriptReadingPosition(layoutTranscriptImageAsideFlow);
+}
+function layoutTranscriptImageAsideFlow(){
   resetImageAsideFlow();
   $('feed').querySelectorAll('.image-aside-row').forEach(anchor=>{
     const figure=anchor.querySelector('.transcript-note-image');if(!figure)return;
@@ -13352,20 +13625,44 @@ function refreshTranscriptImageAsideFlow(){
     if(divider)divider.style.height=`${Math.max(32,height)}px`;
   });
 }
-let transcriptAsideFlowWidth=0;
+let transcriptAsideFlowWidth=0,transcriptAsideFlowHeights=null;
+// 取文字本身的高度：段落高度可能被旧占位块撑着，字号变小时看不出变化。
+function asideFlowTextHeights(){
+  return [...$('feed').querySelectorAll('.image-aside-flow')].map(row=>(row.querySelector('.tx-focus,[contenteditable]')||row).offsetHeight).join();
+}
 // 记下视口顶部正在读的那一段；栏宽变化导致重排后，用它把阅读位置补回来
 let transcriptReadingMark=null;
 function transcriptReadingAnchor(){
   const wrap=$('feedwrap'),rect=wrap.getBoundingClientRect();
-  const hit=document.elementFromPoint(rect.left+rect.width/2,rect.top+8);
-  const row=hit&&hit.closest&&hit.closest('#feed .seg,#feed .transcript-heading');
-  return row?{row,offset:row.getBoundingClientRect().top-rect.top}:null;
+  // 段落之间有间隙，顶部也可能压着浮层：往下多探几个点
+  for(const y of [8,40,80,140]){
+    const hit=document.elementFromPoint(rect.left+rect.width/2,rect.top+y);
+    // 笔记行和行内图片在保存后会被重建，不能当锚点
+    const row=hit&&hit.closest&&hit.closest('#feed .seg:not(.note),#feed .transcript-heading');
+    if(row)return {row,offset:row.getBoundingClientRect().top-rect.top};
+  }
+  return null;
+}
+// 重排会让段落先缩短再恢复，WebKit 会因此调整滚动位置；排完把视口顶部那一段放回原处，全程在绘制前完成。
+function keepTranscriptReadingPosition(layout){
+  const anchor=transcriptReadingAnchor();
+  layout();
+  restoreTranscriptReadingPosition(anchor);
+}
+function restoreTranscriptReadingPosition(anchor){
+  if(!anchor||!anchor.row.isConnected)return;
+  const wrap=$('feedwrap'),drift=anchor.row.getBoundingClientRect().top-wrap.getBoundingClientRect().top-anchor.offset;
+  if(Math.abs(drift)>=1)wrap.scrollTop+=drift;
 }
 function markTranscriptReadingPosition(){ if(transcriptSelectionPointer)return; if($('feed').querySelector('.image-aside-row'))transcriptReadingMark=transcriptReadingAnchor(); }
 new ResizeObserver(()=>{
   if(!$('feed').querySelector('.image-aside-row'))return;
   const width=$('feed').clientWidth,widthChanged=transcriptAsideFlowWidth&&Math.abs(width-transcriptAsideFlowWidth)>1;
   transcriptAsideFlowWidth=width;
+  // 平滑滚动经过懒渲染段落时文稿总高会变，但绕排只取决于栏宽和绕排范围内段落的高度。
+  // 这时重排会让段落先缩短再恢复，WebKit 随之打断或补偿滚动，所以跳过。
+  const flowHeights=asideFlowTextHeights();
+  if(!widthChanged&&flowHeights===transcriptAsideFlowHeights){transcriptReadingMark=transcriptReadingAnchor();return;}
   // 栏宽变化会让图片和文字重排；以视口里第一段为锚补偿滚动，阅读位置不跳
   // ResizeObserver 回调时文字已按新宽度重排，所以用重排前滚动时记下的位置
   const anchor=widthChanged?transcriptReadingMark:null;
@@ -13374,6 +13671,7 @@ new ResizeObserver(()=>{
     const wrap=$('feedwrap'),drift=anchor.row.getBoundingClientRect().top-wrap.getBoundingClientRect().top-anchor.offset;
     if(Math.abs(drift)>1)wrap.scrollTop+=drift;
   }
+  transcriptAsideFlowHeights=asideFlowTextHeights();
   transcriptReadingMark=transcriptReadingAnchor();
 }).observe($('feed'));
 $('feedwrap').addEventListener('scroll',scrollFrameUpdate(markTranscriptReadingPosition),{passive:true});
@@ -14310,7 +14608,7 @@ function renderGpop(){
       if(swatch){ setGroupColor(g.name, swatch.dataset.c); return; }
       const op = e.target.closest('.ops2 button');
       if(op){
-        if(op.title === '改名') startGroupRename(r, g.name);
+        if(op.getAttribute('aria-label') === '改名') startGroupRename(r, g.name);
         else askGroupDelete(g.name, g.count);
         return;
       }
@@ -14756,18 +15054,34 @@ function createSidebarAutoScroller(list, getRect, onTick, scheduleFrame, cancelF
    落组走现成 /api/group_set, 纯前端。事件委托在 #histlist 上, 列表 15s 轮询重绘也不掉线。 */
 (function(){
   const list = $('histlist');
-  let down=null, active=false, dragSet=[], ghost=null, dropEl=null, expandTimer=null, lastX=0;
+  let down=null, active=false, dragSet=[], ghost=null, dropEl=null, expandTimer=null, lastX=0, pointer=null, pointerMoved=false;
   const byId = id => (lastHistRaw.find(x=>x.id===id) || null);
   const cardHtml = it => `<div class="gcard"><div class="hn">${esc(it?it.name:'')}</div>`
       + `<div class="hm">${esc(((it&&it.date)||'').slice(5,16))}${(it&&it.duration)?' · '+fmt(it.duration):''}</div></div>`;
-  const autoScroller = createSidebarAutoScroller(
-    list,
-    ()=>list.getBoundingClientRect(),
-    point=>hitTest(point),
-    requestAnimationFrame,
-    cancelAnimationFrame,
-  );
+  const scrollManager = new sidebarDndKit.DragDropManager({
+    sensors: [],
+    plugins: [sidebarDndKit.AutoScroller.configure({threshold:{x:0,y:.15}})],
+  });
+  const scrollSource = new sidebarDndKit.Draggable({id:'sidebar-recordings',element:list},scrollManager);
+  function scrollCoordinates(event){
+    const rect = list.getBoundingClientRect();
+    // 将越过上下边缘的指针映射到列表内侧，滚动仍由库控制。
+    if(event.clientX<rect.left||event.clientX>=rect.right) return {x:rect.left+rect.width/2,y:rect.top+rect.height/2};
+    return {x:event.clientX,y:Math.max(rect.top+1,Math.min(event.clientY,rect.bottom-1))};
+  }
 
+  const updateDrag=scrollFrameUpdate(()=>{
+    if(!pointer)return;
+    if(pointerMoved){
+      pointerMoved=false;
+      moveGhost(pointer);
+      scrollManager.actions.move({event:pointer,to:scrollCoordinates(pointer)});
+    }
+    hitTest(pointer);
+  });
+  scrollManager.monitor.addEventListener('dragstart',()=>{
+    if(pointer) scrollManager.actions.move({event:pointer,to:scrollCoordinates(pointer)});
+  });
   list.addEventListener('pointerdown', e=>{
     if(e.button!==0 || state!=='idle') return;
     const item = e.target.closest('.hitem'); if(!item) return;
@@ -14781,10 +15095,12 @@ function createSidebarAutoScroller(list, getRect, onTick, scheduleFrame, cancelF
     if(!active){
       if(Math.hypot(e.clientX-down.x, e.clientY-down.y) < 5) return;
       start(e);
-    }
-    if(active){ moveGhost(e); hitTest(e); autoScroller.update(e); }
+      scrollManager.actions.start({source:scrollSource,event:e,coordinates:{x:down.x,y:down.y}});
+    }else pointerMoved=true;
+    pointer=e; updateDrag();
   });
-  window.addEventListener('pointerup', e=>{ if(active) finish(); down=null; });
+  list.addEventListener('scroll',()=>{if(pointer)updateDrag();},{passive:true});
+  window.addEventListener('pointerup', e=>{ if(active){hitTest(e);finish();} down=null; });
   window.addEventListener('pointercancel', ()=>{ if(active) finish(true); down=null; });
   list.addEventListener('lostpointercapture', ()=>{ if(active) finish(true); down=null; });
 
@@ -14815,9 +15131,7 @@ function createSidebarAutoScroller(list, getRect, onTick, scheduleFrame, cancelF
     moveSidebarDragGhost(ghost,e,lastX); lastX=e.clientX;
   }
   function hitTest(e){
-    if(ghost) ghost.style.display='none';
     const el=document.elementFromPoint(e.clientX, e.clientY);
-    if(ghost) ghost.style.display='';
     const grp = el && el.closest('.grp');
     if(grp===dropEl) return;
     if(dropEl) dropEl.classList.remove('dropon');
@@ -14835,7 +15149,8 @@ function createSidebarAutoScroller(list, getRect, onTick, scheduleFrame, cancelF
     }
   }
   async function finish(cancelled=false){
-    autoScroller.stop();
+    pointer=null;pointerMoved=false;
+    scrollManager.actions.stop({canceled:cancelled});
     clearTimeout(expandTimer);
     const hadDrop=!cancelled && !!dropEl, g=dropEl?dropEl.dataset.g:null, ids=dragSet.slice();
     document.body.classList.remove('dragging');
@@ -16127,12 +16442,15 @@ async function applyTranscriptFormat(style,toggleKey=null,remember=true,changedC
   clearTimeout(segmentPlaybackTimer);
   const toggleOn=toggleKey&&!transcriptSelectionHasFormat(toggleKey);
   if(!toggleKey&&style.background)style={...style,highlightGroup:crypto.randomUUID()};
+  const before=selected.parts.map(part=>JSON.parse(JSON.stringify(segOf(part.row)?.formats||[])));
   const patches=selected.parts.map(part=>({t:part.t,text:part.text,formats:mergeTranscriptFormats(segOf(part.row)?.formats,part.start,part.end,style,part.text.length,toggleKey,toggleOn,changedColor)}));
   if(toggleKey||changedColor)style={...(patches[0].formats.find(item=>item.start<=selected.parts[0].start&&item.end>selected.parts[0].start)?.style||{})};
   transcriptFormatBusy=true;$('transcriptFormatTools').classList.add('busy');
   try{
     const result=await api('/api/transcript_format',{id:selected.sid,patches});
     if(result.error){toast(result.error);return;}
+    if(patches.some((patch,i)=>formatHistoryKey(patch.formats)!==formatHistoryKey(before[i])))
+      pushEditHistory({sid:selected.sid,kind:'format',parts:patches.map((patch,i)=>({t:patch.t,text:patch.text,before:before[i],after:JSON.parse(JSON.stringify(patch.formats))}))});
     if(remember){
       style={...style};delete style.highlightGroup;
       transcriptFormatDraft={...style};
@@ -16212,16 +16530,32 @@ $('transcriptFormatTools').addEventListener('pointerdown',event=>{
 $('transcriptFormatTools').addEventListener('click',event=>event.stopPropagation());
 $('transcriptFormatTools').addEventListener('keydown',event=>{if(event.key==='Escape'){event.stopPropagation();hideTranscriptFormatTools();}});
 let transcriptSelectionPointer=null;
+function transcriptSelectionInProgress(){
+  if(transcriptSelectionPointer)return true;
+  const selection=window.getSelection();
+  const feed=$('feed');
+  return !!selection&&!selection.isCollapsed&&
+    (feed.contains(selection.anchorNode)||feed.contains(selection.focusNode));
+}
 $('feed').addEventListener('pointerdown',event=>{
-  if(!event.target.closest('.seg:not(.note):not(.sum) .tx'))return;
-  clearTimeout(segmentPlaybackTimer);hideTranscriptFormatTools();transcriptSelectionPointer={x:event.clientX,y:event.clientY};
+  if(event.button!==0||!event.target.closest('.seg:not(.note):not(.sum) .tx'))return;
+  clearTimeout(segmentPlaybackTimer);hideTranscriptFormatTools();
+  transcriptSelectionPointer={x:event.clientX,y:event.clientY,mouse:event.pointerType==='mouse'};
+  // 取消已经发出的平滑跟随，让原生拖选接管当前位置。
+  const wrap=$('feedwrap');
+  wrap.scrollTo({top:wrap.scrollTop,behavior:'instant'});
+  engageTick();
 });
 document.addEventListener('pointermove',event=>{
-  if(transcriptSelectionPointer&&Math.hypot(event.clientX-transcriptSelectionPointer.x,event.clientY-transcriptSelectionPointer.y)>4){transcriptSelectionPointer.moved=true;transcriptSelectionDragUntil=Date.now()+650;clearTimeout(segmentPlaybackTimer);}
+  if(transcriptSelectionPointer&&!transcriptSelectionPointer.moved&&Math.hypot(event.clientX-transcriptSelectionPointer.x,event.clientY-transcriptSelectionPointer.y)>4){
+    transcriptSelectionPointer.moved=true;transcriptSelectionDragUntil=Date.now()+650;
+    clearTimeout(segmentPlaybackTimer);
+  }
 });
 function finishTranscriptSelectionPointer(){
   const pointer=transcriptSelectionPointer;transcriptSelectionPointer=null;
   if(pointer?.moved)transcriptSelectionDragUntil=Date.now()+650;
+  if(pointer)engageTick();
   requestAnimationFrame(()=>{
     if(pointer){markTranscriptReadingPosition();updateTranscriptAnchorFromScroll();}
     refreshTranscriptFormatSelection();
@@ -16229,9 +16563,13 @@ function finishTranscriptSelectionPointer(){
 }
 document.addEventListener('pointerup',finishTranscriptSelectionPointer);
 document.addEventListener('pointercancel',finishTranscriptSelectionPointer);
+window.addEventListener('blur',()=>{if(transcriptSelectionPointer)finishTranscriptSelectionPointer();});
+const scheduleTranscriptFormatSelection=scrollFrameUpdate(()=>{
+  if(!transcriptSelectionPointer&&!transcriptFormatBusy)refreshTranscriptFormatSelection();
+});
 document.addEventListener('selectionchange',()=>{
   const selection=window.getSelection();if(selection&&!selection.isCollapsed)clearTimeout(segmentPlaybackTimer);
-  if(!transcriptSelectionPointer&&!transcriptFormatBusy)requestAnimationFrame(refreshTranscriptFormatSelection);
+  if(!transcriptSelectionPointer&&!transcriptFormatBusy)scheduleTranscriptFormatSelection();
 });
 document.addEventListener('pointerdown',event=>{
   if($('transcriptFormatTools').contains(event.target))return;
@@ -16239,9 +16577,67 @@ document.addEventListener('pointerdown',event=>{
   hideTranscriptFormatTools();
 });
 document.addEventListener('keydown',event=>{if(event.key==='Escape')hideTranscriptFormatTools();});
-// 拖选越过视口边缘会触发原生自动滚动，此时必须保留选区。
-$('feedwrap').addEventListener('scroll',()=>{if(!transcriptSelectionPointer&&Date.now()>=transcriptSelectionDragUntil)clearTranscriptTextSelection();if(!$('transcriptFormatTools').hidden)hideTranscriptFormatTools();},{passive:true});
+// 原生选区由用户取消，滚动只收起浮动工具条。
+$('feedwrap').addEventListener('scroll',()=>{if(!$('transcriptFormatTools').hidden)hideTranscriptFormatTools();},{passive:true});
 window.addEventListener('resize',hideTranscriptFormatTools);
+
+// WKWebView 的原生越界选区每 50ms 滚一次。单击拖选复用逐帧滚动和 WebKit 的选区 API。
+function installTranscriptMouseSelection(){
+  const feed=$('feed'),wrap=$('feedwrap');
+  let anchor=null,point=null,bounds=null;
+  function extend(position){
+    if(!anchor?.node.isConnected)return;
+    const x=Math.max(bounds.left+2,Math.min(position.clientX,bounds.right-2));
+    const y=Math.max(bounds.top+2,Math.min(position.clientY,bounds.bottom-2));
+    const caret=document.caretRangeFromPoint(x,y);
+    if(!caret||!feed.contains(caret.startContainer))return;
+    const selection=window.getSelection();
+    if(selection.anchorNode===anchor.node&&selection.anchorOffset===anchor.offset&&
+       selection.focusNode===caret.startContainer&&selection.focusOffset===caret.startOffset)return;
+    selection.setBaseAndExtent(anchor.node,anchor.offset,caret.startContainer,caret.startOffset);
+  }
+  const scroller=createSidebarAutoScroller(wrap,()=>bounds,extend,requestAnimationFrame,cancelAnimationFrame,0,5);
+  const update=scrollFrameUpdate(()=>{
+    if(!anchor||!point)return;
+    bounds=wrap.getBoundingClientRect();
+    extend(point);
+    scroller.update(point);
+  });
+  feed.addEventListener('mousedown',event=>{
+    if(!transcriptSelectionPointer?.mouse||event.button!==0||event.detail!==1||
+       event.shiftKey||event.altKey||event.ctrlKey||event.metaKey)return;
+    if(!event.target.closest('.seg:not(.note):not(.sum) .tx')||
+       event.target.closest('a,button,input,textarea,[contenteditable],.streaming,.spkb,.fixdot'))return;
+    const caret=document.caretRangeFromPoint(event.clientX,event.clientY);
+    if(!caret||!feed.contains(caret.startContainer))return;
+    const selection=window.getSelection();
+    if(!selection.isCollapsed&&selection.rangeCount&&
+       selection.getRangeAt(0).isPointInRange(caret.startContainer,caret.startOffset))return;
+    anchor={node:caret.startContainer,offset:caret.startOffset};
+    selection.collapse(anchor.node,anchor.offset);
+    event.preventDefault();
+  });
+  document.addEventListener('pointermove',event=>{
+    if(!anchor||!transcriptSelectionPointer?.moved)return;
+    point=event;
+    update();
+  });
+  function stop(){
+    if(!anchor)return;
+    scroller.stop();
+    anchor=null;point=null;bounds=null;
+  }
+  document.addEventListener('pointerup',event=>{
+    if(anchor&&point){
+      bounds=wrap.getBoundingClientRect();
+      extend(event);
+    }
+    stop();
+  },true);
+  document.addEventListener('pointercancel',stop,true);
+  window.addEventListener('blur',stop);
+}
+if(hostPlatform==='Darwin'&&document.caretRangeFromPoint)installTranscriptMouseSelection();
 
 /* ---- 播放跟随的可复用件 + 「操作态」闸门 ----
    curHit(): 依据当前播放时刻算出该高亮第几句；followTo(hit): 把某句平滑滑到阅读锚点(视口约40%)。
@@ -16272,7 +16668,7 @@ function curHit(position = player.currentTime){
   return lo - 1;
 }
 function followTo(hit, behavior = 'smooth'){
-  if(activeTemporaryPopup()) return;
+  if(activeTemporaryPopup()||transcriptSelectionInProgress()) return;
   if(hit < 0 || !segEls[hit]) return;
   const el = segEls[hit], wrap = $('feedwrap');
   const anchor = 0.40;                 // 当前句稳定停在视口约 40% 高度：上下都留白，读起来不顶不坠
@@ -16284,13 +16680,7 @@ let segEngaged = false, engageGrace = null;
 function isEngaged(){
   if(editing) return true;                                   // 正在就地改字
   const b = $('editbar'); if(b && b.classList.contains('show')) return true;   // 段落下方"已改这句"结果条还挂着
-  const s = window.getSelection && getSelection();           // 在文稿里选中了文字
-  if(s && !s.isCollapsed && s.rangeCount){
-    const feed = $('feed'); let n = s.anchorNode;
-    if(n) n = (n.nodeType === 1 ? n : n.parentNode);
-    if(n && feed && feed.contains(n)) return true;
-  }
-  return false;
+  return transcriptSelectionInProgress();
 }
 function engageTick(){
   const now = isEngaged();
@@ -16303,7 +16693,10 @@ function engageTick(){
     engageGrace = setTimeout(()=>{
       engageGrace = null;
       if(!isEngaged() && !userScrolling){                                 // 期间没又去操作、也没手动滚，才归位
-        const h = curHit(); if(h >= 0){ lastCurHit = h; followTo(h); }
+        if(view===null){anchorLive();return;}
+        if(!player.paused&&!player.ended){
+          const h = curHit(); if(h >= 0){ lastCurHit = h; followTo(h); }
+        }
       }
     }, 2500);
   }
@@ -16314,7 +16707,8 @@ document.addEventListener('selectionchange', engageTick);
 function placeFind(){
   const bar = $('findbar');
   // 触发件在折叠态下也可能被藏起来，退到工具条整体
-  const btn = $('btnFind').offsetWidth ? $('btnFind') : $('toolpanel');
+  const btn = recordingFindAvailable() ? $('btnRecordingFind') :
+    ($('btnFind').offsetWidth ? $('btnFind') : $('toolpanel'));
   const r = btn.getBoundingClientRect();
   bar.style.top = (r.bottom + 8) + 'px';
   const w = bar.offsetWidth || 300;
@@ -16329,31 +16723,85 @@ function placeFind(){
   bar.style.left = 'auto';
 }
 function findOpen(){ return $('findbar').classList.contains('show'); }
-function closeFind(){ $('findbar').classList.remove('show'); clearFind(); }
-$('btnFind').onclick = ()=>{
-  if(!view){ toast('读取项目后才能搜索'); return; }
+function closeFind(){
+  clearTimeout(findTimer); findTimer = null;
+  $('findbar').classList.remove('show');
+  $('btnRecordingFind').setAttribute('aria-expanded','false');
+  clearFind();
+}
+function recordingFindAvailable(){
+  return view === null && (state === 'recording' || state === 'paused');
+}
+function syncRecordingFind(){
+  const trigger = $('btnRecordingFind');
+  const available = recordingFindAvailable();
+  if(!available && !trigger.hidden){
+    if(findOpen()) closeFind();
+    $('btnReturnLive').hidden = true;
+  }
+  trigger.hidden = !available;
+}
+$('btnFind').onclick = $('btnRecordingFind').onclick = ()=>{
+  const live = recordingFindAvailable();
+  if((!view && !live) || document.querySelector('.modal.show,#transcriptNoteLayer:not([hidden])')) return;
   if(findOpen()){ closeFind(); return; }
+  $('findReplToggle').hidden = live;
+  if(live){
+    $('findRepRow').hidden = true;
+    $('findReplToggle').setAttribute('aria-pressed','false');
+  }
+  $('findInput').placeholder = live ? '查找本次录音…' : '在文稿中搜索…';
+  $('btnRecordingFind').setAttribute('aria-expanded','true');
   $('findbar').classList.add('show');
   placeFind(); $('findInput').focus(); $('findInput').select(); runFind();
 };
-$('findClose').onclick = closeFind;
+$('btnReturnLive').onclick = ()=>{
+  $('btnReturnLive').hidden = true;
+  clearTimeout(scrollTimer); userScrolling = false;
+  clearTranscriptTextSelection();
+  anchorLive();
+  $('btnRecordingFind').focus();
+};
+// 回车跳转后焦点落在这里: 长按回车的重复事件不能立刻把人送回实时
+$('btnReturnLive').addEventListener('keydown', e=>{ if(e.repeat) e.preventDefault(); });
+function dismissFind(){
+  closeFind();
+  if(recordingFindAvailable()) $('btnRecordingFind').focus();
+}
+$('findClose').onclick = dismissFind;
+{
+  const windows = window.__TD_PLATFORM__ === 'Windows';
+  $('btnRecordingFind').dataset.tip = `查找本次录音（${windows ? 'Ctrl+F' : '⌘F'}）`;
+  $('btnRecordingFind').setAttribute('aria-keyshortcuts', windows ? 'Control+F' : 'Meta+F');
+}
+// 录音态 ⌘F: 旧版壳的原生菜单脚本会在 document 捕获阶段把它当“不可用”吞掉, 这里在 window 捕获阶段先接住
+window.addEventListener('keydown', e=>{
+  if(!e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || e.isComposing || e.keyCode === 229) return;
+  if(String(e.key).toLowerCase() !== 'f' || !recordingFindAvailable()) return;
+  e.preventDefault(); e.stopImmediatePropagation();
+  if(e.repeat) return;
+  if(findOpen()){ $('findInput').focus(); $('findInput').select(); }
+  else $('btnRecordingFind').click();
+}, true);
 // 像 Notion：点面板外面就收起
 document.addEventListener('mousedown', e=>{
-  if(findOpen() && !e.target.closest('#findbar') && !e.target.closest('#btnFind')) closeFind();
+  if(findOpen() && !e.target.closest('#findbar,#btnFind,#btnRecordingFind')) closeFind();
 });
 let findTimer = null;
 $('findInput').addEventListener('input', ()=>{
+  findUndoArmed = false;
   // 实测 5000 段时每次按键全篇重建要 208ms，打字会明显跟不上手
   // → 停 140ms 再算一次；Enter / ↑↓ 翻命中仍走即时路径，不受影响
   clearTimeout(findTimer); findTimer = setTimeout(runFind, 140);
   syncFindReplaceButton();
 });
 $('findInput').addEventListener('keydown', e=>{
-  if(e.isComposing) return;
+  // WKWebView 确认候选词的回车可能不带 isComposing, 只有 keyCode 229
+  if(e.isComposing || e.keyCode === 229) return;
   if(e.key==='Enter'){ e.preventDefault(); clearTimeout(findTimer);
     if(!$('findInput').value.trim()) pickFindRecent(findPos);
     else { if(findTimer) runFind(); landFind(); } }
-  if(e.key==='Escape'){ e.preventDefault(); closeFind(); }
+  if(e.key==='Escape'){ e.preventDefault(); dismissFind(); }
 });
 $('findCase').onclick = ()=>{
   const on = $('findCase').getAttribute('aria-pressed') !== 'true';
@@ -16361,13 +16809,14 @@ $('findCase').onclick = ()=>{
   runFind(); $('findInput').focus();
 };
 $('findReplToggle').onclick = ()=>{
+  if(!view) return;
   const on = $('findRepRow').hidden;
   $('findRepRow').hidden = !on;
   $('findReplToggle').setAttribute('aria-pressed', String(on));
   (on ? $('replaceInput') : $('findInput')).focus();
 };
 $('findReplace').onclick = replaceCurrentFind;
-$('replaceInput').addEventListener('input', syncFindReplaceButton);
+$('replaceInput').addEventListener('input', ()=>{ findUndoArmed = false; syncFindReplaceButton(); });
 $('replaceInput').addEventListener('keydown', e=>{
   if(e.isComposing) return;
   if(e.key === 'Enter'){ e.preventDefault(); replaceCurrentFind(); }
@@ -16417,12 +16866,28 @@ function renderSegmentText(el,text,editable=false){
 }
 
 /* ---- 就地改字: 双击一句 → 编辑 → Enter 落稿 / Esc 放弃 ----
-     后端只认「时间点 + 新文字」，不存副本；撤销是把旧文字再打一次。
+     后端只认「时间点 + 新文字」，不存副本；撤销是把旧文字再打一次，重做是把新文字再打一次。
+     文稿里的图片操作记成所在笔记的前后快照，划词格式记成那几句的前后格式，和文字共用一条记录。
      撤销栈留在内存里，刷新即清 —— 要长期留痕看的是 transcript.md。 */
 const ICO_UNDO = '<svg class="ui-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a4.5 4.5 0 0 1 0 9H10.5"/></svg>';
 const ICO_OK = '<svg class="ui-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.6 9.6 17 19 7.5"/></svg>';
 let editing = null;
-const editUndo = [];
+const editUndo = [], editRedo = [];
+let editUndoBusy = false, findUndoArmed = false;
+function editUndoKeyLabel(){ return hostPlatform === 'Darwin' ? '⌘Z' : 'Ctrl+Z'; }
+function editUndoFor(sid){ return editUndo.filter(x => x.sid === sid); }
+function editRedoFor(sid){ return editRedo.filter(x => x.sid === sid); }
+function pushEditHistory(entry){
+  // 有了新改动，这个项目里之前撤销掉的就不能再重做了；别的项目不受影响
+  for(let i = editRedo.length - 1; i >= 0; i--) if(editRedo[i].sid === entry.sid) editRedo.splice(i, 1);
+  editUndo.push(entry);
+}
+function noteHistoryKey(note){ return note ? JSON.stringify([note.t, note.text || '', note.content || null]) : ''; }
+function recordNoteHistory(sid, before, after){
+  if(noteHistoryKey(before) === noteHistoryKey(after)) return;
+  const copy = note => note ? JSON.parse(JSON.stringify(note)) : null;
+  pushEditHistory({sid, kind:'note', before:copy(before), after:copy(after)});
+}
 function editBar(html, anchor){
   const b = $('editbar');
   if(anchor) anchor.after(b);
@@ -16487,6 +16952,7 @@ $('feed').addEventListener('dblclick', e=>{
 async function finishEdit(keep){
   if(!editing) return;
   const {el, span, old, t} = editing;
+  const sid = view.id, formats = segOf(el)?.formats;
   editing = null;
   editClickGuard = true;
   delete el.dataset.edit;
@@ -16494,7 +16960,7 @@ async function finishEdit(keep){
   const restore = v => renderSegmentText(el,v);
   if(!keep || !text || text === old){ restore(old); if(!keep) editBarOff(); return; }
   let r = null;
-  try{ r = await api('/api/edit_segment', {id: view.id, t, text}); }catch(e){}
+  try{ r = await api('/api/edit_segment', {id: sid, t, text}); }catch(e){}
   if(!r || !r.ok){
     // 后端没落成，界面也不许装成功
     toast('没改成：' + ((r && r.error) || '接口没有回应'));
@@ -16502,32 +16968,175 @@ async function finishEdit(keep){
   }
   const seg = segOf(el); if(seg){ if(seg.text!==r.text)delete seg.formats; seg.text = r.text; seg.ed = r.ed; }
   restore(r.text);
-  editUndo.push({t, old});
+  pushEditHistory({sid, t, old, text:r.text, formats});
   editBar(`<span class="lab">已改这句</span> <b>${esc(r.text)}</b>
-    <button class="ib" id="edoUndo" title="撤销这一处">${ICO_UNDO}</button>
+    <button class="ib" id="edoUndo" title="撤销这一处（${editUndoKeyLabel()}）">${ICO_UNDO}</button>
     <button class="ib ok" id="edoClose" title="好了">${ICO_OK}</button>
-    <span class="hint">双击任意一句可继续改 · Enter 落稿 · Esc 放弃</span>`, el);
-  $('edoUndo').onclick = undoEdit;
+    <span class="hint">双击任意一句可继续改 · Enter 落稿 · Esc 放弃 · ${editUndoKeyLabel()} 撤销</span>`, el);
+  $('edoUndo').onclick = ()=>undoEdit();
   $('edoClose').onclick = editBarOff;
 }
 
-async function undoEdit(){
-  const last = editUndo.pop();
-  if(!last){ editBarOff(); return; }
+function undoEdit(){ return editHistoryStep(-1); }
+function redoEdit(){ return editHistoryStep(1); }
+function revealHistoryRow(target){
+  if(!target) return;
+  const wrap = $('feedwrap'), bounds = wrap.getBoundingClientRect(), rect = target.getBoundingClientRect();
+  if(rect.top < bounds.top || rect.bottom > bounds.bottom)
+    wrap.scrollTop += rect.top - bounds.top - (wrap.clientHeight - rect.height) / 2;
+}
+/* 和后端保存口径一致：只认四种样式，高亮分组只跟着背景色走 */
+function formatHistoryKey(formats){
+  return JSON.stringify((formats || []).map(item => {
+    const style = item.style || {}, kept = {};
+    for(const key of ['color','background','bold','underline']) if(style[key]) kept[key] = style[key];
+    if(kept.background && style.highlightGroup) kept.highlightGroup = style.highlightGroup;
+    return [item.start, item.end, kept];
+  }).filter(item => Object.keys(item[2]).length));
+}
+async function applyFormatHistory(entry, dir){
+  const sid = view.id, from = dir < 0 ? 'after' : 'before', to = dir < 0 ? 'before' : 'after';
+  const segs = entry.parts.map(part => (view.segments || []).find(x => Math.abs(x.t - part.t) < 0.01));
+  if(entry.parts.some((part, i) => !segs[i] || segs[i].text !== part.text || formatHistoryKey(segs[i].formats) !== formatHistoryKey(part[from])))
+    return {stale:true};
   let r = null;
-  try{ r = await api('/api/edit_segment', {id: view.id, t: last.t, text: last.old, undo: true}); }catch(e){}
-  if(!r || !r.ok){
-    toast('撤销失败：' + ((r && r.error) || '接口没有回应'));
-    editUndo.push(last); return;                      // 没撤成就把记录放回栈里，别丢
+  try{ r = await api('/api/transcript_format', {id:sid, patches:entry.parts.map(part => ({t:part.t, text:part.text, formats:part[to]}))}); }catch(e){}
+  if(!r || !r.ok) return {error:(r && r.error) || '接口没有回应'};
+  hideTranscriptFormatTools();
+  entry.parts.forEach((part, i) => { segs[i].formats = JSON.parse(JSON.stringify(part[to])); });
+  if(view && view.id === sid){
+    const rows = entry.parts.map(part => segElAt(part.t)).filter(Boolean);
+    const searching = findOpen() && $('findInput').value.trim();
+    if(findHits.length) clearFind(false);
+    rows.forEach(el => renderSegmentText(el, el.dataset.raw || ''));
+    if(searching){
+      runFind();
+      const pos = findNextHitIndex(findHits, segEls.indexOf(rows[0]), 0);
+      if(pos >= 0){ findPos = pos; scrollToHit(); markFindRow(pos); }
+      syncFindReplaceButton();
+    }else revealHistoryRow(rows[0]);
   }
-  const seg = ((view && view.segments) || []).find(x => Math.abs(x.t - last.t) < 0.01);
-  if(seg){ if(seg.text!==r.text)delete seg.formats; seg.text = r.text; delete seg.ed; }
+  return {ok:true};
+}
+function revealNoteHistory(from, to){
+  const images = note => (note && note.content || []).filter(node => node.type === 'image');
+  const known = new Set(images(from).map(node => JSON.stringify(node)));
+  const changed = images(to).find(node => !known.has(JSON.stringify(node)));
+  const row = changed && [...$('feed').querySelectorAll('.transcript-note-image')].find(x => x.dataset.imageFile === changed.file);
+  const t = (to || from).t;
+  revealHistoryRow(row || segEls.filter(x => parseFloat(x.dataset.t) <= t).pop());
+}
+/* 按前后快照还原一条笔记。笔记后来被改过就对不上，返回 stale，不去覆盖新内容。 */
+async function applyNoteHistory(entry, dir){
+  const sid = view.id, from = dir < 0 ? entry.after : entry.before, to = dir < 0 ? entry.before : entry.after;
+  const index = from ? (view.notes || []).findIndex(note => noteHistoryKey(note) === noteHistoryKey(from)) : -1;
+  if(from && index < 0) return {stale:true};
+  const current = from ? {id:sid, index, expected_t:from.t, expected_text:from.text || ''} : null;
+  let r = null;
+  try{
+    if(from && to) r = await api('/api/timeline_note_update', {...current, t:to.t, text:to.text || '', content:to.content || null, assets:[]});
+    else if(from) r = await api('/api/timeline_note_delete', current);
+    else r = await api('/api/timeline_note', {id:sid, t:to.t, text:to.text || '', content:to.content || null, assets:[], anchorRowId:to.anchorRowId});
+  }catch(e){}
+  if(!r || r.error || !r.ok) return {error:(r && r.error) || '接口没有回应'};
+  const saved = to ? (from ? r.notes[index] : r.note) : null;
+  entry[dir < 0 ? 'before' : 'after'] = saved ? JSON.parse(JSON.stringify(saved)) : null;
+  if(view && view.id === sid){ view.notes = r.notes || []; renderTimelineNotes(); revealNoteHistory(from, saved); }
+  refreshHistory();
+  return {ok:true};
+}
+async function editHistoryStep(dir){
+  if(editUndoBusy || transcriptFormatBusy || !view) return;
+  const undoing = dir < 0, stack = undoing ? editUndo : editRedo, opposite = undoing ? editRedo : editUndo;
+  const verb = undoing ? '撤销' : '重做';
+  const sid = view.id, entries = undoing ? editUndoFor(sid) : editRedoFor(sid), last = entries[entries.length - 1];
+  if(!last){ if(undoing) editBarOff(); return; }
+  if(state !== 'idle'){ toast('录制中不能改稿，先结束录音'); return; }
+  if(jobs[sid]){ toast('这个项目正在跑后台任务，等它结束再改'); return; }
+  stack.splice(stack.indexOf(last), 1);
+  if(last.kind === 'note'){
+    editUndoBusy = true;
+    let result;
+    try{ result = await applyNoteHistory(last, dir); }finally{ editUndoBusy = false; }
+    if(result.stale){ toast(`这张图后来又变过，不能${verb}了`); return; }
+    if(result.error){ toast(`${verb}失败：${result.error}`); stack.push(last); return; }
+    opposite.push(last);
+    editBarOff();
+    toast(`已${verb}这张图的改动`);
+    return;
+  }
+  if(last.kind === 'format'){
+    editUndoBusy = true;
+    let result;
+    try{ result = await applyFormatHistory(last, dir); }finally{ editUndoBusy = false; }
+    if(result.stale){ toast(`这段格式后来又变过，不能${verb}了`); return; }
+    if(result.error){ toast(`${verb}失败：${result.error}`); stack.push(last); return; }
+    opposite.push(last);
+    editBarOff();
+    toast(`已${verb}格式改动`);
+    return;
+  }
+  const seg = (view.segments || []).find(x => Math.abs(x.t - last.t) < 0.01);
+  // 精修、重转写可能已重写这一句；旧文字再打回去会盖掉新结果
+  if(!seg || seg.text !== (undoing ? last.text : last.old)){ toast(`这句后来又变过，不能${verb}了`); return; }
+  editUndoBusy = true;
+  let r = null;
+  try{
+    const body = {id: sid, t: last.t, text: undoing ? last.old : last.text};
+    if(undoing) body.undo = true;
+    try{ r = await api('/api/edit_segment', body); }catch(e){}
+    if(!r || !r.ok){
+      toast(`${verb}失败：` + ((r && r.error) || '接口没有回应'));
+      stack.push(last); return;                       // 没成功就把记录放回栈里，别丢
+    }
+    if(seg.text!==r.text)delete seg.formats;
+    seg.text = r.text;
+    if(undoing) delete seg.ed; else seg.ed = r.ed;
+    // 后端改字时会清掉这句的划词格式，撤销要连格式一起还原
+    if(undoing && last.formats && last.formats.length){
+      let f = null;
+      try{ f = await api('/api/transcript_format', {id: sid, patches:[{t: seg.t, text: r.text, formats: last.formats}]}); }catch(e){}
+      if(f && f.ok) seg.formats = last.formats;
+      else toast('文字已撤销，但划词格式没能恢复');
+    }
+    opposite.push(last);
+  }finally{ editUndoBusy = false; }
+  if(!view || view.id !== sid) return;                // 等接口时切走了，别把结果画到别的项目上
   const el = segElAt(last.t); if(el)renderSegmentText(el,r.text);
-  editBar(editUndo.length
-    ? `<span class="lab">已撤销这一处 · 还能撤销 ${editUndo.length} 处</span> <button class="ib" id="edoUndo" title="再撤销一处">${ICO_UNDO}</button><button class="ib ok" id="edoClose" title="好了">${ICO_OK}</button>`
-    : '<span class="lab">已撤销，回到原句</span>', el);
-  const u = $('edoUndo'); if(u) u.onclick = undoEdit;
+  if(findOpen() && $('findInput').value.trim()){
+    const segmentIndex = segEls.indexOf(el);
+    runFind();
+    const pos = findNextHitIndex(findHits, segmentIndex, 0);
+    if(pos >= 0){ findPos = pos; scrollToHit(); markFindRow(pos); }
+    syncFindReplaceButton();
+    toast(`已${verb}这一处`);
+    return;
+  }
+  const left = editUndoFor(sid).length;
+  const closeBtn = `<button class="ib ok" id="edoClose" title="好了">${ICO_OK}</button>`;
+  editBar(!undoing
+    ? `<span class="lab">已重做这一处</span> <b>${esc(r.text)}</b> <button class="ib" id="edoUndo" title="撤销这一处（${editUndoKeyLabel()}）">${ICO_UNDO}</button>${closeBtn}`
+    : left
+      ? `<span class="lab">已撤销这一处 · 还能撤销 ${left} 处</span> <button class="ib" id="edoUndo" title="再撤销一处（${editUndoKeyLabel()}）">${ICO_UNDO}</button>${closeBtn}`
+      : '<span class="lab">已撤销，回到原句</span>', el);
+  const u = $('edoUndo'); if(u) u.onclick = ()=>undoEdit();
   const c = $('edoClose'); if(c) c.onclick = editBarOff;
+}
+
+/* ⌘Z / Ctrl+Z 撤销，⌘⇧Z / Ctrl+Shift+Z / Ctrl+Y 重做，都只管已落稿的改动。
+   正在输入时交给系统的文字撤销，只有刚替换完、焦点还留在查找栏里时才算这次替换。 */
+function handleEditHistoryKey(e, dir){
+  const inFindBar = e.target === $('findInput') || e.target === $('replaceInput');
+  const sid = view && view.id, count = sid ? (dir < 0 ? editUndoFor(sid) : editRedoFor(sid)).length : 0;
+  if(e.isComposing || editing) return;
+  if(typingHere(e) && !(inFindBar && findUndoArmed && count)) return;
+  if(!view || view.pending || document.body.classList.contains('home') || gr.open) return;
+  if(document.querySelector('.modal.show,#transcriptNoteLayer:not([hidden])')) return;
+  if(e.target.closest && e.target.closest('#reviewPanel,#musicPanel,#globalReviewPanel')) return;
+  e.preventDefault();
+  if(e.repeat) return;                                // 按住不放不能连撤一串
+  if(!count){ toast(dir < 0 ? '没有可撤销的改动' : '没有可重做的改动'); return; }
+  editHistoryStep(dir);
 }
 
 document.addEventListener('click', e=>{
@@ -16608,8 +17217,12 @@ document.addEventListener('keydown', e=>{
     (e.shiftKey ? $('btnNoteTop') : $('btnSide')).click();
     return;
   }
+  if(!e.altKey && (hostPlatform === 'Darwin' ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey)){
+    if(k === 'z'){ handleEditHistoryKey(e, e.shiftKey ? 1 : -1); return; }
+    if(k === 'y' && !e.shiftKey && hostPlatform !== 'Darwin'){ handleEditHistoryKey(e, 1); return; }
+  }
   if(cmd && !e.shiftKey && !e.altKey){
-    if(k === 'f' && view){ e.preventDefault(); $('btnFind').click(); return; }
+    if(k === 'f' && (view || recordingFindAvailable())){ e.preventDefault(); $('btnFind').click(); return; }
     if(k === 'n'){ e.preventDefault();
       (state === 'recording' || state === 'paused' ? $('btnNoteTool') : $('btnNoteTop')).click(); return; }
     if(k === 'e' && view){ e.preventDefault(); copyPlain(); return; }
@@ -16618,7 +17231,7 @@ document.addEventListener('keydown', e=>{
   }
   if(typingHere(e)){
     // 查找框里 ↑↓ 直接翻命中，别抢去跳句
-    if(e.target === $('findInput') && (e.key === 'ArrowDown' || e.key === 'ArrowUp')){
+    if(e.target === $('findInput') && !e.isComposing && e.keyCode !== 229 && (e.key === 'ArrowDown' || e.key === 'ArrowUp')){
       e.preventDefault(); navFind(e.key === 'ArrowDown' ? 1 : -1);
     }
     return;
@@ -16630,6 +17243,8 @@ document.addEventListener('keydown', e=>{
     return;
   }
   if(e.code === 'Space'){
+    // 转录中不许开播; 锁定前已在播的还能用空格停下(播放条此时点不了)
+    if(projectLockedByJob() && player.paused){ e.preventDefault(); return; }
     if(!player.src){ toast('这个项目没有录音可播'); return; }
     e.preventDefault();
     player.paused ? player.play().catch(()=>{}) : player.pause();
@@ -16638,6 +17253,7 @@ document.addEventListener('keydown', e=>{
   if(e.key === 'ArrowDown' || e.key === 'ArrowUp'){
     if(!view) return;
     e.preventDefault();
+    if(projectLockedByJob()) return;           // 跳句会顺带开播, 转录中同样不开放
     jumpLine(e.key === 'ArrowDown' ? 1 : -1);
   }
 });
@@ -16664,8 +17280,22 @@ function findNextHitIndex(hits, segmentIndex, offset){
     (hit.segmentIndex === segmentIndex && hit.start >= offset));
   return next >= 0 ? next : 0;
 }
+function collectRecordingFindHits(el, ranges){
+  ranges.forEach(({start,end})=>findHits.push({el,start,end,previewOnly:true}));
+}
+function appendRecordingFindResult(el){
+  if(!recordingFindAvailable() || !findOpen() || findTimer) return;
+  const ranges = findMatchRanges(el.dataset.raw || '', $('findInput').value.trim());
+  if(!ranges.length) return;
+  collectRecordingFindHits(el, ranges);
+  if(findPos < 0) findPos = 0;
+  const results = $('findRes'), scrollTop = results.scrollTop;
+  renderFindResults();
+  results.scrollTop = scrollTop;
+}
 function runFind(){
   findTimer = null;
+  const live = recordingFindAvailable();
   clearFind(false);
   const q = $('findInput').value.trim();
   if(!q){ findPos = 0; renderFindResults(); syncFindReplaceButton(); return; }
@@ -16674,6 +17304,10 @@ function runFind(){
     const text = el.dataset.raw || '';
     const ranges = findMatchRanges(text, q);
     if(!ranges.length) return;
+    if(live){
+      collectRecordingFindHits(el, ranges);
+      return;
+    }
     let cursor = 0;
     const hitStart = findHits.length;
     let html = tsBadge(el) + `<span class="tx"><span class="tx-focus">${spkBadge(el)}`;
@@ -16692,10 +17326,10 @@ function runFind(){
   findPos = findHits.length ? 0 : -1;
   renderFindResults();
   syncFindReplaceButton();
-  if(findHits.length) scrollToHit();
+  if(!live && findHits.length) scrollToHit();
 }
 function clearFind(reset=true){
-  const matchedRows = new Set(findHits.map(hit=>hit.el));
+  const matchedRows = new Set(findHits.filter(hit=>!hit.previewOnly).map(hit=>hit.el));
   findHits = []; findPos = -1;
   matchedRows.forEach(el=>{
     el.classList.remove('hl');
@@ -16730,6 +17364,12 @@ function findSnippet(text, hit, q){
 function renderFindResults(){
   const R = $('findRes'), q = $('findInput').value.trim(), cnt = $('findCnt');
   cnt.classList.toggle('none', !!q && !findHits.length);
+  const live = recordingFindAvailable(), paused = state === 'paused';
+  if(live && !segEls.some(el=>!el.classList.contains('note'))){
+    cnt.textContent = '';
+    R.innerHTML = `<div class="fb-empty live"><b>还没有可查找的内容</b>${paused ? '继续录音并确认整句后，可以在这里查找' : '整句确认后，可以在这里查找'}</div>`;
+    return;
+  }
   if(!q){
     cnt.textContent = '';
     const recent = findRecent();
@@ -16738,8 +17378,13 @@ function renderFindResults(){
       ? `<div class="fb-h">最近搜索</div>` + recent.map((x, i)=>`<div class="fr${i===findPos?' cur':''}" role="option" data-i="${i}">
           <span class="fr-ic"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg></span>
           <div class="fr-body"><div class="fr-tx">${esc(x)}</div></div></div>`).join('')
-      : `<div class="fb-empty">输入关键词，在整篇文稿里查找</div>`;
+      : `<div class="fb-empty">${live ? '输入关键词，在本次录音里查找' : '输入关键词，在整篇文稿里查找'}</div>`;
     bindFindRows(i=>pickFindRecent(i));
+    return;
+  }
+  if(!findHits.length && live){
+    cnt.textContent = '';
+    R.innerHTML = `<div class="fb-empty live"><b>没有找到「${esc(q)}」</b>${findMatchCase() ? '试试关掉 Aa（区分大小写）' : paused ? '已转写的内容里没有这个词' : '之后讲到时，会出现在这里'}</div>`;
     return;
   }
   if(!findHits.length){
@@ -16786,10 +17431,15 @@ function landFind(){
   const hit = findHits[findPos];
   if(!hit) return;
   rememberFind($('findInput').value.trim());
-  scrollToHit();
+  const live = recordingFindAvailable();
+  if(live){
+    $('btnReturnLive').hidden = false;
+    $('feedwrap').scrollTo({top:Math.max(0,hit.el.offsetTop - $('feedwrap').clientHeight/2),behavior:'instant'});
+  }else scrollToHit();
   if(!$('findRepRow').hidden) return;
   const el = hit.el;
   closeFind();
+  if(live) $('btnReturnLive').focus({preventScroll:true});
   el.classList.remove('find-land'); void el.offsetWidth; el.classList.add('find-land');
   el.addEventListener('animationend', ()=>el.classList.remove('find-land'), {once:true});
 }
@@ -16801,7 +17451,8 @@ function navFind(dir){
   }
   if(!findHits.length) return;
   const next = (findPos + dir + findHits.length) % findHits.length;
-  findPos = next; scrollToHit();
+  findPos = next;
+  if(!recordingFindAvailable()) scrollToHit();
   if(next < FIND_LIST_MAX) markFindRow(next);
   else $('findRes').querySelectorAll('.fr.cur').forEach(el=>el.classList.remove('cur'));
   $('findCnt').textContent = `${findPos+1} / ${findHits.length}`;
@@ -16840,8 +17491,9 @@ async function replaceCurrentFind(){
     return;
   }
   const nextText = text.slice(0, hit.start) + replacement + text.slice(hit.end);
+  const sid = view.id, t = parseFloat(hit.el.dataset.t), formats = segOf(hit.el)?.formats;
   let r = null;
-  try{ r = await api('/api/edit_segment', {id:view.id, t:parseFloat(hit.el.dataset.t), text:nextText}); }catch(e){}
+  try{ r = await api('/api/edit_segment', {id:sid, t, text:nextText}); }catch(e){}
   if(!r || !r.ok){
     toast('替换失败：' + ((r && r.error) || '接口没有回应'));
     return;
@@ -16849,6 +17501,8 @@ async function replaceCurrentFind(){
   const seg = segOf(hit.el);
   if(seg){ if(seg.text!==r.text)delete seg.formats; seg.text = r.text; seg.ed = r.ed; }
   hit.el.dataset.raw = r.text;
+  pushEditHistory({sid, t, old:text, text:r.text, formats});
+  findUndoArmed = true;
   const segmentIndex = hit.segmentIndex;
   const offset = hit.start + replacement.length;
   runFind();

@@ -35,6 +35,15 @@ test('home disables project commands; recording permits only recording actions',
   assert.equal(s['record-stop'].enabled,true); assert.equal(s['record-pause'].enabled,true);
   context.state='paused'; assert.equal(menu.snapshot()['record-pause'].text,'继续录音');
 });
+test('native Find opens the recording search while replacement remains disabled',()=>{
+  const {menu,calls,context}=setup({state:'recording',findOpen:()=>false});
+  assert.equal(menu.snapshot().find.enabled,true);
+  assert.equal(menu.snapshot().replace.enabled,false);
+  menu.dispatch('find');
+  assert.deepEqual(calls,['btnRecordingFind']);
+  context.state='stopping';
+  assert.equal(menu.snapshot().find.enabled,false);
+});
 test('project commands follow audio, background jobs, selection and favorite state',()=>{
   const {menu,context}=setup({view:{id:'p',hasNote:true,noteText:'notes'}, lastHistRaw:[{id:'p',favorite:true}],
     player:{paused:false,getAttribute:()=>'/audio'}});
@@ -108,4 +117,11 @@ test('disabled native shortcuts cannot fall through into old page handlers',()=>
   let prevented=false,stopped=false;
   listeners.keydown({metaKey:true,key:'n',shiftKey:false,preventDefault(){prevented=true;},stopImmediatePropagation(){stopped=true;}});
   assert.equal(prevented,true);assert.equal(stopped,true);assert.deepEqual(calls,[]);
+});
+
+test('recording leaves only recording commands enabled in the native menu',()=>{
+  const {menu}=setup({state:'recording',findOpen:()=>false});
+  const enabled=Object.entries(menu.snapshot()).filter(([,item])=>item.enabled).map(([id])=>id);
+  for(const id of enabled) assert.match(id,/^(find|record-pause|record-stop|microphone_modes|hotwords|note-add|note-photo|source-.+)$/);
+  for(const id of ['settings','about','update','keys','music','review','search','sidebar']) assert.equal(menu.snapshot()[id].enabled,false,id);
 });

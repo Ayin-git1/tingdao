@@ -45,7 +45,7 @@ from frontend_patch import FrontendPatches
 import numpy as np
 import sherpa_onnx
 
-APP_VERSION = "3.1.10.2"
+APP_VERSION = "3.1.10.3"
 
 # Finder/Dock 启动的 GUI 进程 PATH 不含 homebrew, 主动补齐(ffmpeg/SwitchAudioSource 所在)
 if platform.system() == "Darwin":
@@ -3587,6 +3587,7 @@ class App:
         # 任务表: sid -> {kind,state,stage,pct}。批量导入后 refining 只是
         # "当前本地任务"的兼容指针, 前端一律以 jobs 为准(云端可多路并行)。
         self.progs = {}
+        self._held_note_images = set()
         self._q_local = []      # 本地队列: GPU 一块, 严格串行
         self._q_cloud = []      # 云端队列: 网络 bound, 2 路并行
         self._cond = threading.Condition(self.lock)
@@ -6293,8 +6294,15 @@ class App:
                 except RuntimeError:
                     continue
         for target in image_dir.iterdir():
-            if target.is_file() and target.resolve() not in refs:
+            if target.is_file() and target.resolve() not in refs and target.name not in self._held_note_images:
                 target.unlink()
+
+    def _hold_note_images(self, notes):
+        """改图前记下正在用的图片：本次运行内不清理，撤销删图时文件还在；重启后由下一次清理回收。"""
+        for note in notes or []:
+            for node in note.get("content") or []:
+                if node.get("type") == "image" and node.get("file"):
+                    self._held_note_images.add(Path(str(node["file"])).name)
 
     def add_transcript_note(self, sid, t, text, content=None, assets=None, anchor_row_id=None):
         """把课后时间线笔记写入项目元数据与逐字稿。"""
@@ -6390,6 +6398,7 @@ class App:
                 current_t = -1
             if current_t != expected_timestamp or current.get("text", "") != expected_text:
                 raise RuntimeError("笔记已变化，请重新打开后再试")
+            self._hold_note_images(notes)
             made = []
             if content is None:
                 new = (text or "").strip()
@@ -6454,6 +6463,7 @@ class App:
                 current_t = -1
             if current_t != expected_timestamp or current.get("text", "") != expected_text:
                 raise RuntimeError("笔记已变化，请重新打开后再试")
+            self._hold_note_images(notes)
             removed = notes.pop(idx)
             sj.write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
             self._write_md(d, meta, meta.get("refinished", "") or "本地")

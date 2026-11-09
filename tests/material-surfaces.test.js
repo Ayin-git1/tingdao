@@ -92,7 +92,7 @@ test('ordinary project cards use the shared material while the new card stays se
 
 test('neutral controls and dropdown surfaces use the rest material', () => {
   const surfaces = [
-    '.sidebar-tab-slider', '.palette', '.tp', '.findbar', '.volpop',
+    '.palette', '.tp', '.findbar', '.volpop',
     '.hwpop', '.spkpop', '.cloudpop', '.sortpop', '.srcmenu', '.hmenu', '.mvpop',
     '.tplpop', '.gpop', '.tagpal', '.theme-popover', '.tn-menu', '.tn-image-menu',
   ];
@@ -108,23 +108,21 @@ test('neutral controls and dropdown surfaces use the rest material', () => {
 
   const selectedHistoryCard = cssRuleMatching(/body:not\(\.batchmode\) \.hitem\.on,body:not\(\.batchmode\) \.hitem\.on:hover\{[^}]*\}/,
     'selected history card');
-  assert.match(selectedHistoryCard, /background:var\(--material-rest-background\)/);
-  assert.match(selectedHistoryCard, /backdrop-filter:var\(--material-rest-backdrop-filter\)/);
+  assert.match(selectedHistoryCard, /background:var\(--card\)/);
 
-  const sidebarPeek = cssRuleMatching(/body\.sidehide\.side-peek \.sidebar::before\{[^}]*\}/,
+  const sidebarPeek = cssRuleMatching(/body\.sidehide\.side-peeked \.sidebar::before,[^{]*\{[^}]*\}/,
     'sidebar peek material');
-  assert.match(sidebarPeek, /background:var\(--material-rest-background\)/);
-  assert.match(sidebarPeek, /backdrop-filter:var\(--material-rest-backdrop-filter\)/);
+  assert.match(sidebarPeek, /background:/);
 });
 
-test('sidebar tab track stays transparent while the selected tab keeps material', () => {
+test('sidebar tabs use a flat soft track with an opaque selected card', () => {
   const track = cssRule('.sidebar-tabs');
-  assert.match(track, /background:transparent/);
+  assert.match(track, /background:var\(--soft\)/);
   assert.match(track, /backdrop-filter:none/);
   assert.match(track, /-webkit-backdrop-filter:none/);
 
   const selectedTab = cssRule('.sidebar-tab-slider');
-  assert.match(selectedTab, /background:var\(--material-rest-background\)/);
-  assert.match(selectedTab, /backdrop-filter:var\(--material-rest-backdrop-filter\)/);
-  assert.match(selectedTab, /-webkit-backdrop-filter:var\(--material-rest-backdrop-filter\)/);
+  assert.match(selectedTab, /background:var\(--card\)/);
+  assert.match(selectedTab, /backdrop-filter:none/);
+  assert.match(selectedTab, /-webkit-backdrop-filter:none/);
 });

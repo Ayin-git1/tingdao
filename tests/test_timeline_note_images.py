@@ -33,7 +33,7 @@ class TimelineNoteImageTests(unittest.TestCase):
             "delete_transcript_note", "_write_md", "note_image_path",
             "read_note_image_file",
             "_note_content_text", "_materialize_note_content",
-            "_cleanup_note_assets",
+            "_cleanup_note_assets", "_hold_note_images",
         )
         if any(name not in self.methods for name in names):
             return None
@@ -57,6 +57,7 @@ class TimelineNoteImageTests(unittest.TestCase):
         }
         module = ast.Module(body=[self.methods[name] for name in names], type_ignores=[])
         exec(compile(ast.fix_missing_locations(module), str(APP), "exec"), namespace)
+        namespace["_held_note_images"] = set()
         harness_type = type("AppHarness", (), namespace)
         app = harness_type()
         app.state = "idle"
@@ -207,7 +208,7 @@ class TimelineNoteImageTests(unittest.TestCase):
             self.assertIn("![IMG_1.png](note-images/", transcript)
             self.assertIn("![IMG_2.png](note-images/", transcript)
 
-    def test_update_removes_unreferenced_image_and_legacy_text_note_still_works(self):
+    def test_unreferenced_image_survives_this_run_for_undo_then_is_cleaned_after_restart(self):
         with TemporaryDirectory() as temp:
             root = Path(temp)
             session_dir = self.make_session(root)
@@ -222,11 +223,16 @@ class TimelineNoteImageTests(unittest.TestCase):
                 [{"type": "text", "text": "已经修改"}], [])
 
             self.assertEqual(result["note"]["text"], "已经修改")
+            # 本次运行内留着文件，撤销删图时才能恢复；重启后的第一次编辑再回收
+            self.assertTrue(image_file.exists())
+            app.add_transcript_note("interview-01", 15, "同次运行")
+            self.assertTrue(image_file.exists())
+
+            restarted = self.make_app(root)
+            legacy = restarted.add_transcript_note("interview-01", 20, "旧格式笔记")
+            self.assertEqual(legacy["note"]["text"], "旧格式笔记")
             self.assertFalse(image_file.exists())
             self.assertEqual(list((session_dir / "note-images").iterdir()), [])
-
-            legacy = app.add_transcript_note("interview-01", 20, "旧格式笔记")
-            self.assertEqual(legacy["note"]["text"], "旧格式笔记")
 
     def test_rejects_invalid_asset_and_note_image_paths(self):
         with TemporaryDirectory() as temp:

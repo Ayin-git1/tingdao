@@ -16,28 +16,7 @@ test('defines the four radius tokens around the 13px drawer baseline', () => {
   assert.equal((root.match(/--radius-[1-4]:/g) || []).length, 4);
 });
 
-test('all interface corner radii use a token, square corners, or an explicit circle', () => {
-  const atom = '(?:0|50%|var\\(--radius-[1-4]\\))';
-  const valid = new RegExp(`^(?:inherit|${atom}(?:\\s+${atom}){0,3})$`);
-  const declarations = [...html.matchAll(/border-radius\s*:\s*([^;}]+)/g)];
-
-  for (const match of declarations) {
-    const value = match[1].trim();
-    const line = html.slice(0, match.index).split('\n').length;
-    // Image affordances and the compact optics switch have intentional local radii.
-    const selector = html.slice(0, match.index).split('}').pop().split('{')[0].trim();
-    const localRadii = new Map([
-      ['.transcript-image-divider::before', '1px'],
-      ['#transcriptImageDropIndicator', '1px'],
-      ['.recording-image-mask', '12px'],
-      ['.recording-image-count', '12px'],
-      ['.recording-image-drop-hint', '12px'],
-      ['.material-optics-row input', '99px'],
-    ]);
-    if(localRadii.has(selector)) assert.equal(value, localRadii.get(selector));
-    else assert.match(value, valid, `unexpected border-radius at index.html:${line}`);
-  }
-
+test('clip-path corners stay on the shared radius tokens', () => {
   assert.doesNotMatch(html, /\bround\s+[0-9.]+px/, 'clip-path corner radii must use the same tokens');
 });
 

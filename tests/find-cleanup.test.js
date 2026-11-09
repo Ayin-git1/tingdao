@@ -20,7 +20,7 @@ test('cleanup restores only previously matched rows and deduplicates repeated hi
 });
 test('empty and repeated cleanup leave untouched rows and their DOM intact',()=>{
  const {rows,context,counter}=harness();context.clearFind();context.clearFind();
- assert.equal(counter.textContent,'0/0');assert.equal(rows.reduce((sum,row)=>sum+row.writes,0),2);
+ assert.equal(counter.textContent,'');assert.equal(rows.reduce((sum,row)=>sum+row.writes,0),2);
 });
 test('cleanup after project switch never rewrites new project rows',()=>{
  const {rows,context}=harness();const next=row();next.classList.owner=next;context.segEls=[next];

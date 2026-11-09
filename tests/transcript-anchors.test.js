@@ -197,7 +197,7 @@ test('outline hierarchy indents L2 and L3 while L1 keeps the transcript heading 
 
 test('chapter outline card stays above reading tools but below global popup windows', () => {
   assert.match(html, /\.feedzone\{[^}]*--reading-edge-gap:26px;/);
-  assert.match(html, /\.feedwrap\{[^}]*padding:16px var\(--reading-edge-gap\) 20px;/);
+  assert.match(html, /\.feedwrap\{[^}]*padding:16px var\(--reading-edge-gap\) calc\(var\(--transcript-bottom-space, 20px\)/);
   assert.match(html, /\.transcript-anchors\{[^}]*right:14px;/);
   assert.match(html, /\.transcript-outline-card\{[^}]*right:calc\(var\(--reading-edge-gap\) - 14px\);[^}]*width:min\(260px,/);
   assert.match(html, /\.transcript-outline-card\{[^}]*max-height:min\(420px,/);

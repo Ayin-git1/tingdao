@@ -30,7 +30,7 @@ test('glass material exposes three elevation shadow levels', () => {
 });
 
 test('glass controls use the intended shadow elevation', () => {
-  assert.match(cssRule('.sidebar-tab-slider'), /box-shadow:var\(--material-shadow-level-1\)/);
+  assert.match(cssRule('.sidebar-tab-slider'), /box-shadow:0 1px 3px rgba\(20,30,50,\.08\)/);
   assert.match(cssRule('.transcript-outline-scroll'), /box-shadow:var\(--material-shadow-level-2\)/);
   assert.match(cssRule('.audiobar'), /box-shadow:var\(--material-shadow-level-3\)/);
   assert.match(cssRule('.recpill'), /box-shadow:var\(--material-shadow-level-3\)/);

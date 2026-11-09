@@ -7,7 +7,7 @@ function render(layout='inline',contentWidth=600){
   const notes=Array.from({length:36},(_,i)=>({t:i*880,text:'笔记',content:[{type:'image',anchorRowId:`segment-${i*105}`,layout,displayWidth:200,width:800,height:450}]}));
   const feed={querySelectorAll:selector=>selector==='.seg:not(.sum)'?rows:[],
     insertBefore:(node,next)=>inserted.push({node,next}),querySelector:()=>rows[0],style:{}};
-  const context=vm.createContext({$:id=>id==='feed'?feed:id==='allNotesPop'?{hidden:true}:{style:{}},view:{notes},
+  const context=vm.createContext({transcriptReadingAnchor(){return null;},restoreTranscriptReadingPosition(){},$:id=>id==='feed'?feed:id==='allNotesPop'?{hidden:true}:{style:{}},view:{notes},
     clearImageDropPreview(){},resetImageAsideFlow(){},createNoteDom:t=>({t}),
     createTranscriptNoteImage:()=>({style:{},dataset:{}}),
     resolveImageAsideWidth:(width,preferred)=>width<112?0:preferred,

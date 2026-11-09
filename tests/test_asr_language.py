@@ -147,7 +147,8 @@ class AsrLanguageTests(unittest.TestCase):
             video = root / 'video.mp4'
             video.touch()
             self.settings['asr_language'] = 'zh-tw'
-            ns = load({'import_audio'}, 'App', SESSIONS_DIR=root, safe_title=lambda text: text, **self.ns)
+            ns = load({'import_audio'}, 'App', SESSIONS_DIR=root, safe_title=lambda text: text,
+                      unreadable_media=lambda paths: [], **self.ns)
             obj = SimpleNamespace(session={'lang': 'en'}, _job_begin=lambda *a, **kw: None, _enqueue=lambda *a: None)
             result = ns['import_audio'](obj, str(video))
             self.assertEqual(json.loads((root / result['id'] / 'session.json').read_text())['lang'], 'zh-tw')

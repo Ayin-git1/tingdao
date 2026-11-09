@@ -32,7 +32,7 @@ test('saved paragraph anchor takes priority over an earlier timestamp during ren
   const feed={querySelectorAll:selector=>selector==='.seg:not(.sum)'?rows:[],
     insertBefore:(note,next)=>inserted.push({note,next}),querySelector:()=>rows[0],style:{}};
   const controls={feed,empty:{style:{}},allNotesPop:{hidden:true}};
-  const context=vm.createContext({$:id=>controls[id],view:{notes:[{t:350,text:'1',anchorRowId:'segment-0'}]},
+  const context=vm.createContext({transcriptReadingAnchor(){return null;},restoreTranscriptReadingPosition(){},$:id=>controls[id],view:{notes:[{t:350,text:'1',anchorRowId:'segment-0'}]},
     clearImageDropPreview(){},resetImageAsideFlow(){},createNoteDom:()=>({}),Map});
   vm.runInContext(html.slice(html.indexOf('async function renderTimelineNotes('),html.indexOf('function applyStatus(')),context);
   await context.renderTimelineNotes();

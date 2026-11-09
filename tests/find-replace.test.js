@@ -5,9 +5,9 @@ const test = require('node:test');
 const html = fs.readFileSync('index.html', 'utf8');
 
 function extractFunction(name) {
-  const match = html.match(new RegExp(`function ${name}\\([^)]*\\)\\{[\\s\\S]*?\\n\\}`));
+  const match = html.match(new RegExp(`function ${name}\\(.*\\)\\{[\\s\\S]*?\\n\\}`));
   assert.ok(match, `${name} must exist in index.html`);
-  return Function(`${match[0]}; return ${name};`)();
+  return Function(`const findMatchCase=()=>false;${match[0]}; return ${name};`)();
 }
 
 test('findMatchRanges returns every non-overlapping literal occurrence', () => {

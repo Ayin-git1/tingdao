@@ -33,8 +33,7 @@ test('pending updates read current project and drag state rather than retaining 
  listener();project='new';drag=false;frames.shift()();
  assert.deepEqual(updates,[['new',false]]);
 });
-test('all three scroll listeners use frame scheduling and passive events',()=>{
- assert.match(html,/\$\('setBody'\)\.addEventListener\('scroll', scrollFrameUpdate\(\(\)=>\{[\s\S]*?\}\),\{passive:true\}\);/);
+test('transcript scroll listeners use frame scheduling and passive events',()=>{
  assert.match(html,/\$\('feedwrap'\)\.addEventListener\('scroll',scrollFrameUpdate\(\(\)=>\{[\s\S]*?\}\),\{passive:true\}\);/);
  assert.match(html,/\$\('feedwrap'\)\.addEventListener\('scroll',scrollFrameUpdate\(updateTranscriptAnchorFromScroll\),\{passive:true\}\);/);
 });

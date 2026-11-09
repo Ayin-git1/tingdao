@@ -23,8 +23,8 @@ test('aside flow includes saved notes and both inline cards, on either side',()=
   for(const side of ['left','right']){
     const make=(kind,top)=>{
       const properties={};const classes=new Set();
-      const content={style:{setProperty:(k,v)=>properties[k]=v},dataset:{},classList:{add:c=>classes.add(c)},getBoundingClientRect:()=>({top,width:800,height:50})};
-      const row={matches:()=>['heading','noteEditor','editbar'].includes(kind),querySelector:()=>content};
+      const content={style:{setProperty:(k,v)=>properties[k]=v,getPropertyValue:k=>properties[k]||''},dataset:{},classList:{add:c=>classes.add(c)},getBoundingClientRect:()=>({top,width:800,height:50})};
+      const row={matches:()=>['heading','noteEditor','editbar'].includes(kind),querySelector:()=>content,classList:{add(){},remove(){}}};
       if(row.matches())Object.assign(row,content);
       return {row,content:row.matches()?row:content,properties,classes};
     };
@@ -35,7 +35,7 @@ test('aside flow includes saved notes and both inline cards, on either side',()=
     ctx.applyImageAsideFlow(items[0].row,300,230,side);
     for(const item of items.slice(0,5)){
       assert.equal(item.content.dataset.imageSide,side);
-      assert.equal(item.properties['--image-aside-space'],'316px');
+      assert.equal(item.properties[`--image-aside-${side}-space`],'316px');
     }
     assert.equal(items[5].content.dataset.imageSide,undefined);
     assert.match(selector,/\.seg:not\(\.sum\)/);

@@ -34,7 +34,7 @@ test('native recording drop uses the same captured-time upload path',()=>{
 test('stop waits for in-flight images before asking the backend to finish',async()=>{
  let release;const upload=new Promise(resolve=>{release=resolve;});const calls=[];
  const button={disabled:false};const ctx=vm.createContext({
-  recordingImageStopping:false,recordingImageUploads:new Set([upload]),sessionName:'',
+  recordingImageStopping:false,recordLoadingBusy:false,showRecordLoading(){},hideRecordLoading(){},recordingImageUploads:new Set([upload]),sessionName:'',
   $:id=>id==='stopConfirm'?button:id==='stopmodal'?{classList:{remove(){}}}:{value:''},
   api:async path=>{calls.push(path);return {};}
  });

@@ -4,11 +4,11 @@ const fs=require('node:fs');
 const vm=require('node:vm');
 const html=fs.readFileSync('index.html','utf8');
 const start=html.indexOf('function formatCacheSize(');
-const source=html.slice(start,html.indexOf('/* ---- 方案 B 交互:',start));
+const source=html.slice(start,html.indexOf('/* 顶部分类：保留原分区',start));
 function harness(api,invoke){
  const elements=Object.fromEntries(['cacheSize','cachePath','cacheLastCleared','cacheMessage','cacheClear'].map(id=>[id,{textContent:'',disabled:false}]));
  const preloads=new Map([['image',{}]]);
- const context=vm.createContext({$:id=>elements[id],api,noteImagePreloads:preloads,window:{__TAURI_INTERNALS__:invoke?{invoke}:undefined}});
+ const context=vm.createContext({$:id=>elements[id],api,noteImagePreloads:preloads,transcriptRenderCache:new Map(),invalidateTranscriptScrollPositions(){},window:{__TAURI_INTERNALS__:invoke?{invoke}:undefined}});
  vm.runInContext(source,context);
  return {elements,preloads,context};
 }
@@ -43,5 +43,5 @@ test('startup-only scheduling and nonpersistent native WebView are wired',()=>{
  assert.equal((python.match(/result = check_cache_on_startup\(\)/g)||[]).length,1);
  assert.match(python,/webview.start\(private_mode=True\)/);
  assert.match(fs.readFileSync('tauri-shell/src/main.rs','utf8'),/\.incognito\(true\)/);
- assert.match(html,/data-t="cache"/);assert.match(html,/'appearance','cache','key'/);
+ assert.match(html,/data-t="cache"/);assert.match(html,/const SET_GROUPS = \[[^\n]*\['cache'\]/);
 });
