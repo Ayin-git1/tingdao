@@ -4709,6 +4709,29 @@ html[data-appearance="dark"] :is(.gr-shell .gr-primary,.rv-primary,.rv-confirm,.
 .gr-hero-status.is-due::before{background:var(--rv-paper-ink)}
 @media(max-width:1100px){.gr-hero{padding:25px 25px 18px;min-height:270px}.gr-hero h2{font-size:26px}.gr-hero-count{font-size:76px}.gr-hero-count.is-long{font-size:50px}}
 @media(max-width:480px){.gr-hero{padding:24px 22px 16px;min-height:0}.gr-hero-main{grid-column:1/-1;margin:22px 0 14px}.gr-hero-count{grid-column:1/-1;margin-bottom:18px;font-size:66px}.gr-hero h2{font-size:24px}.gr-hero p{font-size:13px}}
+
+#grReadContent{white-space:pre-wrap;overflow-wrap:anywhere}
+/* Daily review uses the existing paper, tape and grade controls. */
+#globalReviewPanel .gr-focus-layout{grid-template-columns:minmax(0,720px)}
+#globalReviewPanel .gr-focus-layout>section{grid-row:1}
+#globalReviewPanel .gr-focus-source{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:0 0 10px;color:var(--sub);font-size:var(--fs-meta)}
+#globalReviewPanel .gr-focus-source button{color:var(--gr-accent);flex:none}
+#globalReviewPanel .gr-deck .rv-c-in{padding-inline:10px}
+#globalReviewPanel .gr-deck .rv-full{color:var(--rv-paper-ink);white-space:pre-line}
+#globalReviewPanel .gr-deck .rv-g:disabled{opacity:.48;cursor:default}
+#globalReviewPanel .gr-deck .rv-g:disabled:hover{background:color-mix(in srgb,var(--rv-paper) 70%,var(--card))}
+#globalReviewPanel .gr-deck .rv-g:disabled:hover .rv-face{transform:none}
+#globalReviewPanel .gr-reveal-notes{color:var(--gr-accent);font-size:var(--fs-meta);margin-top:8px}
+#globalReviewPanel .gr-grade-hint{margin:0 0 9px;text-align:center;color:var(--rv-paper-sub);font-size:var(--fs-meta)}
+#globalReviewPanel .rv-mini button{display:flex;align-items:center;justify-content:center;gap:4px;font-size:var(--fs-micro)}
+#globalReviewPanel .rv-mini button .rv-face{margin:0;flex:none}
+#globalReviewPanel .gr-deck .rv-c-body{scrollbar-width:thin}
+#globalReviewPanel .gr-receipt-head{display:block}
+#globalReviewPanel .gr-receipt-head p,#globalReviewPanel .gr-section-title h3 small{color:var(--sub);font-size:var(--fs-meta);font-weight:normal}
+#globalReviewPanel .gr-receipt-head p{margin:6px 0 0;color:var(--gr-receipt-sub)}
+#globalReviewPanel .gr-section-title h3 small{margin-inline-start:8px}
+#globalReviewPanel .gr-course-summary{margin-top:20px;font-size:var(--fs-caption);color:var(--sub)}
+#globalReviewPanel .gr-course-summary summary{cursor:pointer}
 </style>
 
 <!-- 重载快捷键。单独成块、放在主脚本之前: pywebview 的默认菜单里没有 Reload,
@@ -5750,6 +5773,10 @@ html[data-appearance="dark"] :is(.gr-shell .gr-primary,.rv-primary,.rv-confirm,.
     <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z"/></svg>
     添加时间线笔记
   </button>
+  <button id="transcriptNoteCamera" role="menuitem" hidden>
+    <svg class="ui-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3.5 8.5A1.5 1.5 0 0 1 5 7h2.5l1.6-2.2h5.8L16.5 7H19a1.5 1.5 0 0 1 1.5 1.5v9A1.5 1.5 0 0 1 19 19H5a1.5 1.5 0 0 1-1.5-1.5z"/><circle cx="12" cy="12.8" r="3.4"/></svg>
+    用 iPhone 拍照
+  </button>
   <button id="transcriptNoteEdit" role="menuitem" hidden>
     <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z"/></svg>
     修改笔记
@@ -5993,6 +6020,22 @@ html[data-appearance="dark"] :is(.gr-shell .gr-primary,.rv-primary,.rv-confirm,.
       <div class="left"></div>
       <button class="dbtn" id="noteImportFolder">选择文件夹</button>
       <button class="dbtn go" id="noteImportZip" data-dlg="go">选择 ZIP</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="grReadModal">
+  <div class="mbox" role="dialog" aria-modal="true" aria-labelledby="grReadTitle">
+    <div class="dlg-body">
+      <div class="dlg-title" id="grReadTitle"></div>
+      <p class="dlg-sub" id="grReadMeta"></p>
+      <div class="dlg-obj"><div class="dlg-body" id="grReadContent"></div></div>
+    </div>
+    <div class="dlg-foot">
+      <button class="dbtn" id="grReadClose" data-dlg="cancel">关闭</button>
+      <div class="left"></div>
+      <button class="dbtn" id="grReadSource">在课件中打开</button>
+      <button class="dbtn go" id="grReadNext" data-dlg="go">下一条</button>
     </div>
   </div>
 </div>
@@ -13377,10 +13420,10 @@ function registerTranscriptNoteNativeDragBridge(){
 }
 registerTranscriptNoteNativeDragBridge();
 
-/* ---- iPhone 拍照: 壳弹连续互通相机菜单(tauri-shell/src/camera.rs), 照片经 tauri 事件回来,
-   与拖入、粘贴同一个入口(insertTranscriptImageFiles + recordingImageCapture), 落进右下角录制图片堆。
+/* ---- iPhone 拍照: 录制页和文稿共用连续互通相机桥，照片经 tauri 事件回来。
    网页→壳没有可用的自定义命令, 靠隐藏 iframe 导航到 tingdao-camera:// 被壳的 on_navigation 截下。 */
 let cameraWaitTimer=null;
+let transcriptCameraTarget=null;
 const cameraFrame=document.createElement('iframe');
 function setCameraWaiting(on){
   clearTimeout(cameraWaitTimer);
@@ -13393,21 +13436,23 @@ function cameraShutterFlash(){
   setTimeout(()=>button.classList.remove('cam-shot'),500);
 }
 async function insertCameraPhoto(payload){
+  const target=transcriptCameraTarget;
   setCameraWaiting(false);
-  if(view!==null||!['recording','paused'].includes(state)||recordingImageStopping){toast('照片未插入：请在录制页拍照');return;}
+  if(!target&&(view!==null||!['recording','paused'].includes(state)||recordingImageStopping)){toast('照片未插入：请在录制页拍照');return;}
   try{
     const blob=await (await fetch(`data:${payload.mime};base64,${payload.data}`)).blob();
-    const capture=recordingImageCapture();
+    if(target&&view?.id!==target.sid){toast('照片未插入：已切换文稿');return;}
+    const capture=target||recordingImageCapture();
     const file=new File([blob],`iPhone 照片 ${fmt(capture.time)}.${payload.mime==='image/png'?'png':'jpg'}`,{type:payload.mime});
-    cameraShutterFlash();
+    if(!target)cameraShutterFlash();
     await insertTranscriptImageFiles([file],capture);
   }catch(error){toast('照片插入失败：'+(error.message||'未知原因'));}
 }
-// direct: 快捷键用, 壳跳过菜单直接点「拍照」; 点按钮仍弹菜单
 function openIphoneCamera(direct=false){
-  if(!['recording','paused'].includes(state)||recordingImageStopping)return;
-  const rect=$('btnCamTool').getBoundingClientRect();
-  // 菜单锚在按钮顶边中点: 按钮贴着窗口底, 菜单与 iPhone 提示框自然往上弹
+  if(transcriptCameraTarget||!['recording','paused'].includes(state)||recordingImageStopping)return;
+  requestIphoneCamera($('btnCamTool').getBoundingClientRect(),direct);
+}
+function requestIphoneCamera(rect,direct){
   cameraFrame.src=`tingdao-camera://take?x=${Math.round(rect.left+rect.width/2)}&y=${Math.round(rect.top)}${direct?'&direct=1':''}&t=${Date.now()}`;
 }
 $('btnCamTool').onclick=()=>openIphoneCamera();
@@ -13419,7 +13464,10 @@ $('btnCamTool').onclick=()=>openIphoneCamera();
   const listen=(event,handle)=>internals.invoke('plugin:event|listen',{event,target:{kind:'Webview',label:'main'},
     handler:internals.transformCallback(e=>handle(transcriptNoteNativeEventPayload(e)))})
     .catch(error=>console.error('相机事件注册失败',event,error));
-  listen('tingdao://camera-state',payload=>setCameraWaiting(!!payload.waiting));
+  listen('tingdao://camera-state',payload=>{
+    if(!payload.waiting)transcriptCameraTarget=null;
+    setCameraWaiting(!!payload.waiting);
+  });
   listen('tingdao://camera-photo',insertCameraPhoto);
   $('btnCamTool').hidden=false;
 })();
@@ -13901,6 +13949,7 @@ $('feed').addEventListener('contextmenu', e=>{
   transcriptNoteTargetIndex=isNoteRow?Number(row.dataset.noteIndex):null;
   if(isNoteRow&&!Number.isInteger(transcriptNoteTargetIndex))return;
   $('transcriptNoteAdd').hidden=transcriptNoteTargetIndex!==null;
+  $('transcriptNoteCamera').hidden=isNoteRow||$('btnCamTool').hidden;
   $('transcriptNoteEdit').hidden=transcriptNoteTargetIndex===null;
   $('transcriptNoteDelete').hidden=transcriptNoteTargetIndex===null;
   const menu=$('transcriptNoteMenu');
@@ -13910,6 +13959,15 @@ $('feed').addEventListener('contextmenu', e=>{
   menu.style.top=Math.max(8,Math.min(e.clientY,innerHeight-bounds.height-8))+'px';
 });
 $('transcriptNoteAdd').onclick=()=>openTranscriptNote(transcriptNoteTargetTime);
+$('transcriptNoteCamera').onclick=()=>{
+  const button=$('transcriptNoteCamera');
+  if(button.hidden||transcriptCameraTarget||!view?.id||!transcriptNoteTargetRow?.isConnected)return;
+  const rect=button.getBoundingClientRect();
+  transcriptCameraTarget={sid:view.id,time:transcriptNoteTargetTime,
+    intent:{mode:'inline',position:'after',rowId:transcriptNoteTargetRow.dataset.rowId||null}};
+  hideTranscriptNoteMenu();
+  requestIphoneCamera(rect,true);
+};
 $('transcriptNoteEdit').onclick=()=>openTranscriptNote(transcriptNoteTargetTime,transcriptNoteTargetIndex);
 $('transcriptNoteDelete').onclick=async()=>{
   const sid=view&&view.id, index=transcriptNoteTargetIndex, note=view&&view.notes&&view.notes[index];
@@ -18905,25 +18963,32 @@ function reviewBump(el,v){ if(el.textContent!==String(v)){ el.textContent=v; el.
 /* —— 牌堆 —— */
 function reviewMemSvg(n){ const c=2*Math.PI*6.5,p=Math.min(n,3)/3;
   return `<svg viewBox="0 0 16 16"><circle class="trk" cx="8" cy="8" r="6.5"/><circle class="arc" cx="8" cy="8" r="6.5" stroke-dasharray="${c.toFixed(2)}" stroke-dashoffset="${(c*(1-p)).toFixed(2)}"/></svg>`; }
+function grRecallCue(text){
+  const question=text.match(/^[^\n。！？!?]*[？?]/)?.[0];
+  if(question)return question;
+  const lead=text.split(/[\n。！？；]/)[0];
+  return lead.length<=60&&lead.length<text.length?lead:reviewSplit(text).title+'…';
+}
 function reviewCardHtml(item,session=view,data=reviewData,gradeLabels=false){
   const s=reviewSource(item,session), chap=item.kind==='chap', linked=chap?reviewLinked(item,session,data):[], off=reviewDueOffset(item), prev=reviewPreview(item);
   const late=off<0?`<span class="rv-late">逾期 ${-off} 天</span>`:'<span>今天到期</span>';
-  const titleLink=text=>`<a class="rv-c-title" role="link" tabindex="0" title="跳到原文">${reviewEsc(text.slice(0,-1))}<span class="rv-nw">${reviewEsc(text.slice(-1))}${REVIEW_JMP}</span></a>`;
+  const titleLink=text=>`<a class="rv-c-title" role="link" tabindex="0" title="${gradeLabels?'查看原文':'跳到原文'}">${reviewEsc(text.slice(0,-1))}<span class="rv-nw">${reviewEsc(text.slice(-1))}${REVIEW_JMP}</span></a>`;
   let body;
   if(chap){
     body=`${titleLink(s.title)}<div class="rv-c-src">章节 · 从 ${fmt(s.t)} 开始</div>
       <div class="rv-recall">先回想这一章讲了什么${linked.length?`，再对一对章里 ${linked.length} 条到期的笔记`:''}</div>
+      ${gradeLabels&&linked.length?'<button type="button" class="gr-reveal-notes" data-gr="reveal-notes">展开全部笔记 ↓</button>':''}
       <div class="rv-c-notes">${linked.map(n=>{ const ns=reviewSource(n,session); return `<div class="rv-c-note" data-src="${reviewEsc(n.src)}"><span class="rv-ts">${fmt(ns.t)}</span>${reviewTape(ns.title,true)}
-        <div class="rv-mini">${REVIEW_GRADES.map(([g,l])=>`<button type="button" data-sg="${g}" aria-pressed="false" aria-label="${l}" title="${l}">${reviewFaceSvg(g,'sm')}</button>`).join('')}</div></div>`; }).join('')}</div>`;
+        <div class="rv-mini">${REVIEW_GRADES.map(([g,l])=>`<button type="button" data-sg="${g}" aria-pressed="false" aria-label="${l}" title="${l}">${reviewFaceSvg(g,'sm')}${gradeLabels?'<span>'+l+'</span>':''}</button>`).join('')}</div></div>`; }).join('')}</div>`;
   }else{
     const sp=reviewSplit(s.title), ch=reviewChapterOf(s.t,session);
-    body=`${titleLink(sp.title+'…')}<div class="rv-c-src">${ch?reviewEsc(ch.title)+' · ':''}${fmt(s.t)}</div>
-      <div class="rv-c-text">${reviewTape(s.title)}</div><div class="rv-hint">想不起来就撕开胶带，或点标题回原文</div>`;
+    body=`${titleLink(gradeLabels?grRecallCue(s.title):sp.title+'…')}<div class="rv-c-src">${ch?reviewEsc(ch.title)+' · ':''}${fmt(s.t)}</div>
+      <div class="rv-c-text">${reviewTape(s.title)}</div><div class="rv-hint">${gradeLabels?'试着回想，再撕开胶带核对内容':'想不起来就撕开胶带，或点标题回原文'}</div>`;
   }
   return `<div class="rv-card front" data-src="${reviewEsc(item.src)}">
     <div class="rv-c-top"><span class="rv-chip">${chap?'章节':'笔记'}</span>${late}<span class="rv-sp"></span><span class="rv-mem" title="已记住 ${item.succ} 次；${chap?'选「很轻松」或':''}记住满 3 次、间隔到 30 天就算掌握">${reviewMemSvg(item.succ)}记住 ${item.succ} 次</span></div>
     <div class="rv-c-body"><div class="rv-c-in">${body}</div></div>
-    <div class="rv-c-foot"><div class="rv-grades">${REVIEW_GRADES.map(([g,l],i)=>`<button type="button" class="rv-g" data-g="${g}" aria-pressed="false" aria-label="${l}" title="${l} · 按 ${i+1}">${reviewFaceSvg(g)}${gradeLabels?`<b class="rv-grade-label">${l}</b>`:''}<i>${reviewWillMaster(item,g,prev[g])?'掌握了':reviewIvText(prev[g])}</i></button>`).join('')}</div>
+    <div class="rv-c-foot">${gradeLabels?'<p class="gr-grade-hint" aria-live="polite"></p>':''}<div class="rv-grades">${REVIEW_GRADES.map(([g,l],i)=>`<button type="button" class="rv-g" data-g="${g}" aria-pressed="false" aria-label="${l}" title="${l} · 按 ${i+1}">${reviewFaceSvg(g)}${gradeLabels?`<b class="rv-grade-label">${l}</b>`:''}<i>${reviewWillMaster(item,g,prev[g])?'掌握了':reviewIvText(prev[g])}</i></button>`).join('')}</div>
       <button type="button" class="rv-confirm">确认本轮 · 含 ${linked.length} 条笔记</button></div>
   </div>`;
 }
@@ -19304,7 +19369,7 @@ function grOverview(){
 function grFocus(){
   const row=grActive();if(!row)return gr.course&&grAll().some(grIsDue)?`<div class="gr-empty"><h2>这门课今天没有待复习内容</h2><button class="gr-primary" data-gr="all-start">查看全部待复习</button><button data-gr="knowledge">浏览知识 →</button></div>`:`<div class="gr-empty"><h2>今天没有待复习内容</h2>${grTodayRows().length?'<button class="gr-primary" data-gr="complete">查看今日复习记录</button>':''}<button data-gr="knowledge">浏览知识 →</button></div>`;
   gr.current=row.key;const all=grAll().filter(r=>!gr.course||r.session.id===gr.course),done=all.filter(r=>reviewIsTodaySafe(r.item)).length,due=all.filter(grIsDue).length;
-  return `<div class="gr-focus-top"><button data-gr="overview">← 返回总览</button><span>${gr.course?esc(row.session.name):'全部课件'} · 已完成 ${done} / ${done+due}</span><button data-gr="undo" ${!gr.undo||gr.busy?'disabled':''}>撤销上一次</button></div><div class="gr-progress"><i style="width:${done/(done+due)*100}%"></i></div><div class="gr-focus-layout"><aside><h3>当前课件</h3><p>${esc(row.session.name)}</p><small>${row.item.kind==='chap'?'章节':'笔记'} · ${fmt(row.source.t)}</small><p>还有 ${due} 条待复习</p></aside><section><div class="gr-deck">${reviewCardHtml(row.item,row.session,row.session.review,true)}</div><div class="gr-keys"><span><kbd>空格</kbd>撕开胶带</span><span><kbd>1–4</kbd>评分</span><span><kbd>Z</kbd>撤销</span></div></section><aside><button class="gr-outline" data-gr-jump="${esc(row.key)}">进入对应课件 ↗</button>${gr.busy?'<p class="gr-muted">正在保存…</p>':''}</aside></div>`;
+  return `<div class="gr-focus-top"><button data-gr="overview">← 返回总览</button><span>${gr.course?esc(row.session.name):'全部课件'} · 已复习 ${done} / ${done+due} 条</span><button data-gr="undo" ${!gr.undo||gr.busy?'disabled':''}>撤销上一次</button></div><div class="gr-progress"><i style="width:${done/(done+due)*100}%"></i></div><div class="gr-focus-layout"><section><div class="gr-focus-source"><span>${esc(row.session.name)}</span><button data-gr-preview="${esc(row.key)}">查看原文</button></div><div class="gr-deck">${reviewCardHtml(row.item,row.session,row.session.review,true)}</div><div class="gr-keys"><span><kbd>空格</kbd>撕开胶带</span><span><kbd>1–4</kbd>自评</span><span><kbd>Z</kbd>撤销</span></div></section></div>`;
 }
 function grNoteTitle(row){const text=String(row.source.title||'');return row.item.kind==='chap'?text:(text.split(/[，。！？；\n]/)[0]||text);}
 function grNoteSummary(row){if(row.item.kind==='chap')return grRelatedText(row);const text=String(row.source.title||''),title=grNoteTitle(row);return text.slice(title.length).replace(/^[，。！？；\s]+/,'');}
@@ -19355,9 +19420,81 @@ async function grLoadDetail(row){
   finally{if(epoch===gr.detailEpoch){gr.detailLoading='';if(gr.open&&gr.tab==='knowledge'&&grAll().find(r=>r.key===gr.selected)?.session.id===row.session.id)grUpdateReading();}}
 }
 
+function grWeakRows(){
+  return grTodayRows().filter(r=>['again','hard'].includes(r.item.lastG));
+}
+function grReadWeak(trigger,key){
+  const rows=grWeakRows();
+  grReadDialog(trigger,rows,key?rows.findIndex(r=>r.key===key):0,true);
+}
+function grReadDialog(trigger,rows,index=0,weak=false){
+  if(!rows[index])return;
+  const modal=$('grReadModal'),panel=$('globalReviewPanel'),next=$('grReadNext'),close=$('grReadClose');
+  let generation=0;
+  const hide=(restore=true)=>{
+    generation++;
+    modal.classList.remove('show');
+    panel.inert=false;
+    modal.onclick=null;
+    modal.onkeydown=null;
+    if(restore&&trigger.isConnected)trigger.focus();
+  };
+  const render=async()=>{
+    const row=rows[index],request=++generation,content=$('grReadContent');
+    $('grReadTitle').textContent=weak?'薄弱内容回看':row.item.kind==='chap'?row.source.title:'查看原文';
+    $('grReadMeta').textContent=[weak?`${index+1} / ${rows.length}`:'',row.session.name,fmt(row.source.t)].filter(Boolean).join(' · ');
+    next.textContent=weak?(index+1<rows.length?'下一条':'完成回看'):'返回复习';
+    next.focus();
+    if(row.item.kind==='note'){content.textContent=row.source.title;return;}
+    content.textContent='正在读取章节原文…';
+    try{
+      const detail=gr.detail?.id===row.session.id?gr.detail:await api('/api/session/'+encodeURIComponent(row.session.id));
+      if(request!==generation)return;
+      if(!detail||detail.error)throw Error('章节原文读取失败');
+      const text=(detail.segments||[]).filter(segment=>Number(segment.t)>=row.source.t&&Number(segment.t)<row.source.end).map(segment=>segment.text||'').join('\n\n');
+      const excerpt=grReadingExcerpt(text);
+      content.textContent=excerpt.text
+        ? excerpt.text+(excerpt.cut?'\n\n在课件中打开可继续阅读。':'')
+        : '这段章节没有可预览的原文。';
+    }catch{
+      if(request===generation)content.textContent='暂时无法读取章节原文。可在课件中打开。';
+    }
+  };
+  close.onclick=()=>hide();
+  next.onclick=()=>{if(++index<rows.length)render();else hide();};
+  $('grReadSource').onclick=()=>{const row=rows[index];hide(false);grJump(row.key);};
+  modal.onclick=e=>{if(e.target===modal)hide();};
+  modal.onkeydown=e=>{
+    if(e.key!=='Tab')return;
+    if(e.shiftKey&&document.activeElement===close){e.preventDefault();next.focus();}
+    else if(!e.shiftKey&&document.activeElement===next){e.preventDefault();close.focus();}
+  };
+  modal.classList.add('show');
+  panel.inert=true;
+  render();
+}
 function grCompletion(){
-  const done=grTodayRows(),weak=done.filter(r=>['again','hard'].includes(r.item.lastG)),courses=gr.sessions.map(s=>({s,count:done.filter(r=>r.session.id===s.id).length})).filter(x=>x.count),tomorrow=grAll().filter(r=>!r.item.done&&reviewDueOffset(r.item)===1).length,roundOnly=grAll().some(grIsDue);
-  return `<div class="gr-complete-layout"><aside class="gr-receipt gr-paper"><header class="gr-receipt-head"><h2>今日复习记录</h2><span class="gr-receipt-status${roundOnly?'':' is-complete'}">${roundOnly?'本轮完成':'全部完成'}</span></header><div class="gr-receipt-total"><b class="gr-big">${done.length}</b><span>条已复习</span></div><div class="gr-receipt-action"><p class="gr-receipt-next"><span>明日待复习</span><span>${tomorrow} 条</span></p><button class="gr-primary" data-gr="overview">返回总览 <span>→</span></button></div></aside><section class="gr-results"><h2>这一次，记得怎样？</h2><div class="gr-scores">${REVIEW_GRADES.map(([g,l])=>`<div>${reviewFaceSvg(g)}<span><b>${done.filter(r=>r.item.lastG===g).length}</b><small>${l}</small></span></div>`).join('')}</div><h3 class="gr-course-count-title">各课件本日复习条数</h3><div class="gr-result-courses">${courses.map(({s,count},i)=>`<div><span><i class="gr-dot gr-color-${i%3}"></i>${esc(s.name)}</span><div class="gr-meter"><i style="width:${count/Math.max(...courses.map(c=>c.count))*100}%"></i></div><span>${count} 条</span></div>`).join('')}</div><div class="gr-section-title"><h3>还需要多见几次</h3><span>${weak.length} 条</span></div>${weak.slice(0,3).map(r=>`<button class="gr-weak-item" data-gr-read="${esc(r.key)}"><span>${grSnippet(r.source.title,45)}<small>${esc(r.session.name)}</small></span><span>${REVIEW_GL[r.item.lastG]}</span></button>`).join('')||'<p class="gr-muted">暂无需回看的条目</p>'}<div class="gr-footer"><button data-gr="weak">回看这 ${weak.length} 条 →</button></div><button class="gr-undo" data-gr="undo" ${!gr.undo?'disabled':''}>撤销上一次评分</button></section></div>`;
+  const done=grTodayRows(),weak=grWeakRows();
+  const courses=gr.sessions.map(s=>({s,count:done.filter(r=>r.session.id===s.id).length})).filter(x=>x.count);
+  const tomorrow=grAll().filter(r=>!r.item.done&&reviewDueOffset(r.item)===1).length;
+  const remaining=grAll().filter(grIsDue).length;
+  const status=remaining?`今天还有 ${remaining} 条待复习`:'已完成今天的复习安排';
+  return `<div class="gr-complete-layout">
+    <aside class="gr-receipt gr-paper">
+      <header class="gr-receipt-head"><h2>${remaining?(gr.course?'本课件复习完成':'今日复习记录'):'今天，复习到这里'}</h2><p>${status}</p></header>
+      <div class="gr-receipt-total"><b class="gr-big">${done.length}</b><span>条今日已复习</span></div>
+      <div class="gr-receipt-action"><p class="gr-receipt-next"><span>明日待复习</span><span>${tomorrow} 条</span></p>
+        <button class="gr-primary" data-gr="${remaining?'all-start':'overview'}">${remaining?'继续今日复习':'返回总览'} <span>→</span></button>
+        ${remaining?'<button class="gr-outline" data-gr="overview">返回总览</button>':''}
+      </div>
+    </aside>
+    <section class="gr-results"><h2>今天回想得怎样？</h2><p>根据你今天的自评记录</p>
+      <div class="gr-scores">${REVIEW_GRADES.map(([g,l])=>`<div>${reviewFaceSvg(g)}<span><b>${done.filter(r=>r.item.lastG===g).length}</b><small>${l}</small></span></div>`).join('')}</div>
+      <div class="gr-section-title"><h3>还需要多见几次 <small>${weak.length} 条</small></h3>${weak.length?`<button data-gr="weak">回看这 ${weak.length} 条 →</button>`:''}</div>
+      ${weak.slice(0,3).map(r=>`<button class="gr-weak-item" data-gr-read="${esc(r.key)}"><span>${grSnippet(r.source.title,45)}<small>${esc(r.session.name)}</small></span><span>${REVIEW_GL[r.item.lastG]}</span></button>`).join('')||'<p class="gr-muted">暂无需回看的条目</p>'}
+      ${courses.length?`<details class="gr-course-summary"><summary>各课件今日复习条数 · ${courses.length} 门课件</summary><div class="gr-result-courses">${courses.map(({s,count},i)=>`<div><span><i class="gr-dot gr-color-${i%3}"></i>${esc(s.name)}</span><div class="gr-meter"><i style="width:${count/Math.max(...courses.map(c=>c.count))*100}%"></i></div><span>${count} 条</span></div>`).join('')}</div></details>`:''}
+      <button class="gr-undo" data-gr="undo" ${!gr.undo?'disabled':''}>撤销上一次评分</button>
+    </section></div>`;
 }
 const GR_TAB_ORDER={overview:0,focus:1,complete:2,knowledge:3};
 function grMotionBefore(panel){
@@ -19454,6 +19591,7 @@ function grRender(){
   if(!gr.open)return;const panel=$('globalReviewPanel'),search=$('grSearch'),searchFocused=document.activeElement===search,pos=search?.selectionStart,scroll=panel.scrollTop,bodyTop=$('grBody')?.scrollTop||0,before=grMotionBefore(panel),stream=$('grKnowledgeScroll'),streamTop=stream?.scrollTop||0,streamFilter=stream?.dataset.filter,readingTop=panel.querySelector('.gr-reading-body')?.scrollTop||0;
   panel.innerHTML=`<div class="gr-shell gr-scroll-body"><header class="gr-header">${grHead()}</header><div id="grBody">${gr.error?`<div class="gr-empty" role="alert"><h2>复习记录暂时没有读到</h2><p>${esc(gr.error)}</p><button data-gr="reload" class="gr-primary">重新读取</button></div>`:!gr.loaded?'<div class="gr-empty" role="status">正在汇总复习记录…</div>':gr.tab==='focus'?grFocus():gr.tab==='knowledge'?grKnowledge():gr.tab==='complete'?grCompletion():grOverview()}</div><div class="gr-message" id="grMessage" role="status"></div></div>`;
   if(search&&gr.tab==='knowledge'&&$('grSearch')){$('grSearch').replaceWith(search);search.value=gr.search;if(searchFocused){search.focus({preventScroll:true});try{search.setSelectionRange(pos,pos);}catch(e){}}}panel.scrollTop=scroll;$('grBody').scrollTop=bodyTop;
+  if(gr.tab==='focus')grSyncFocusCard(panel);
   if(gr.busy)panel.querySelectorAll('button,select,input').forEach(b=>b.disabled=true);
   if(gr.tab==='knowledge'&&searchFocused&&gr.searchOpen)grSuggestRender();
   grFitKnowledge();
@@ -19463,7 +19601,7 @@ function grRender(){
   grCheerLoop();
 }
 function grMessage(text,reload=false){if(!reload){toast(text);return;}const e=$('grMessage');if(e){e.textContent=text;if(reload){const b=document.createElement('button');b.type='button';b.dataset.gr='reload';b.textContent='刷新记录';e.append(b);}e.classList.add('on');}else toast(text);}
-function grStart(course=''){if(gr.busy)return;gr.course=course;gr.current='';gr.pick=null;gr.sub={};grTab('focus');}
+function grStart(course=''){if(gr.busy)return;gr.course=course;gr.current='';gr.recall=null;gr.pick=null;gr.sub={};grTab('focus');}
 async function grSave(session,next){
   const r=await api('/api/review_save',{id:session.id,review:next,expected_review:session.review});if(!r||r.error||r.ok!==true)throw Error(r?.error||'未保存，请重试');
   grSyncSession(session.id,next);
@@ -19474,7 +19612,7 @@ async function grCommit(entries){
     let grads=0;for(const {src,g}of entries){const item=next.items.find(i=>i.src===src);if(item&&reviewApply(item,g))grads++;}
     const day=reviewDayKey(reviewToday()),done=next.items.filter(reviewIsTodaySafe).length,remaining=next.items.filter(i=>grIsDue({item:i})&&reviewSource(i,session)).length;
     next.days=next.days||{};next.days[day]={due:Math.max(next.days[day]?.due||0,done+remaining),done};
-    grRender();await grSave(session,next);gr.undo={sid:session.id,before,after:JSON.stringify(next),key:row.key};gr.current='';gr.pick=null;gr.sub={};gr.busy=false;gr.fly=entries[0].g;
+    grRender();await grSave(session,next);gr.undo={sid:session.id,before,after:JSON.stringify(next),key:row.key};gr.current='';gr.recall=null;gr.pick=null;gr.sub={};gr.busy=false;gr.fly=entries[0].g;
     if(!grDeckRows().length){gr.tab='complete';grRender();await grCelebrate(grads>0);}else{grRender();if(grads)setTimeout(()=>reviewPlay('master'),160);grMessage(`${REVIEW_GL[entries[0].g]} · 已保存`);}
   }catch(e){gr.busy=false;grRender();grMessage('没保存上，进度没有变。'+e.message,true);}
 }
@@ -19482,13 +19620,65 @@ async function grUndo(){
   if(!gr.undo||gr.busy)return;const undo=gr.undo,session=gr.sessions.find(s=>s.id===undo.sid);if(!session)return;gr.busy=true;grRender();
   try{await grSave(session,JSON.parse(undo.before));gr.undo=null;gr.current=undo.key;gr.tab='focus';gr.pick=null;gr.sub={};gr.busy=false;grRender();grMessage('已撤销上一次评分');}catch(e){gr.busy=false;grRender();grMessage('撤销未保存：'+e.message,true);}
 }
+function grSyncFocusCard(panel){
+  const card=panel.querySelector('.gr-deck .rv-card.front');
+  if(!card)return;
+  const key=gr.current;
+  if(gr.recall?.key!==key)gr.recall={key,opened:new Set()};
+  const targets=[...card.querySelectorAll('.rv-c-text,.rv-c-note')];
+  targets.forEach((target,index)=>{
+    if(gr.recall.opened.has(index))target.classList.add('shown');
+  });
+  const ready=targets.every(target=>target.classList.contains('shown'));
+  const notes=card.querySelectorAll('.rv-c-note');
+  const revealAll=card.querySelector('.gr-reveal-notes');
+  if(revealAll)revealAll.hidden=ready;
+  card.querySelectorAll('.rv-g').forEach(button=>{
+    button.disabled=!ready||gr.busy;
+    button.setAttribute('aria-pressed',String(button.dataset.g===gr.pick));
+  });
+  card.querySelector('.gr-grade-hint').textContent=!ready
+    ? notes.length?'先核对每条笔记，再为整章自评':'先撕开胶带核对内容，再自评'
+    : notes.length?'整章回想得怎样？评分会应用到关联笔记，可逐条调整。':'刚才回想得怎样？';
+  card.classList.toggle('picking',!!gr.pick);
+  notes.forEach(note=>note.querySelectorAll('[data-sg]').forEach(button=>{
+    button.setAttribute('aria-pressed',String(button.dataset.sg===(gr.sub[note.dataset.src]||gr.pick)));
+  }));
+  const confirm=card.querySelector('.rv-confirm');
+  confirm.textContent=`确认评分 · 本章和 ${notes.length} 条笔记`;
+  if(notes.length&&gr.pick){
+    const adjusted=notes.length&&[...notes].some(note=>gr.sub[note.dataset.src]&&gr.sub[note.dataset.src]!==gr.pick);
+    card.querySelector('.gr-grade-hint').textContent=adjusted?'已调整个别笔记的评分':`本章及 ${notes.length} 条笔记均为「${REVIEW_GL[gr.pick]}」`;
+  }
+}
 function grChoose(g){
-  if(gr.busy)return;const row=grActive();if(!row)return;const card=$('globalReviewPanel').querySelector('.rv-card.front');
-  if(row.item.kind==='chap'&&reviewLinked(row.item,row.session,row.session.review).length){gr.pick=g;card.classList.add('picking');card.querySelectorAll('.rv-g').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.g===g)));card.querySelectorAll('.rv-c-note').forEach(n=>n.querySelectorAll('.rv-mini button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.sg===(gr.sub[n.dataset.src]||g)))));return;}
+  if(gr.busy)return;
+  const row=grActive(),panel=$('globalReviewPanel'),card=panel.querySelector('.rv-card.front');
+  if(!row||!card||card.querySelector('.rv-g')?.disabled)return;
+  if(card.querySelector('.rv-c-note')){
+    if(gr.pick!==g)gr.sub={};
+    gr.pick=g;
+    grSyncFocusCard(panel);
+    return;
+  }
   grCommit([{src:row.item.src,g}]);
 }
 function grPeel(el){
-  const card=$('globalReviewPanel').querySelector('.rv-card.front');if(!card)return;const target=el||card.querySelector('.rv-c-text:not(.shown),.rv-c-note:not(.shown)');if(!target)return;target.classList.add('peel');setTimeout(()=>target.classList.add('shown'),200);
+  const panel=$('globalReviewPanel'),card=panel.querySelector('.rv-card.front');
+  if(!card||gr.busy)return;
+  const targets=[...card.querySelectorAll('.rv-c-text,.rv-c-note')];
+  const target=el||targets.find(n=>!n.classList.contains('shown')&&!n.classList.contains('peel'));
+  if(!target||target.classList.contains('peel'))return;
+  target.classList.add('peel');
+  const recall=gr.recall;
+  const finish=()=>{
+    if(gr.recall!==recall||!target.isConnected)return;
+    recall.opened.add(targets.indexOf(target));
+    grSyncFocusCard(panel);
+    if(!card.querySelector('.rv-g:disabled'))card.querySelector('.rv-g')?.focus({preventScroll:true});
+  };
+  if(matchMedia('(prefers-reduced-motion: reduce)').matches)finish();
+  else setTimeout(finish,200);
 }
 async function grJump(key){
   if(gr.busy)return;const row=grAll().find(r=>r.key===key);if(!row)return;grSetOpen(false);await loadSession(row.session.id,true);if(view?.id===row.session.id)reviewJump(row.item);
@@ -19524,18 +19714,31 @@ $('globalReviewPanel').addEventListener('click',e=>{
   if(b.hasAttribute('data-gr-start')){grStart(b.dataset.grStart);return;}
   if(b.hasAttribute('data-gr-course')){gr.course=b.dataset.grCourse;gr.page=0;gr.selected='';grRender();$('grCourseFilter')?.focus();return;}
   if(b.dataset.grSelect){gr.selected=b.dataset.grSelect;grUpdateReading();return;}
-  if(b.dataset.grRead){gr.selected=b.dataset.grRead;gr.course='';gr.weak=false;gr.search='';gr.kind='all';grTab('knowledge');return;}
+  if(b.dataset.grRead){grReadWeak(b,b.dataset.grRead);return;}
+  if(b.dataset.grPreview){
+    const row=grAll().find(r=>r.key===b.dataset.grPreview);
+    if(row)grReadDialog(b,[row]);
+    return;
+  }
   if(b.dataset.grJump){grJump(b.dataset.grJump);return;}
   if(b.dataset.grPage){grTurnPage(Number(b.dataset.grPage));return;}
   if(b.classList.contains('rv-tape')){grPeel(b.closest('.rv-c-text,.rv-c-note'));return;}
-  if(b.classList.contains('rv-c-title')){const row=grActive();if(row)grJump(row.key);return;}
+  if(b.classList.contains('rv-c-title')){const row=grActive();if(row)grReadDialog(b,[row]);return;}
   if(b.dataset.g){grChoose(b.dataset.g);return;}
-  if(b.dataset.sg){const n=b.closest('.rv-c-note');gr.sub[n.dataset.src]=b.dataset.sg;n.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));return;}
+  if(b.dataset.sg){const n=b.closest('.rv-c-note');gr.sub[n.dataset.src]=b.dataset.sg;grSyncFocusCard($('globalReviewPanel'));return;}
   if(b.classList.contains('rv-confirm')){const row=grActive();if(row&&gr.pick)grCommit([{src:row.item.src,g:gr.pick},...reviewLinked(row.item,row.session,row.session.review).map(n=>({src:n.src,g:gr.sub[n.src]||gr.pick}))]);return;}
   switch(b.dataset.gr){
     case 'close':grSetOpen(false);break;case 'reload':grReload();break;case 'start':grStart();break;case 'all-start':grStart();break;
     case 'overview':grTab('overview');break;case 'complete':grTab('complete');break;case 'knowledge':gr.course='';gr.weak=false;grTab('knowledge');break;case 'undo':grUndo();break;
-    case 'weak':gr.weak=true;gr.course='';gr.page=0;gr.search='';gr.kind='all';grTab('knowledge');break;
+    case 'weak':grReadWeak(b);break;
+    case 'reveal-notes':{
+      const card=b.closest('.rv-card');
+      card.querySelectorAll('.rv-c-note').forEach((note,index)=>gr.recall.opened.add(index));
+      grSyncFocusCard($('globalReviewPanel'));
+      card.querySelector('.rv-c-note')?.scrollIntoView({block:'nearest'});
+      card.querySelector('.rv-g')?.focus({preventScroll:true});
+      break;
+    }
     case 'more-courses':gr.courseLimit+=24;grRender();break;
     case 'clear-weak':gr.weak=false;grRender();break;case 'reset-filters':gr.course='';gr.kind='all';gr.search='';gr.weak=false;gr.page=0;grRender();break;
     case 'retry-detail':gr.detailError='';grRender();break;
@@ -19593,7 +19796,8 @@ document.addEventListener('keydown',e=>{
   if(e.target.closest('input,textarea,select,[contenteditable="true"]'))return;
   if(e.key==='Escape'){e.preventDefault();e.stopImmediatePropagation();grSetOpen(false);return;}
   if(gr.tab==='knowledge'&&!e.metaKey&&!e.ctrlKey&&!e.altKey&&!e.isComposing&&/^[qe]$/i.test(e.key)){e.preventDefault();e.stopImmediatePropagation();grTurnPage(e.key.toLowerCase()==='q'?-1:1);return;}
-  if(gr.tab!=='focus')return;
+  if(gr.tab==='complete'&&/^[zZ]$/.test(e.key)&&!e.metaKey&&!e.ctrlKey&&!e.altKey){e.preventDefault();grUndo();return;}
+  if(gr.tab!=='focus'||e.metaKey||e.ctrlKey||e.altKey||e.isComposing)return;
   if(e.key===' '||/^[1-4zZ]$/.test(e.key)){e.preventDefault();e.stopImmediatePropagation();if(e.key===' ')grPeel();else if(e.key.toLowerCase()==='z')grUndo();else grChoose(REVIEW_GRADES[Number(e.key)-1][0]);}
 },true);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&reviewDayKey(reviewToday())!==gr.day){gr.detail=null;grReload();}});

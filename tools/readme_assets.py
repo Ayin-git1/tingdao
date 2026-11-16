@@ -10,7 +10,7 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 OUT = ROOT / "assets" / "readme"
-VERSION = sys.argv[1] if len(sys.argv) > 1 else "3.1.10.3"
+VERSION = sys.argv[1] if len(sys.argv) > 1 else "3.1.10.4"
 
 PAPER, DEEP = "#F7F6F2", "#567764"
 # 竹青 晴蓝 青莲 松石 橘红 胭脂 —— HSL presets from the app, with a deeper ink of each hue for numerals.

@@ -8,7 +8,7 @@
 
 听道适用于 macOS 与 Windows，可录制系统声音与麦克风声音。支持本地模型转写和远端api转写两套通路。支持生成笔记与文稿摘要。深度集成从听→学的知识掌握链路。听道服务于：咨询服务、会议记录、私密会话、网课学习等场景。
 
-当前版本：**v3.1.10.3**　·　[本版更新](#updates)　·　[下载页面](https://github.com/Ayin-git1/tingdao/releases)　·　[PolyForm Noncommercial License](./LICENSE)
+当前版本：**v3.1.10.4**　·　[本版更新](#updates)　·　[下载页面](https://github.com/Ayin-git1/tingdao/releases)　·　[PolyForm Noncommercial License](./LICENSE)
 
 <h2 id="download"><img src="./assets/readme/badges/download.svg" height="40" alt="下载与安装"></h2>
 
@@ -155,11 +155,11 @@ Windows 安装版已包含 FFmpeg。安装 Python 后重开 PowerShell，并确�
 
 源码采用 [PolyForm Noncommercial License 1.0.0](./LICENSE)，仅限个人非商业使用；应表述为“源码公开”，不属于允许商业使用的 OSI 开源许可。第三方库、工具和模型各自遵循其上游许可，详见 [`THIRD-PARTY-NOTICES.md`](./THIRD-PARTY-NOTICES.md)。macOS 提供 DMG，Windows 提供 NSIS 安装包，源码 zip 作为备用方式。
 
-<h2 id="updates"><img src="./assets/readme/badges/updates.svg" height="40" alt="v3.1.10.3 更新"></h2>
+<h2 id="updates"><img src="./assets/readme/badges/updates.svg" height="40" alt="v3.1.10.4 更新"></h2>
 
-### v3.1.10.3 · 2026-11-10
+### v3.1.10.4 · 2026-11-16
 
-[下载 macOS Apple Silicon 安装包](https://github.com/Ayin-git1/tingdao/releases/download/v3.1.10.3/tingdao_3.1.10.3_aarch64.dmg)。本版本暂无 Windows 安装包，Windows 用户请继续使用 v3.1.2。本次说明包含 3.1.10 至 3.1.10.3 的全部更新。
+[下载 macOS Apple Silicon 安装包](https://github.com/Ayin-git1/tingdao/releases/download/v3.1.10.4/tingdao_3.1.10.4_aarch64.dmg)。本版本暂无 Windows 安装包，Windows 用户请继续使用 v3.1.2。本次说明包含 3.1.10 至 3.1.10.4 的全部更新。
 
 **复习**
 
@@ -168,6 +168,7 @@ Windows 安装版已包含 FFmpeg。安装 Python 后重开 PowerShell，并确�
 
 **看稿与录音**
 
+- 现在，在文稿界面右键时间戳文本也可以用iphone 接续拍照功能插入笔记了
 - **撤销与重做**：看稿时改错了字、改了划线或颜色、挪动或缩放了图片、删了笔记里的图，按 ⌘Z 就能撤销，⌘⇧Z 重做（Windows 为 Ctrl+Z / Ctrl+Shift+Z）。正在打字时 ⌘Z 仍只撤销输入的文字。
 - **录音中查找**：录音或暂停时按 ⌘F，可以搜索这次录音已经出现的文字；点结果跳回前文查看，看完点「回到实时」继续跟随。
 - **配乐播放器**：复习书签下方的音符书签，鼠标移上去即展开。「添加音乐」选本机的 MP3、M4A、FLAC 等文件，即可边看稿边听；支持上一首/下一首、循环或随机、音量和播放列表。勾选「随文稿播放」后，配乐跟着文稿录音一起开始和暂停，每个项目单独记住。
